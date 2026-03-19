@@ -288,7 +288,13 @@ function applyState(state, svgOverride) {
   if (miniMode && !state.startsWith("mini-")) {
     if (state === "notification") return applyState("mini-alert");
     if (state === "attention") return applyState("mini-happy");
-    return; // other states: silent
+    // Other states are silent in mini mode — but if we're stuck in a
+    // oneshot mini state whose auto-return timer was cancelled (e.g. by
+    // setState's pending logic), recover to mini-idle/mini-peek now.
+    if (AUTO_RETURN_MS[currentState] && !autoReturnTimer) {
+      return applyState(mouseOverPet ? "mini-peek" : "mini-idle");
+    }
+    return;
   }
 
   currentState = state;
@@ -1256,6 +1262,9 @@ function enterMiniViaMenu() {
   preMiniX = bounds.x;
   preMiniY = bounds.y;
   miniTransitioning = true;
+
+  // Tell renderer early so it blocks drag during crabwalk
+  sendToRenderer("mini-mode-change", true);
 
   applyState("mini-crabwalk");
 
