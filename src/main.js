@@ -1049,13 +1049,7 @@ function buildTrayMenu() {
   }
   items.push(
     { type: "separator" },
-    {
-      label: getUpdateMenuLabel(),
-      enabled: updateStatus !== "checking" && updateStatus !== "downloading",
-      click: () => updateStatus === "ready"
-        ? autoUpdater.quitAndInstall(false, true)
-        : checkForUpdates(true),
-    },
+    getUpdateMenuItem(),
     { type: "separator" },
     {
       label: t("language"),
@@ -1078,16 +1072,12 @@ let updateStatus = "idle"; // idle | checking | available | downloading | ready 
 
 function setupAutoUpdater() {
   autoUpdater.on("update-available", (info) => {
-    updateStatus = "available";
     const wasManual = manualUpdateCheck;
     manualUpdateCheck = false;
+    // Silent check during DND/mini: skip dialog, stay idle so user can check later
+    if (!wasManual && (doNotDisturb || miniMode)) return;
+    updateStatus = "available";
     rebuildAllMenus();
-    // Silent check during DND/mini: skip dialog, reset to idle so user can check later
-    if (!wasManual && (doNotDisturb || miniMode)) {
-      updateStatus = "idle";
-      rebuildAllMenus();
-      return;
-    }
     if (isMac) {
       // macOS: no code signing → can't auto-update, open GitHub Releases page instead
       dialog.showMessageBox({
@@ -1191,6 +1181,16 @@ function checkForUpdates(manual = false) {
     manualUpdateCheck = false;
     rebuildAllMenus();
   });
+}
+
+function getUpdateMenuItem() {
+  return {
+    label: getUpdateMenuLabel(),
+    enabled: updateStatus !== "checking" && updateStatus !== "downloading",
+    click: () => updateStatus === "ready"
+      ? autoUpdater.quitAndInstall(false, true)
+      : checkForUpdates(true),
+  };
 }
 
 function getUpdateMenuLabel() {
@@ -1755,13 +1755,7 @@ function buildContextMenu() {
   }
   template.push(
     { type: "separator" },
-    {
-      label: getUpdateMenuLabel(),
-      enabled: updateStatus !== "checking" && updateStatus !== "downloading",
-      click: () => updateStatus === "ready"
-        ? autoUpdater.quitAndInstall(false, true)
-        : checkForUpdates(true),
-    },
+    getUpdateMenuItem(),
     { type: "separator" },
     {
       label: t("language"),
@@ -1778,8 +1772,7 @@ function buildContextMenu() {
 
 function setLanguage(newLang) {
   lang = newLang;
-  buildContextMenu();
-  buildTrayMenu();
+  rebuildAllMenus();
   savePrefs();
 }
 
