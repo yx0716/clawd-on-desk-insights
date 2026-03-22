@@ -606,7 +606,7 @@ function wakeFromDoze() {
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
 function updateSession(sessionId, state, event, sourcePid) {
-  // Preserve existing sourcePid across all updates (only SessionStart sends it)
+  // Preserve existing sourcePid — only SessionStart sends it, other events reuse cached value
   const existing = sessions.get(sessionId);
   const srcPid = sourcePid || (existing && existing.sourcePid) || null;
 
@@ -807,6 +807,7 @@ function initFocusHelper() {
     stdio: ["pipe", "ignore", "ignore"],
   });
   // Pre-compile the C# type (once, ~500ms, non-blocking)
+  psProc.stdin.on("error", () => {}); // Suppress EPIPE if process exits unexpectedly
   psProc.stdin.write(PS_FOCUS_ADDTYPE + "\n");
   psProc.on("exit", () => { psProc = null; });
   psProc.unref(); // Don't keep the app alive for this
@@ -817,6 +818,7 @@ function killFocusHelper() {
 }
 
 function focusTerminalWindow(sourcePid) {
+  if (!sourcePid) return;
   if (isMac) {
     // macOS: walk up process tree via ps, then activate via osascript
     // TODO: community contributor — test and refine on real macOS hardware

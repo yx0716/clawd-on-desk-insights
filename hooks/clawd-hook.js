@@ -99,11 +99,12 @@ function send(sessionId) {
   if (sent) return;
   sent = true;
 
-  // Get a stable ancestor PID (survives after this hook process exits).
-  // process.ppid is a transient shell (cmd.exe/bash.exe) spawned by Claude Code
-  // to run this hook — it dies immediately after. One wmic/ps call up gives us
-  // Claude Code's node.exe PID, which is long-lived.
-  const body = { state, session_id: sessionId, event, source_pid: getStablePid() };
+  const body = { state, session_id: sessionId, event };
+  // Only walk the process tree on SessionStart — the stable PID doesn't change
+  // within a session, and main.js preserves it across subsequent events
+  if (event === "SessionStart") {
+    body.source_pid = getStablePid();
+  }
 
   const data = JSON.stringify(body);
   const req = require("http").request(
