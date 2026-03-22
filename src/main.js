@@ -172,7 +172,7 @@ const HIT_BOXES = {
   sleeping: { x: -2, y: 9, w: 19, h: 7 },     // 趴姿：更宽更矮
   wide:     { x: -3, y: 3, w: 21, h: 14 },    // 带特效（error/building/notification）
 };
-const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-working-building.svg", "clawd-notification.svg"]);
+const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-working-building.svg", "clawd-notification.svg", "clawd-working-conducting.svg"]);
 let currentHitBox = HIT_BOXES.default;
 
 let win;
