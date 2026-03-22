@@ -123,11 +123,18 @@ function handleClick(clientX) {
     return;
   }
   if (isReacting || isDragReacting) return;
-  if (currentIdleSvg !== "clawd-idle-follow.svg" && currentIdleSvg !== "clawd-idle-living.svg") return;
 
+  // Non-idle states: single click → focus terminal directly, no reaction animation
+  if (currentIdleSvg !== "clawd-idle-follow.svg" && currentIdleSvg !== "clawd-idle-living.svg") {
+    window.electronAPI.focusTerminal();
+    return;
+  }
+
+  // Idle states: immediate focus on first click, still track for reactions
   clickCount++;
   if (clickCount === 1) {
     firstClickDir = clientX < container.offsetWidth / 2 ? "left" : "right";
+    window.electronAPI.focusTerminal();  // Instant — no 400ms wait
   }
 
   if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
@@ -147,7 +154,7 @@ function handleClick(clientX) {
       playReaction(svg, REACT_SINGLE_DURATION);
     }, CLICK_WINDOW_MS);
   } else {
-    // 1 click → wait for more (single click alone does nothing)
+    // 1 click → reset counter after timeout
     clickTimer = setTimeout(() => {
       clickTimer = null;
       clickCount = 0;

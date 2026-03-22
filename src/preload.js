@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onMiniModeChange: (cb) => ipcRenderer.on("mini-mode-change", (_, enabled) => cb(enabled)),
   exitMiniMode: () => ipcRenderer.send("exit-mini-mode"),
   dragEnd: () => ipcRenderer.send("drag-end"),
+  focusTerminal: () => ipcRenderer.send("focus-terminal"),
 });

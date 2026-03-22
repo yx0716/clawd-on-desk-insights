@@ -605,29 +605,32 @@ function wakeFromDoze() {
 // ── Session management ──
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
-function updateSession(sessionId, state, event) {
+function updateSession(sessionId, state, event, sourcePid) {
+  // Preserve existing sourcePid across all updates (only SessionStart sends it)
+  const existing = sessions.get(sessionId);
+  const srcPid = sourcePid || (existing && existing.sourcePid) || null;
+
   if (event === "SessionEnd") {
     sessions.delete(sessionId);
   } else if (state === "attention" || state === "notification" || SLEEP_SEQUENCE.has(state)) {
     // Stop/notification/sleep: session goes idle — if work continues, new hooks will re-set
-    sessions.set(sessionId, { state: "idle", updatedAt: Date.now() });
+    sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), sourcePid: srcPid });
   } else if (ONESHOT_STATES.has(state)) {
     // Other oneshots (error/sweeping/notification/carrying):
     // preserve session's previous state so auto-return resolves correctly
-    const existing = sessions.get(sessionId);
     if (existing) {
       existing.updatedAt = Date.now();
+      if (sourcePid) existing.sourcePid = sourcePid;
     } else {
-      sessions.set(sessionId, { state: "idle", updatedAt: Date.now() });
+      sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), sourcePid: srcPid });
     }
   } else {
     // Preserve juggling: subagent's own tool use (PreToolUse/PostToolUse)
     // shouldn't override juggling — only SubagentStop should end it.
-    const existing = sessions.get(sessionId);
     if (existing && existing.state === "juggling" && state === "working" && event !== "SubagentStop") {
       existing.updatedAt = Date.now();
     } else {
-      sessions.set(sessionId, { state, updatedAt: Date.now() });
+      sessions.set(sessionId, { state, updatedAt: Date.now(), sourcePid: srcPid });
     }
   }
   cleanStaleSessions();
@@ -753,6 +756,112 @@ function disableDoNotDisturb() {
   buildTrayMenu();
 }
 
+// ── Terminal focus (click pet → activate terminal window) ──
+// Uses a persistent PowerShell process to avoid cold-start delay on each click.
+// Add-Type compiles the C# interop once at startup; subsequent focus calls are near-instant.
+const { execFile, spawn } = require("child_process");
+
+const PS_FOCUS_ADDTYPE = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinFocus {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    public static void Focus(IntPtr hWnd) {
+        if (hWnd == IntPtr.Zero) return;
+        if (IsIconic(hWnd)) ShowWindow(hWnd, 9);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);
+        keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        SetForegroundWindow(hWnd);
+    }
+}
+"@
+`;
+
+function makeFocusCmd(sourcePid) {
+  return `
+$curPid = ${sourcePid}
+for ($i = 0; $i -lt 8; $i++) {
+    $proc = Get-Process -Id $curPid -ErrorAction SilentlyContinue
+    if ($proc -and $proc.MainWindowHandle -ne 0) {
+        [WinFocus]::Focus($proc.MainWindowHandle)
+        break
+    }
+    $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$curPid" -ErrorAction SilentlyContinue
+    if (-not $cim -or $cim.ParentProcessId -eq 0 -or $cim.ParentProcessId -eq $curPid) { break }
+    $curPid = $cim.ParentProcessId
+}
+`;
+}
+
+// Persistent PowerShell process — warm at startup, reused for all focus calls
+let psProc = null;
+
+function initFocusHelper() {
+  if (isMac || psProc) return;
+  psProc = spawn("powershell.exe", ["-NoProfile", "-NoLogo", "-NonInteractive", "-Command", "-"], {
+    windowsHide: true,
+    stdio: ["pipe", "ignore", "ignore"],
+  });
+  // Pre-compile the C# type (once, ~500ms, non-blocking)
+  psProc.stdin.write(PS_FOCUS_ADDTYPE + "\n");
+  psProc.on("exit", () => { psProc = null; });
+  psProc.unref(); // Don't keep the app alive for this
+}
+
+function killFocusHelper() {
+  if (psProc) { psProc.kill(); psProc = null; }
+}
+
+function focusTerminalWindow(sourcePid) {
+  if (isMac) {
+    // macOS: walk up process tree via ps, then activate via osascript
+    // TODO: community contributor — test and refine on real macOS hardware
+    const script = `
+      set pid to ${sourcePid}
+      repeat 8 times
+        try
+          set pInfo to do shell script "ps -o ppid=,comm= -p " & pid
+          set ppid to (word 1 of pInfo) as integer
+          tell application "System Events"
+            set pList to every process whose unix id is pid
+            if (count of pList) > 0 then
+              set frontmost of item 1 of pList to true
+              return
+            end if
+          end tell
+          if ppid is less than or equal to 1 then exit repeat
+          set pid to ppid
+        on error
+          exit repeat
+        end try
+      end repeat`;
+    execFile("osascript", ["-e", script], { timeout: 5000 }, (err) => {
+      if (err) console.warn("focusTerminal macOS failed:", err.message);
+    });
+    return;
+  }
+
+  // Windows: send command to persistent PowerShell process (near-instant)
+  const cmd = makeFocusCmd(sourcePid);
+  if (psProc && psProc.stdin.writable) {
+    psProc.stdin.write(cmd + "\n");
+  } else {
+    // Fallback: one-shot PowerShell if persistent process died
+    psProc = null;
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      PS_FOCUS_ADDTYPE + cmd],
+      { windowsHide: true, timeout: 5000 },
+      (err) => { if (err) console.warn("focusTerminal failed:", err.message); }
+    );
+    // Re-init persistent process for next call
+    initFocusHelper();
+  }
+}
+
 // ── HTTP server ──
 let httpServer = null;
 
@@ -771,7 +880,7 @@ function startHttpServer() {
         if (destroyed) return;
         try {
           const data = JSON.parse(body);
-          const { state, svg, session_id, event } = data;
+          const { state, svg, session_id, event, source_pid } = data;
           if (STATE_SVGS[state]) {
             const sid = session_id || "default";
             // mini-* states are internal — only allow via direct SVG override (test scripts)
@@ -786,7 +895,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               setState(state, safeSvg);
             } else {
-              updateSession(sid, state, event);
+              updateSession(sid, state, event, source_pid);
             }
             res.writeHead(200);
             res.end("ok");
@@ -1054,6 +1163,7 @@ function createWindow() {
   buildContextMenu();
   if (!isMac || showTray) createTray();
   ensureContextMenuOwner();
+  initFocusHelper();
 
   ipcMain.on("show-context-menu", showPetContextMenu);
 
@@ -1090,6 +1200,21 @@ function createWindow() {
 
   ipcMain.on("exit-mini-mode", () => {
     if (miniMode) exitMiniMode();
+  });
+
+  ipcMain.on("focus-terminal", () => {
+    // Find the best session to focus: prefer highest priority (non-idle), then most recent
+    let bestPid = null, bestTime = 0, bestPriority = -1;
+    for (const [, s] of sessions) {
+      if (!s.sourcePid) continue;
+      const pri = STATE_PRIORITY[s.state] || 0;
+      if (pri > bestPriority || (pri === bestPriority && s.updatedAt > bestTime)) {
+        bestPid = s.sourcePid;
+        bestTime = s.updatedAt;
+        bestPriority = pri;
+      }
+    }
+    if (bestPid) focusTerminalWindow(bestPid);
   });
 
   startMainTick();
@@ -1534,6 +1659,7 @@ if (!gotTheLock) {
     if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     stopStaleCleanup();
+    killFocusHelper();
     if (httpServer) httpServer.close();
   });
 

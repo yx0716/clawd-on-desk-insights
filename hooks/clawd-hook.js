@@ -26,6 +26,57 @@ const event = process.argv[2];
 const state = EVENT_TO_STATE[event];
 if (!state) process.exit(0);
 
+// Walk the FULL process tree to find a stable ancestor PID.
+// Claude Code spawns hooks through multiple transient layers (workers, shells).
+// We walk up until we find the terminal app or a system boundary.
+// Runs synchronously during stdin buffering (~100ms per level × 5-6 levels).
+let _stablePid = null;
+function getStablePid() {
+  if (_stablePid) return _stablePid;
+  const { execSync } = require("child_process");
+  const isWin = process.platform === "win32";
+  // Collect the full ancestor chain, return the highest non-system PID
+  let pid = process.ppid;
+  let lastGoodPid = pid;
+  for (let i = 0; i < 8; i++) {
+    try {
+      if (isWin) {
+        const out = execSync(
+          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
+          { encoding: "utf8", timeout: 1500, windowsHide: true }
+        );
+        const lines = out.trim().split("\n").filter(l => l.includes(","));
+        if (!lines.length) break;
+        const parts = lines[lines.length - 1].split(",");
+        const name = (parts[1] || "").trim().toLowerCase();
+        const parentPid = parseInt(parts[2], 10);
+        // Stop at system boundaries
+        if (name === "explorer.exe" || name === "services.exe" ||
+            name === "winlogon.exe" || name === "svchost.exe") break;
+        lastGoodPid = pid;
+        if (!parentPid || parentPid === pid || parentPid <= 1) break;
+        pid = parentPid;
+      } else {
+        // macOS/Linux
+        const cp = require("child_process");
+        const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
+        const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
+        const name = require("path").basename(commOut).toLowerCase();
+        const parentPid = parseInt(ppidOut, 10);
+        if (name === "launchd" || name === "init" || name === "systemd") break;
+        lastGoodPid = pid;
+        if (!parentPid || parentPid === pid || parentPid <= 1) break;
+        pid = parentPid;
+      }
+    } catch { break; }
+  }
+  _stablePid = lastGoodPid;
+  return lastGoodPid;
+}
+
+// Start resolution immediately (runs during stdin buffering, not after)
+getStablePid();
+
 // Read stdin for session_id (Claude Code pipes JSON with session metadata)
 const chunks = [];
 let sent = false;
@@ -48,7 +99,13 @@ function send(sessionId) {
   if (sent) return;
   sent = true;
 
-  const data = JSON.stringify({ state, session_id: sessionId, event });
+  // Get a stable ancestor PID (survives after this hook process exits).
+  // process.ppid is a transient shell (cmd.exe/bash.exe) spawned by Claude Code
+  // to run this hook — it dies immediately after. One wmic/ps call up gives us
+  // Claude Code's node.exe PID, which is long-lived.
+  const body = { state, session_id: sessionId, event, source_pid: getStablePid() };
+
+  const data = JSON.stringify(body);
   const req = require("http").request(
     {
       hostname: "127.0.0.1",
