@@ -688,7 +688,12 @@ function cleanStaleSessions() {
   let changed = false;
   for (const [id, s] of sessions) {
     if (now - s.updatedAt > SESSION_STALE_MS) {
-      sessions.delete(id); changed = true;
+      if (s.sourcePid) {
+        // Keep session alive for terminal focus, just decay to idle
+        if (s.state !== "idle") { s.state = "idle"; changed = true; }
+      } else {
+        sessions.delete(id); changed = true;
+      }
     } else if (
       (s.state === "working" || s.state === "juggling") &&
       now - s.updatedAt > WORKING_STALE_MS
