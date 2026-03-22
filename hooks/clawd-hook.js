@@ -100,11 +100,9 @@ function send(sessionId) {
   sent = true;
 
   const body = { state, session_id: sessionId, event };
-  // Only walk the process tree on SessionStart — the stable PID doesn't change
-  // within a session, and main.js preserves it across subsequent events
-  if (event === "SessionStart") {
-    body.source_pid = getStablePid();
-  }
+  // Always walk to stable terminal PID — process.ppid is an ephemeral shell
+  // that dies when the hook exits, so it's useless for later focus calls
+  body.source_pid = getStablePid();
 
   const data = JSON.stringify(body);
   const req = require("http").request(
