@@ -1082,8 +1082,12 @@ function setupAutoUpdater() {
     const wasManual = manualUpdateCheck;
     manualUpdateCheck = false;
     rebuildAllMenus();
-    // Silent check during DND/mini: skip dialog, just update menu label
-    if (!wasManual && (doNotDisturb || miniMode)) return;
+    // Silent check during DND/mini: skip dialog, reset to idle so user can check later
+    if (!wasManual && (doNotDisturb || miniMode)) {
+      updateStatus = "idle";
+      rebuildAllMenus();
+      return;
+    }
     if (isMac) {
       // macOS: no code signing → can't auto-update, open GitHub Releases page instead
       dialog.showMessageBox({
@@ -1097,6 +1101,8 @@ function setupAutoUpdater() {
         if (response === 0) {
           shell.openExternal("https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
         }
+        updateStatus = "idle";
+        rebuildAllMenus();
       });
     } else {
       // Windows: auto-download
@@ -1112,6 +1118,9 @@ function setupAutoUpdater() {
           updateStatus = "downloading";
           rebuildAllMenus();
           autoUpdater.downloadUpdate();
+        } else {
+          updateStatus = "idle";
+          rebuildAllMenus();
         }
       });
     }
@@ -1166,11 +1175,18 @@ function setupAutoUpdater() {
 let manualUpdateCheck = false;
 
 function checkForUpdates(manual = false) {
-  if (updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "available") return;
+  if (updateStatus === "checking" || updateStatus === "downloading") return;
   manualUpdateCheck = manual;
   updateStatus = "checking";
   rebuildAllMenus();
-  autoUpdater.checkForUpdates().catch(() => {
+  autoUpdater.checkForUpdates().then((result) => {
+    // Dev mode: electron-updater resolves null without emitting events
+    if (!result) {
+      updateStatus = "idle";
+      manualUpdateCheck = false;
+      rebuildAllMenus();
+    }
+  }).catch(() => {
     updateStatus = "error";
     manualUpdateCheck = false;
     rebuildAllMenus();
