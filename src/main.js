@@ -1362,7 +1362,6 @@ function createWindow() {
   buildContextMenu();
   if (!isMac || showTray) createTray();
   ensureContextMenuOwner();
-  initFocusHelper();
 
   ipcMain.on("show-context-menu", showPetContextMenu);
 
