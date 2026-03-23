@@ -10,171 +10,155 @@ html, body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  font-family: "Courier New", monospace;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-.bubble {
+.card {
   position: absolute;
   top: 8px; left: 8px; right: 8px; bottom: 8px;
-  background: #1a1a2e;
-  border: 3px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 12px 14px 10px;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
   opacity: 0;
-  transform: scale(0.9) translateY(8px);
+  transform: translateY(10px) scale(0.95);
   transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-  image-rendering: pixelated;
+  overflow: hidden;
 }
-.bubble.visible {
+.card.visible {
   opacity: 1;
-  transform: scale(1) translateY(0);
+  transform: translateY(0) scale(1);
 }
-.bubble.hiding {
+.card.hiding {
   opacity: 0;
-  transform: scale(0.9) translateY(8px);
+  transform: translateY(10px) scale(0.95);
 }
 
-/* Pixel tail pointing to bottom-right (toward pet) */
-.tail {
-  position: absolute;
-  bottom: -8px; right: 24px;
-  width: 0; height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-top: 8px solid #e0e0e0;
-}
-.tail::after {
-  content: "";
-  position: absolute;
-  top: -11px; left: -6px;
-  width: 0; height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1a1a2e;
-}
-
-.tool-header {
-  display: flex;
+/* ── Tool pill ── */
+.tool-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-.tool-icon {
-  font-size: 14px;
-  width: 20px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.tool-name {
+  align-self: flex-start;
+  padding: 3px 12px;
+  border-radius: 20px;
   font-size: 13px;
-  font-weight: bold;
-  color: #7ec8e3;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  background: #6b7280;
+}
+.tool-pill[data-tool="Bash"]  { background: #f97316; }
+.tool-pill[data-tool="Edit"]  { background: #3b82f6; }
+.tool-pill[data-tool="Write"] { background: #8b5cf6; }
+.tool-pill[data-tool="Read"]  { background: #22c55e; }
+.tool-pill[data-tool="Glob"]  { background: #06b6d4; }
+.tool-pill[data-tool="Grep"]  { background: #06b6d4; }
+.tool-pill[data-tool="Agent"] { background: #ec4899; }
+
+/* ── Command block ── */
+.command-block {
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.4;
+  max-height: 52px;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+/* ── Action buttons ── */
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  outline: none;
+}
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.btn-allow {
+  background: #f97316;
+  color: #fff;
+  border-color: #f97316;
+}
+.btn-allow:hover:not(:disabled) { background: #ea580c; border-color: #ea580c; }
+
+.btn-deny {
+  background: #fff;
+  color: #6b7280;
+  border-color: #d1d5db;
+}
+.btn-deny:hover:not(:disabled) { border-color: #9ca3af; color: #374151; }
+
+/* ── Suggestion buttons (dynamic) ── */
+.suggestions { display: flex; flex-direction: column; gap: 6px; }
+
+.btn-suggestion {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: #fff;
+  color: #9ca3af;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, transform 0.1s;
+  outline: none;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.tool-detail {
-  font-size: 11px;
-  color: #b0b0c0;
-  line-height: 1.3;
-  max-height: 36px;
-  overflow: hidden;
-  word-break: break-all;
-  border-left: 2px solid #3a3a5e;
-  padding-left: 8px;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 2px;
-}
-
-.btn {
-  flex: 1;
-  padding: 5px 0;
-  border: 2px solid;
-  border-radius: 4px;
-  font-family: "Courier New", monospace;
-  font-size: 12px;
-  font-weight: bold;
-  cursor: pointer;
-  text-align: center;
-  transition: filter 0.1s;
-  image-rendering: pixelated;
-}
-.btn:hover { filter: brightness(1.2); }
-.btn:active { filter: brightness(0.9); transform: translateY(1px); }
-
-.btn-allow {
-  background: #2d5a3d;
-  border-color: #4ade80;
-  color: #4ade80;
-}
-.btn-deny {
-  background: #5a2d2d;
-  border-color: #f87171;
-  color: #f87171;
-}
-
-.timer {
-  font-size: 10px;
-  color: #808090;
-  text-align: center;
-  min-width: 30px;
-  flex-shrink: 0;
-}
+.btn-suggestion:hover:not(:disabled) { border-color: #9ca3af; color: #6b7280; }
+.btn-suggestion:active:not(:disabled) { transform: scale(0.98); }
+.btn-suggestion:disabled { opacity: 0.5; cursor: default; }
 </style>
 </head>
 <body>
-<div class="bubble" id="bubble">
-  <div class="tail"></div>
-  <div class="tool-header">
-    <span class="tool-icon" id="toolIcon"></span>
-    <span class="tool-name" id="toolName"></span>
-  </div>
-  <div class="tool-detail" id="toolDetail"></div>
+<div class="card" id="card">
+  <span class="tool-pill" id="toolPill"></span>
+  <div class="command-block" id="commandBlock"></div>
   <div class="actions">
     <button class="btn btn-allow" id="btnAllow">Allow</button>
-    <span class="timer" id="timer"></span>
     <button class="btn btn-deny" id="btnDeny">Deny</button>
   </div>
+  <div class="suggestions" id="suggestions"></div>
 </div>
 
 <script>
-const TOOL_ICONS = {
-  Bash: ">_",
-  Edit: "ED",
-  Write: "WR",
-  Read: "RD",
-  Glob: "GL",
-  Grep: "GR",
-  Agent: "AG",
-  NotebookEdit: "NB",
-};
-
-const bubble = document.getElementById("bubble");
-const toolIcon = document.getElementById("toolIcon");
-const toolName = document.getElementById("toolName");
-const toolDetail = document.getElementById("toolDetail");
-const timer = document.getElementById("timer");
+const card = document.getElementById("card");
+const toolPill = document.getElementById("toolPill");
+const commandBlock = document.getElementById("commandBlock");
 const btnAllow = document.getElementById("btnAllow");
 const btnDeny = document.getElementById("btnDeny");
-
-let countdownInterval = null;
-let remaining = 0;
+const suggestionsContainer = document.getElementById("suggestions");
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
   if (name === "Bash" && input.command) return truncate(input.command, 120);
-  if ((name === "Edit" || name === "Write" || name === "Read") && input.file_path) return truncate(input.file_path, 120);
-  if ((name === "Glob" || name === "Grep") && input.pattern) return truncate(input.pattern, 120);
-  // Fallback: show first string value
+  if ((name === "Edit" || name === "Write" || name === "Read") && input.file_path)
+    return truncate(input.file_path, 120);
+  if ((name === "Glob" || name === "Grep") && input.pattern)
+    return truncate(input.pattern, 120);
   for (const v of Object.values(input)) {
     if (typeof v === "string") return truncate(v, 100);
   }
@@ -186,58 +170,81 @@ function truncate(s, max) {
   return s.slice(0, max - 1) + "\u2026";
 }
 
-function show(data) {
-  // All dynamic content set via textContent — never innerHTML
-  toolIcon.textContent = TOOL_ICONS[data.toolName] || "??";
-  toolName.textContent = data.toolName || "Unknown";
-  toolDetail.textContent = formatDetail(data.toolName, data.toolInput);
-
-  remaining = data.timeoutSec || 30;
-  timer.textContent = remaining + "s";
-  if (countdownInterval) clearInterval(countdownInterval);
-  countdownInterval = setInterval(() => {
-    remaining--;
-    if (remaining <= 0) {
-      clearInterval(countdownInterval);
-      timer.textContent = "0s";
-    } else {
-      timer.textContent = remaining + "s";
+function getSuggestionLabel(s, lang) {
+  if (s.type === "setMode") {
+    if (s.mode === "acceptEdits") return lang === "zh" ? "\u81EA\u52A8\u63A5\u53D7\u7F16\u8F91" : "Auto-accept edits";
+    if (s.mode === "plan") return lang === "zh" ? "\u5207\u6362\u5230 Plan \u6A21\u5F0F" : "Switch to plan mode";
+    return s.mode;
+  }
+  if (s.type === "addRules" && s.ruleContent) {
+    if (s.ruleContent.includes("**")) {
+      // Glob pattern — show directory name
+      const dir = s.ruleContent.split("**")[0].replace(/\/$/, "").split("/").pop() || s.ruleContent;
+      const label = lang === "zh" ? `\u5141\u8BB8 ${s.toolName || ""} \u5728 ${dir}/` : `Allow ${s.toolName || ""} in ${dir}/`;
+      return label;
     }
-  }, 1000);
+    const short = s.ruleContent.length > 30 ? s.ruleContent.slice(0, 29) + "\u2026" : s.ruleContent;
+    return lang === "zh" ? `\u59CB\u7EC8\u5141\u8BB8 \`${short}\`` : `Always allow \`${short}\``;
+  }
+  return lang === "zh" ? "\u59CB\u7EC8\u5141\u8BB8" : "Always allow";
+}
 
-  // Update button labels based on language
-  if (data.lang === "zh") {
-    btnAllow.textContent = "\u2713 \u6279\u51C6";
-    btnDeny.textContent = "\u2717 \u62D2\u7EDD";
-  } else {
-    btnAllow.textContent = "\u2713 Allow";
-    btnDeny.textContent = "\u2717 Deny";
+function disableAll() {
+  btnAllow.disabled = true;
+  btnDeny.disabled = true;
+  for (const btn of suggestionsContainer.children) btn.disabled = true;
+}
+
+function show(data) {
+  // Tool pill
+  toolPill.textContent = data.toolName || "Unknown";
+  toolPill.setAttribute("data-tool", data.toolName || "");
+
+  // Command block (textContent only — never innerHTML)
+  commandBlock.textContent = formatDetail(data.toolName, data.toolInput);
+
+  // Button labels
+  btnAllow.textContent = data.lang === "zh" ? "\u6279\u51C6" : "Allow";
+  btnDeny.textContent = data.lang === "zh" ? "\u62D2\u7EDD" : "Deny";
+
+  // Dynamic suggestion buttons
+  suggestionsContainer.innerHTML = "";
+  if (Array.isArray(data.suggestions)) {
+    data.suggestions.forEach((s, i) => {
+      const btn = document.createElement("button");
+      btn.className = "btn-suggestion";
+      btn.textContent = getSuggestionLabel(s, data.lang);
+      btn.addEventListener("click", () => {
+        disableAll();
+        window.bubbleAPI.decide("suggestion:" + i);
+      });
+      suggestionsContainer.appendChild(btn);
+    });
   }
 
-  // Re-enable buttons (may have been disabled from previous request)
+  // Re-enable buttons
   btnAllow.disabled = false;
   btnDeny.disabled = false;
 
-  bubble.classList.remove("hiding");
-  bubble.classList.add("visible");
+  card.classList.remove("hiding");
+  card.classList.add("visible");
 }
 
 function hide() {
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
-  bubble.classList.remove("visible");
-  bubble.classList.add("hiding");
+  card.classList.remove("visible");
+  card.classList.add("hiding");
 }
 
 btnAllow.addEventListener("click", () => {
+  btnAllow.textContent = "...";
+  disableAll();
   window.bubbleAPI.decide("allow");
-  btnAllow.disabled = true;
-  btnDeny.disabled = true;
 });
 
 btnDeny.addEventListener("click", () => {
+  btnDeny.textContent = "...";
+  disableAll();
   window.bubbleAPI.decide("deny");
-  btnAllow.disabled = true;
-  btnDeny.disabled = true;
 });
 
 window.bubbleAPI.onPermissionShow(show);

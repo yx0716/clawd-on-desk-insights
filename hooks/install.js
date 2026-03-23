@@ -28,24 +28,16 @@ const HOOK_EVENTS = [
 const MARKER = "clawd-hook.js";
 const HTTP_MARKER = "23333/permission";
 
-// HTTP hooks: bidirectional HTTP hooks for permission decision collection
-// - PermissionRequest: fires for Bash commands needing approval
-// - PreToolUse (Edit|Write): fires before Edit/Write tool execution
+// HTTP hooks: PermissionRequest uses bidirectional HTTP hook for permission decisions.
+// Claude Code fires PermissionRequest for tools needing approval (primarily Bash).
+// Edit/Write permissions are handled by Claude Code's own permission mode — not our hook.
 const HTTP_HOOKS = {
   PermissionRequest: {
     matcher: "",
     hook: {
       type: "http",
       url: "http://127.0.0.1:23333/permission",
-      timeout: 60,
-    },
-  },
-  PreToolUse: {
-    matcher: "Edit|Write",
-    hook: {
-      type: "http",
-      url: "http://127.0.0.1:23333/permission",
-      timeout: 60,
+      timeout: 600,
     },
   },
 };
