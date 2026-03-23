@@ -194,7 +194,7 @@ const IDLE_LOOK_DURATION = 10000;  // idle-look CSS loop is 10s
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
 
 // ── Session tracking ──
-const sessions = new Map(); // session_id → { state, updatedAt }
+const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd }
 const SESSION_STALE_MS = 300000; // 5 min cleanup
 const WORKING_STALE_MS = 30000;  // 30s: working/thinking with no new event → decay to idle
 const STATE_PRIORITY = {
@@ -1342,11 +1342,8 @@ function ensureContextMenuOwner() {
   return contextMenuOwner;
 }
 
-function showPetContextMenu() {
-  if (!win || win.isDestroyed()) return;
+function popupMenuAt(menu) {
   if (menuOpen) return;
-
-  buildContextMenu();
   const owner = ensureContextMenuOwner();
   if (!owner) return;
 
@@ -1356,7 +1353,7 @@ function showPetContextMenu() {
   owner.focus();
 
   menuOpen = true;
-  contextMenu.popup({
+  menu.popup({
     window: owner,
     callback: () => {
       menuOpen = false;
@@ -1367,6 +1364,12 @@ function showPetContextMenu() {
       }
     },
   });
+}
+
+function showPetContextMenu() {
+  if (!win || win.isDestroyed()) return;
+  buildContextMenu();
+  popupMenuAt(contextMenu);
 }
 
 function createWindow() {
@@ -1488,29 +1491,7 @@ function createWindow() {
   });
 
   ipcMain.on("show-session-menu", () => {
-    if (menuOpen) return;
-    const items = buildSessionSubmenu();
-    const menu = Menu.buildFromTemplate(items);
-    const owner = ensureContextMenuOwner();
-    if (!owner) return;
-
-    const cursor = screen.getCursorScreenPoint();
-    owner.setBounds({ x: cursor.x, y: cursor.y, width: 1, height: 1 });
-    owner.show();
-    owner.focus();
-
-    menuOpen = true;
-    menu.popup({
-      window: owner,
-      callback: () => {
-        menuOpen = false;
-        if (owner && !owner.isDestroyed()) owner.hide();
-        if (win && !win.isDestroyed()) {
-          win.showInactive();
-          win.moveTop();
-        }
-      },
-    });
+    popupMenuAt(Menu.buildFromTemplate(buildSessionSubmenu()));
   });
 
   startMainTick();
