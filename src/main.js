@@ -247,7 +247,6 @@ let stateChangedAt = Date.now();
 let pendingTimer = null;
 let autoReturnTimer = null;
 let mainTickTimer = null;
-let moveTopTimer = null;
 let mouseOverPet = false;
 let dragLocked = false;
 let menuOpen = false;
@@ -1373,7 +1372,7 @@ function popupMenuAt(menu) {
       if (owner && !owner.isDestroyed()) owner.hide();
       if (win && !win.isDestroyed()) {
         win.showInactive();
-        win.moveTop();
+        win.setAlwaysOnTop(true);
       }
     },
   });
@@ -1544,17 +1543,16 @@ function createWindow() {
     win.webContents.reload();
   });
 
-  // ── Periodic alwaysOnTop refresh (Windows DWM can drop z-order) ──
-  // Use moveTop() instead of setAlwaysOnTop(false→true) to avoid a brief
-  // gap where the window loses TOPMOST status — that gap lets other windows
-  // slip above Clawd during window switches.
+  // ── alwaysOnTop recovery (Windows DWM can drop z-order) ──
+  // Alt key, Win key, and fullscreen games can strip the TOPMOST flag.
+  // Listen for the event and re-assert immediately instead of polling.
   // Not needed on macOS — the window manager maintains z-order correctly.
   if (!isMac) {
-    moveTopTimer = setInterval(() => {
-      if (win && !win.isDestroyed()) {
-        win.moveTop();
+    win.on("always-on-top-changed", (_, isOnTop) => {
+      if (!isOnTop && win && !win.isDestroyed()) {
+        win.setAlwaysOnTop(true);
       }
-    }, 30000); // every 30s
+    });
   }
 
   // ── Display change: re-clamp window to prevent off-screen ──
@@ -1955,7 +1953,6 @@ if (!gotTheLock) {
     if (wakePollTimer) clearInterval(wakePollTimer);
     if (miniTransitionTimer) clearTimeout(miniTransitionTimer);
     if (peekAnimTimer) clearTimeout(peekAnimTimer);
-    if (moveTopTimer) clearInterval(moveTopTimer);
     if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     stopStaleCleanup();

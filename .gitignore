@@ -15,6 +15,7 @@ PLAN.md
 PLAN-*.md
 codex-*.md
 CHANGELOG-draft.md
+docs/
 
 # Temp files from testing
 .tmp_*
