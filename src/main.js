@@ -1124,12 +1124,33 @@ function startHttpServer() {
   });
 }
 
-// ── alwaysOnTop recovery (Windows DWM can strip TOPMOST flag) ──
+// ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
+// The "always-on-top-changed" event only fires from Electron's own SetAlwaysOnTop
+// path — it does NOT fire when Explorer/Start menu/Gallery silently reorder windows.
+// So we keep the event listener for the cases it does catch (Alt/Win key), and add
+// a slow watchdog (20s) to recover from silent shell-initiated z-order drops.
+const WIN_TOPMOST_LEVEL = "pop-up-menu";  // above taskbar-level UI
+const TOPMOST_WATCHDOG_MS = 20_000;
+let topmostWatchdog = null;
+
 function guardAlwaysOnTop(w) {
   if (isMac) return;
+  // Event-driven: catches explicit TOPMOST stripping (Alt key, games, etc.)
   w.on("always-on-top-changed", (_, isOnTop) => {
-    if (!isOnTop && w && !w.isDestroyed()) w.setAlwaysOnTop(true);
+    if (!isOnTop && w && !w.isDestroyed()) w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
   });
+}
+
+function startTopmostWatchdog() {
+  if (isMac || topmostWatchdog) return;
+  topmostWatchdog = setInterval(() => {
+    if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    if (bubble && !bubble.isDestroyed() && bubble.isVisible()) bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+  }, TOPMOST_WATCHDOG_MS);
+}
+
+function stopTopmostWatchdog() {
+  if (topmostWatchdog) { clearInterval(topmostWatchdog); topmostWatchdog = null; }
 }
 
 // ── Permission bubble window ──
@@ -1198,6 +1219,8 @@ function showPermissionBubble(toolName, toolInput) {
   if (isMac) {
     bubble.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
     bubble.setAlwaysOnTop(true, "floating");
+  } else {
+    bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
   }
 
   bubble.loadFile(path.join(__dirname, "bubble.html"));
@@ -1598,7 +1621,7 @@ function popupMenuAt(menu) {
       if (owner && !owner.isDestroyed()) owner.hide();
       if (win && !win.isDestroyed()) {
         win.showInactive();
-        win.setAlwaysOnTop(true);
+        win.setAlwaysOnTop(true, isMac ? "floating" : WIN_TOPMOST_LEVEL);
       }
     },
   });
@@ -1664,10 +1687,13 @@ function createWindow() {
   });
 
   win.setFocusable(false);
-  // macOS: show on all Spaces (virtual desktops) and use floating window level
   if (isMac) {
+    // macOS: show on all Spaces (virtual desktops) and use floating window level
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
     win.setAlwaysOnTop(true, "floating");
+  } else {
+    // Windows: use pop-up-menu level to stay above taskbar/shell UI
+    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
   }
   win.loadFile(path.join(__dirname, "index.html"));
   win.showInactive();
@@ -1775,6 +1801,7 @@ function createWindow() {
   });
 
   guardAlwaysOnTop(win);
+  startTopmostWatchdog();
 
   // ── Display change: re-clamp window to prevent off-screen ──
   screen.on("display-metrics-changed", () => {
@@ -2177,6 +2204,7 @@ if (!gotTheLock) {
     if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     stopStaleCleanup();
+    stopTopmostWatchdog();
     killFocusHelper();
     // Clean up pending permission request — send explicit deny so Claude Code doesn't hang
     if (pendingPermission) {
