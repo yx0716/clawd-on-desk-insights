@@ -860,6 +860,8 @@ function enableDoNotDisturb() {
   if (doNotDisturb) return;
   doNotDisturb = true;
   sendToRenderer("dnd-change", true);
+  // Dismiss any pending permission bubble — DND means no interaction
+  if (pendingPermission) resolvePermission("deny", "DND enabled");
   if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
   if (autoReturnTimer) { clearTimeout(autoReturnTimer); autoReturnTimer = null; }
   stopWakePoll();
@@ -1761,21 +1763,21 @@ function createWindow() {
     if (typeof behavior === "string" && behavior.startsWith("suggestion:")) {
       const idx = parseInt(behavior.split(":")[1], 10);
       const suggestion = pendingPermission.suggestions?.[idx];
-      if (suggestion) {
-        // Transform addRules suggestion to updatedPermissions format
-        if (suggestion.type === "addRules") {
-          pendingPermission.resolvedSuggestion = {
-            type: "addRules",
-            destination: suggestion.destination || "localSettings",
-            behavior: suggestion.behavior || "allow",
-            rules: [{ toolName: suggestion.toolName, ruleContent: suggestion.ruleContent }],
-          };
-        } else if (suggestion.type === "setMode") {
-          pendingPermission.resolvedSuggestion = {
-            type: "setMode",
-            mode: suggestion.mode,
-          };
-        }
+      if (!suggestion) return; // invalid index — ignore, don't auto-allow
+      // Transform suggestion to updatedPermissions format
+      if (suggestion.type === "addRules") {
+        pendingPermission.resolvedSuggestion = {
+          type: "addRules",
+          destination: suggestion.destination || "localSettings",
+          behavior: suggestion.behavior || "allow",
+          rules: [{ toolName: suggestion.toolName, ruleContent: suggestion.ruleContent }],
+        };
+      } else if (suggestion.type === "setMode") {
+        pendingPermission.resolvedSuggestion = {
+          type: "setMode",
+          mode: suggestion.mode,
+          destination: suggestion.destination || "localSettings",
+        };
       }
       resolvePermission("allow");
     } else {

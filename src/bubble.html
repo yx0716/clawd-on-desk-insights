@@ -302,7 +302,7 @@ function getSuggestionLabel(s, lang) {
   if (s.type === "addRules" && s.ruleContent) {
     if (s.ruleContent.includes("**")) {
       // Glob pattern — show directory name
-      const dir = s.ruleContent.split("**")[0].replace(/\/$/, "").split("/").pop() || s.ruleContent;
+      const dir = s.ruleContent.split("**")[0].replace(/[\\/]$/, "").split(/[\\/]/).pop() || s.ruleContent;
       const label = lang === "zh" ? `\u5141\u8BB8 ${s.toolName || ""} \u5728 ${dir}/` : `Allow ${s.toolName || ""} in ${dir}/`;
       return label;
     }
