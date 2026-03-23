@@ -990,7 +990,8 @@ function startHttpServer() {
         if (destroyed) return;
         try {
           const data = JSON.parse(body);
-          const { state, svg, session_id, event, source_pid, cwd } = data;
+          const { state, svg, session_id, event, source_pid } = data;
+          const cwd = typeof data.cwd === "string" ? data.cwd : "";
           if (STATE_SVGS[state]) {
             const sid = session_id || "default";
             // mini-* states are internal — only allow via direct SVG override (test scripts)
