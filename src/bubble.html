@@ -5,6 +5,67 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Theme variables ── */
+:root {
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --card-inset: none;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #a1a1aa;
+  --header-color: #374151;
+  --cmd-bg: #f4f4f5;
+  --cmd-border: rgba(0, 0, 0, 0.06);
+  --cmd-color: #374151;
+  --cmd-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+  --scroll-thumb: rgba(0, 0, 0, 0.15);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
+  --deny-bg: #ffffff;
+  --deny-color: #52525b;
+  --deny-border: #d1d5db;
+  --deny-hover-bg: #f9fafb;
+  --deny-hover-border: #9ca3af;
+  --sug-bg: #ffffff;
+  --sug-color: #71717a;
+  --sug-border: #e5e7eb;
+  --sug-hover-bg: #f9fafb;
+  --sug-hover-border: #d1d5db;
+  --sug-hover-color: #374151;
+  --sug-arrow: #9ca3af;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card-bg: #18181b;
+    --card-border: rgba(255, 255, 255, 0.1);
+    --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --text-primary: #f4f4f5;
+    --text-secondary: #d4d4d8;
+    --text-muted: #a1a1aa;
+    --header-color: #e4e4e7;
+    --cmd-bg: #09090b;
+    --cmd-border: rgba(255, 255, 255, 0.06);
+    --cmd-color: #a1a1aa;
+    --cmd-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    --scroll-thumb: rgba(255, 255, 255, 0.1);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
+    --deny-bg: rgba(255, 255, 255, 0.05);
+    --deny-color: #e4e4e7;
+    --deny-border: rgba(255, 255, 255, 0.1);
+    --deny-hover-bg: rgba(255, 255, 255, 0.1);
+    --deny-hover-border: rgba(255, 255, 255, 0.15);
+    --sug-bg: rgba(255, 255, 255, 0.03);
+    --sug-color: #a1a1aa;
+    --sug-border: rgba(255, 255, 255, 0.06);
+    --sug-hover-bg: rgba(255, 255, 255, 0.08);
+    --sug-hover-border: rgba(255, 255, 255, 0.15);
+    --sug-hover-color: #e4e4e7;
+    --sug-arrow: #d4d4d8;
+  }
+}
+
 html, body {
   width: 100%; height: 100%;
   background: transparent;
@@ -17,28 +78,28 @@ html, body {
 .card {
   position: absolute;
   bottom: 6px; left: 6px; right: 6px;
-  background: #18181b;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  color: #f4f4f5;
+  box-shadow: var(--card-shadow), var(--card-inset, none);
+  color: var(--text-primary);
   opacity: 0;
-  transform: translateY(12px) scale(0.96);
-  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateX(60px);
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
 .card.visible {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateX(0);
 }
 .card.hiding {
   opacity: 0;
-  transform: translateY(12px) scale(0.96);
+  transform: translateX(60px);
 }
 
 /* ── Header ── */
@@ -51,7 +112,7 @@ html, body {
 .header-title {
   font-size: 13px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--header-color);
   letter-spacing: 0.02em;
 }
 
@@ -81,22 +142,22 @@ html, body {
 /* ── Command block ── */
 .command-block {
   padding: 12px;
-  background: #09090b;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--cmd-bg);
+  border: 1px solid var(--cmd-border);
   border-radius: 10px;
   font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
   font-size: 12px;
-  color: #a1a1aa;
+  color: var(--cmd-color);
   line-height: 1.5;
   max-height: 80px;
   overflow-y: auto;
   word-break: break-all;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--cmd-shadow);
 }
 .command-block::-webkit-scrollbar { width: 6px; }
 .command-block::-webkit-scrollbar-track { background: transparent; }
-.command-block::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-.command-block::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+.command-block::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
+.command-block::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
 
 /* ── Action buttons ── */
 .actions {
@@ -131,30 +192,29 @@ html, body {
 }
 
 .btn-deny {
-  background: rgba(255, 255, 255, 0.05);
-  color: #e4e4e7;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  background: var(--deny-bg);
+  color: var(--deny-color);
+  border: 1px solid var(--deny-border);
 }
 .btn-deny:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--deny-hover-bg);
+  border-color: var(--deny-hover-border);
 }
 
 /* ── Suggestion buttons (dynamic) ── */
-.suggestions { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 6px; 
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .btn-suggestion {
   display: block;
   width: 100%;
   padding: 7px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #a1a1aa;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--sug-bg);
+  color: var(--sug-color);
+  border: 1px solid var(--sug-border);
   border-radius: 8px;
   font-family: inherit;
   font-size: 12px;
@@ -175,12 +235,12 @@ html, body {
   opacity: 0;
   transform: translateX(-4px);
   transition: all 0.2s ease;
-  color: #d4d4d8;
+  color: var(--sug-arrow);
 }
-.btn-suggestion:hover:not(:disabled) { 
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #e4e4e7;
+.btn-suggestion:hover:not(:disabled) {
+  background: var(--sug-hover-bg);
+  border-color: var(--sug-hover-border);
+  color: var(--sug-hover-color);
   padding-right: 34px;
 }
 .btn-suggestion:hover:not(:disabled)::after {
