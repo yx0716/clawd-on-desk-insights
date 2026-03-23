@@ -26,18 +26,31 @@ const event = process.argv[2];
 const state = EVENT_TO_STATE[event];
 if (!state) process.exit(0);
 
-// Walk the FULL process tree to find a stable ancestor PID.
+// Walk the process tree to find the terminal app PID.
 // Claude Code spawns hooks through multiple transient layers (workers, shells).
-// We walk up until we find the terminal app or a system boundary.
+// We walk up until we find a known terminal app, then let focusTerminalWindow
+// walk the remaining hops (it has its own parent walk with MainWindowHandle check).
 // Runs synchronously during stdin buffering (~100ms per level × 5-6 levels).
+const TERMINAL_NAMES_WIN = new Set([
+  "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
+  "code.exe", "alacritty.exe", "wezterm-gui.exe", "mintty.exe",
+  "conemu64.exe", "conemu.exe", "hyper.exe", "tabby.exe",
+  "antigravity.exe", "warp.exe", "iterm.exe",
+]);
+const TERMINAL_NAMES_MAC = new Set([
+  "terminal", "iterm2", "alacritty", "wezterm-gui", "kitty",
+  "hyper", "tabby", "warp",
+]);
+
 let _stablePid = null;
 function getStablePid() {
   if (_stablePid) return _stablePid;
   const { execSync } = require("child_process");
   const isWin = process.platform === "win32";
-  // Collect the full ancestor chain, return the highest non-system PID
+  const terminalNames = isWin ? TERMINAL_NAMES_WIN : TERMINAL_NAMES_MAC;
   let pid = process.ppid;
   let lastGoodPid = pid;
+  let terminalPid = null;
   for (let i = 0; i < 8; i++) {
     try {
       if (isWin) {
@@ -53,6 +66,8 @@ function getStablePid() {
         // Stop at system boundaries
         if (name === "explorer.exe" || name === "services.exe" ||
             name === "winlogon.exe" || name === "svchost.exe") break;
+        // Found a known terminal → remember it (keep walking to find outermost)
+        if (terminalNames.has(name)) terminalPid = pid;
         lastGoodPid = pid;
         if (!parentPid || parentPid === pid || parentPid <= 1) break;
         pid = parentPid;
@@ -64,14 +79,16 @@ function getStablePid() {
         const name = require("path").basename(commOut).toLowerCase();
         const parentPid = parseInt(ppidOut, 10);
         if (name === "launchd" || name === "init" || name === "systemd") break;
+        if (terminalNames.has(name)) terminalPid = pid;
         lastGoodPid = pid;
         if (!parentPid || parentPid === pid || parentPid <= 1) break;
         pid = parentPid;
       }
     } catch { break; }
   }
-  _stablePid = lastGoodPid;
-  return lastGoodPid;
+  // Prefer outermost known terminal; fall back to highest non-system PID
+  _stablePid = terminalPid || lastGoodPid;
+  return _stablePid;
 }
 
 // Pre-resolve on SessionStart (runs during stdin buffering, not after)

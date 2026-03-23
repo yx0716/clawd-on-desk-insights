@@ -705,26 +705,37 @@ function updateSession(sessionId, state, event, sourcePid, cwd) {
 
 let staleCleanupTimer = null;
 
+function isProcessAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
+}
+
 function cleanStaleSessions() {
   const now = Date.now();
   let changed = false;
   for (const [id, s] of sessions) {
-    if (now - s.updatedAt > SESSION_STALE_MS) {
+    const age = now - s.updatedAt;
+
+    if (age > SESSION_STALE_MS) {
+      // Very stale (5 min): PID check or delete
       if (s.sourcePid) {
-        // Keep session alive for terminal focus, just decay to idle
-        if (s.state !== "idle") { s.state = "idle"; changed = true; }
+        if (!isProcessAlive(s.sourcePid)) {
+          sessions.delete(id); changed = true;
+        } else if (s.state !== "idle") {
+          s.state = "idle"; changed = true;
+        }
       } else {
         sessions.delete(id); changed = true;
       }
-    } else if (
-      (s.state === "working" || s.state === "juggling") &&
-      now - s.updatedAt > WORKING_STALE_MS
-    ) {
-      // No hook event for 30s while "working" → session likely interrupted (Esc)
-      // thinking excluded: legitimate thinking can exceed 30s, and Esc during thinking
-      // is almost always followed by a new prompt (UserPromptSubmit resets state)
-      s.state = "idle"; s.updatedAt = now; changed = true;
+    } else if (age > WORKING_STALE_MS) {
+      // Moderately stale (30s): check if terminal was closed
+      if (s.sourcePid && !isProcessAlive(s.sourcePid)) {
+        sessions.delete(id); changed = true;
+      } else if (s.state === "working" || s.state === "juggling") {
+        // No hook event for 30s while working → likely interrupted (Esc)
+        s.state = "idle"; s.updatedAt = now; changed = true;
+      }
     }
+    // Sessions updated <30s ago: skip — recent hook events prove liveness
   }
   // If stale sessions were cleaned, re-resolve display state
   if (changed && sessions.size === 0) {
