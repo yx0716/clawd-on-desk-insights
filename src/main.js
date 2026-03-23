@@ -1158,7 +1158,7 @@ function getBubblePosition() {
   const bw = 340, bh = 260;
   const margin = 4;
 
-  // Fixed position: bottom-left corner of the pet's display
+  // Fixed position: bottom-right corner of the nearest display
   const petBounds = win.getBounds();
   const cx = petBounds.x + petBounds.width / 2;
   const cy = petBounds.y + petBounds.height / 2;
