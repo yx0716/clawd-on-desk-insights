@@ -1026,9 +1026,11 @@ function startHttpServer() {
               res.end("mini states require svg override");
               return;
             }
-            // If a new hook event arrives for the same session that has a pending
-            // permission bubble, the user must have answered in the terminal — dismiss.
-            if (pendingPermission && pendingPermission.sessionId === sid) {
+            // If a new hook event (not PermissionRequest itself) arrives for the same
+            // session that has a pending permission bubble, the user answered in terminal.
+            // PermissionRequest fires on BOTH /state (command hook) and /permission (HTTP hook)
+            // simultaneously — we must ignore it here to avoid instantly dismissing our own bubble.
+            if (pendingPermission && pendingPermission.sessionId === sid && event !== "PermissionRequest") {
               resolvePermission("deny", "User answered in terminal");
             }
             if (svg) {
