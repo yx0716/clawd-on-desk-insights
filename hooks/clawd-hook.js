@@ -31,6 +31,9 @@ if (!state) process.exit(0);
 // We walk up until we find a known terminal app, then let focusTerminalWindow
 // walk the remaining hops (it has its own parent walk with MainWindowHandle check).
 // Runs synchronously during stdin buffering (~100ms per level × 5-6 levels).
+// Known terminal/launcher apps — outermost match becomes the focus target.
+// focusTerminalWindow() walks further up via MainWindowHandle if needed,
+// so including launchers (e.g. antigravity) that host terminals is correct.
 const TERMINAL_NAMES_WIN = new Set([
   "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
   "code.exe", "alacritty.exe", "wezterm-gui.exe", "mintty.exe",
@@ -42,16 +45,21 @@ const TERMINAL_NAMES_MAC = new Set([
   "hyper", "tabby", "warp",
 ]);
 
+const SYSTEM_BOUNDARY_WIN = new Set(["explorer.exe", "services.exe", "winlogon.exe", "svchost.exe"]);
+const SYSTEM_BOUNDARY_MAC = new Set(["launchd", "init", "systemd"]);
+
 let _stablePid = null;
 function getStablePid() {
   if (_stablePid) return _stablePid;
   const { execSync } = require("child_process");
   const isWin = process.platform === "win32";
   const terminalNames = isWin ? TERMINAL_NAMES_WIN : TERMINAL_NAMES_MAC;
+  const systemBoundary = isWin ? SYSTEM_BOUNDARY_WIN : SYSTEM_BOUNDARY_MAC;
   let pid = process.ppid;
   let lastGoodPid = pid;
   let terminalPid = null;
   for (let i = 0; i < 8; i++) {
+    let name, parentPid;
     try {
       if (isWin) {
         const out = execSync(
@@ -61,30 +69,21 @@ function getStablePid() {
         const lines = out.trim().split("\n").filter(l => l.includes(","));
         if (!lines.length) break;
         const parts = lines[lines.length - 1].split(",");
-        const name = (parts[1] || "").trim().toLowerCase();
-        const parentPid = parseInt(parts[2], 10);
-        // Stop at system boundaries
-        if (name === "explorer.exe" || name === "services.exe" ||
-            name === "winlogon.exe" || name === "svchost.exe") break;
-        // Found a known terminal → remember it (keep walking to find outermost)
-        if (terminalNames.has(name)) terminalPid = pid;
-        lastGoodPid = pid;
-        if (!parentPid || parentPid === pid || parentPid <= 1) break;
-        pid = parentPid;
+        name = (parts[1] || "").trim().toLowerCase();
+        parentPid = parseInt(parts[2], 10);
       } else {
-        // macOS/Linux
         const cp = require("child_process");
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
-        const name = require("path").basename(commOut).toLowerCase();
-        const parentPid = parseInt(ppidOut, 10);
-        if (name === "launchd" || name === "init" || name === "systemd") break;
-        if (terminalNames.has(name)) terminalPid = pid;
-        lastGoodPid = pid;
-        if (!parentPid || parentPid === pid || parentPid <= 1) break;
-        pid = parentPid;
+        name = require("path").basename(commOut).toLowerCase();
+        parentPid = parseInt(ppidOut, 10);
       }
     } catch { break; }
+    if (systemBoundary.has(name)) break;
+    if (terminalNames.has(name)) terminalPid = pid;
+    lastGoodPid = pid;
+    if (!parentPid || parentPid === pid || parentPid <= 1) break;
+    pid = parentPid;
   }
   // Prefer outermost known terminal; fall back to highest non-system PID
   _stablePid = terminalPid || lastGoodPid;
