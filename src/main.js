@@ -52,6 +52,8 @@ const i18n = {
     sessionJustNow: "just now",
     sessionMinAgo: "{n}m ago",
     sessionHrAgo: "{n}h ago",
+    permissionAllow: "\u2713 Allow",
+    permissionDeny: "\u2717 Deny",
     quit: "Quit",
   },
   zh: {
@@ -92,6 +94,8 @@ const i18n = {
     sessionJustNow: "刚刚",
     sessionMinAgo: "{n}分钟前",
     sessionHrAgo: "{n}小时前",
+    permissionAllow: "\u2713 批准",
+    permissionDeny: "\u2717 拒绝",
     quit: "退出",
   },
 };
@@ -288,6 +292,11 @@ let wakePollTimer = null;
 let lastWakeCursorX = null, lastWakeCursorY = null;
 
 let pendingState = null; // tracks what state is waiting in pendingTimer
+
+// ── Permission bubble ──
+const PERMISSION_TIMEOUT_MS = 30_000;
+let bubble = null;
+let pendingPermission = null;  // { res, timer, abortHandler, toolName, toolInput, sessionId }
 
 function setState(newState, svgOverride) {
   if (doNotDisturb) return;
@@ -655,6 +664,14 @@ function wakeFromDoze() {
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
 function updateSession(sessionId, state, event, sourcePid, cwd) {
+  // PermissionRequest command hook: show notification animation only, don't mutate session.
+  // The HTTP hook runs in parallel and handles the actual decision. If we set session to idle
+  // here, it can overwrite a newer "working" state after the user approves.
+  if (event === "PermissionRequest") {
+    setState("notification");
+    return;
+  }
+
   // Preserve existing sourcePid/cwd — only SessionStart sends them, other events reuse cached
   const existing = sessions.get(sessionId);
   const srcPid = sourcePid || (existing && existing.sourcePid) || null;
@@ -1030,6 +1047,67 @@ function startHttpServer() {
           res.end("bad json");
         }
       });
+    } else if (req.method === "POST" && req.url === "/permission") {
+      // ── Permission HTTP hook — Claude Code sends PermissionRequest here ──
+      let body = "";
+      let bodySize = 0;
+      let destroyed = false;
+      req.on("data", (chunk) => {
+        bodySize += chunk.length;
+        if (bodySize > 8192) { destroyed = true; req.destroy(); return; }
+        body += chunk;
+      });
+      req.on("end", () => {
+        if (destroyed) return;
+
+        // DND mode: return empty 200 so Claude Code falls back to terminal prompt
+        if (doNotDisturb) {
+          res.writeHead(200);
+          res.end();
+          return;
+        }
+
+        // Already handling a permission request: return empty 200 for the new one
+        // (let Claude Code fall back to terminal, keep current bubble intact)
+        if (pendingPermission) {
+          res.writeHead(200);
+          res.end();
+          return;
+        }
+
+        try {
+          const data = JSON.parse(body);
+          const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
+          const toolInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+          const sessionId = data.session_id || "default";
+
+          // Detect client disconnect (e.g. Claude Code timeout or user cancel).
+          // Listen on res "close" — fires when the connection drops.
+          // If we already sent the response (writableFinished), ignore.
+          const abortHandler = () => {
+            if (res.writableFinished) return;
+            if (pendingPermission && pendingPermission.res === res) {
+                clearTimeout(pendingPermission.timer);
+              pendingPermission = null;
+              hideBubble();
+            }
+          };
+          res.on("close", abortHandler);
+
+          // Start timeout timer
+          const timer = setTimeout(() => {
+            resolvePermission("deny", "Timed out — no response from Clawd bubble");
+          }, PERMISSION_TIMEOUT_MS);
+
+          pendingPermission = { res, timer, abortHandler, toolName, toolInput, sessionId };
+
+          // Show or reuse bubble window
+          showPermissionBubble(toolName, toolInput);
+        } catch {
+          res.writeHead(400);
+          res.end("bad json");
+        }
+      });
     } else {
       res.writeHead(404);
       res.end();
@@ -1047,6 +1125,151 @@ function startHttpServer() {
       console.error("HTTP server error:", err.message);
     }
   });
+}
+
+// ── Permission bubble window ──
+
+function getBubblePosition() {
+  const petBounds = win.getBounds();
+  const bw = 320, bh = 180;
+  const gap = 8;
+  const cx = petBounds.x + petBounds.width / 2;
+  const cy = petBounds.y + petBounds.height / 2;
+  const wa = getNearestWorkArea(cx, cy);
+
+  // Default: left of pet, bottom-aligned
+  let x = petBounds.x - bw - gap;
+  let y = petBounds.y + petBounds.height - bh;
+
+  // If no room on left, go right
+  if (x < wa.x) {
+    x = petBounds.x + petBounds.width + gap;
+  }
+  // If no room above (bubble top above workArea), push down
+  if (y < wa.y) {
+    y = wa.y;
+  }
+  // If below workArea bottom, push up
+  if (y + bh > wa.y + wa.height) {
+    y = wa.y + wa.height - bh;
+  }
+
+  return { x, y, width: bw, height: bh };
+}
+
+function showPermissionBubble(toolName, toolInput) {
+  const pos = getBubblePosition();
+
+  if (bubble && !bubble.isDestroyed()) {
+    // Reuse existing bubble window — reposition and send new data
+    bubble.setBounds(pos);
+    bubble.show();
+    sendBubbleData(toolName, toolInput);
+    return;
+  }
+
+  bubble = new BrowserWindow({
+    width: pos.width,
+    height: pos.height,
+    x: pos.x,
+    y: pos.y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-bubble.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  if (isMac) {
+    bubble.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    bubble.setAlwaysOnTop(true, "floating");
+  }
+
+  bubble.loadFile(path.join(__dirname, "bubble.html"));
+
+  // Wait for renderer ready before sending data
+  bubble.webContents.on("did-finish-load", () => {
+    sendBubbleData(toolName, toolInput);
+  });
+
+  bubble.show();
+
+  // If user closes bubble via Alt+F4 etc → treat as deny
+  bubble.on("closed", () => {
+    bubble = null;
+    if (pendingPermission) {
+      resolvePermission("deny", "Bubble window closed by user");
+    }
+  });
+
+  // Recover alwaysOnTop if stripped (same as pet window)
+  if (!isMac) {
+    bubble.on("always-on-top-changed", (_, isOnTop) => {
+      if (!isOnTop && bubble && !bubble.isDestroyed()) {
+        bubble.setAlwaysOnTop(true);
+      }
+    });
+  }
+}
+
+function sendBubbleData(toolName, toolInput) {
+  if (!bubble || bubble.isDestroyed()) return;
+  bubble.webContents.send("permission-show", {
+    toolName,
+    toolInput,
+    timeoutSec: Math.round(PERMISSION_TIMEOUT_MS / 1000),
+    lang,
+  });
+}
+
+function resolvePermission(behavior, message) {
+  if (!pendingPermission) return;
+
+  const { res, timer, abortHandler } = pendingPermission;
+  clearTimeout(timer);
+  // Remove abort listener to avoid double-resolve after we send the response
+  if (abortHandler) {
+    res.removeListener("close", abortHandler);
+  }
+
+  // Guard: client may have disconnected
+  if (res.writableEnded || res.destroyed) {
+    pendingPermission = null;
+    hideBubble();
+    return;
+  }
+
+  const responseBody = {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior },
+    },
+  };
+  if (behavior === "deny" && message) {
+    responseBody.hookSpecificOutput.decision.message = message;
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(responseBody));
+
+  pendingPermission = null;
+  hideBubble();
+}
+
+function hideBubble() {
+  if (bubble && !bubble.isDestroyed()) {
+    bubble.webContents.send("permission-hide");
+    setTimeout(() => {
+      if (bubble && !bubble.isDestroyed()) bubble.hide();
+    }, 250);
+  }
 }
 
 // ── System tray ──
@@ -1506,6 +1729,11 @@ function createWindow() {
     popupMenuAt(Menu.buildFromTemplate(buildSessionSubmenu()));
   });
 
+  ipcMain.on("permission-decide", (_, behavior) => {
+    if (!pendingPermission) return;
+    resolvePermission(behavior === "allow" ? "allow" : "deny");
+  });
+
   startMainTick();
   startHttpServer();
   startStaleCleanup();
@@ -1957,6 +2185,12 @@ if (!gotTheLock) {
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     stopStaleCleanup();
     killFocusHelper();
+    // Clean up pending permission request
+    if (pendingPermission) {
+      clearTimeout(pendingPermission.timer);
+      pendingPermission = null;
+    }
+    if (bubble && !bubble.isDestroyed()) bubble.destroy();
     if (httpServer) httpServer.close();
   });
 

@@ -26,6 +26,16 @@ const HOOK_EVENTS = [
 ];
 
 const MARKER = "clawd-hook.js";
+const HTTP_MARKER = "23333/permission";
+
+// HTTP hooks: PermissionRequest uses bidirectional HTTP hook for decision collection
+const HTTP_HOOKS = {
+  PermissionRequest: {
+    type: "http",
+    url: "http://127.0.0.1:23333/permission",
+    timeout: 60,  // seconds — generous buffer over our 30s bubble timeout
+  },
+};
 
 /**
  * Register Clawd hooks into ~/.claude/settings.json.
@@ -95,6 +105,37 @@ function registerHooks(options = {}) {
     added++;
   }
 
+  // Register HTTP hooks (PermissionRequest decision collection)
+  for (const [event, hookDef] of Object.entries(HTTP_HOOKS)) {
+    if (!Array.isArray(settings.hooks[event])) {
+      settings.hooks[event] = [];
+      changed = true;
+    }
+
+    // Check if HTTP hook already registered
+    const httpExists = settings.hooks[event].some((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      // Flat format: { type: "http", url }
+      if (entry.type === "http" && typeof entry.url === "string" && entry.url.includes(HTTP_MARKER)) return true;
+      // Nested format: { matcher, hooks: [{ type: "http", url }] }
+      if (Array.isArray(entry.hooks)) {
+        return entry.hooks.some((h) => h && h.type === "http" && typeof h.url === "string" && h.url.includes(HTTP_MARKER));
+      }
+      return false;
+    });
+
+    if (httpExists) {
+      skipped++;
+      continue;
+    }
+
+    settings.hooks[event].push({
+      matcher: "",
+      hooks: [hookDef],
+    });
+    added++;
+  }
+
   // Only write if something changed (avoid unnecessary disk I/O)
   if (added > 0 || changed) {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -106,6 +147,9 @@ function registerHooks(options = {}) {
     console.log(`  Added: ${added} hooks`);
     if (skipped > 0) console.log(`  Skipped: ${skipped} (already registered)`);
     console.log(`\nHook events: ${HOOK_EVENTS.join(", ")}`);
+    if (Object.keys(HTTP_HOOKS).length > 0) {
+      console.log(`HTTP hooks: ${Object.keys(HTTP_HOOKS).join(", ")}`);
+    }
   }
 
   return { added, skipped };
