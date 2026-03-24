@@ -5,6 +5,20 @@ const fs = require("fs");
 
 const isMac = process.platform === "darwin";
 
+// ── Windows: AllowSetForegroundWindow via FFI ──
+// Grants the PowerShell helper process permission to call SetForegroundWindow.
+// Must be called from Electron (which received user input) before each focus request.
+let _allowSetForeground = null;
+if (!isMac) {
+  try {
+    const koffi = require("koffi");
+    const user32 = koffi.load("user32.dll");
+    _allowSetForeground = user32.func("bool __stdcall AllowSetForegroundWindow(int dwProcessId)");
+  } catch (err) {
+    console.warn("Clawd: koffi/AllowSetForegroundWindow not available:", err.message);
+  }
+}
+
 // ── Window size presets ──
 const SIZES = {
   S: { width: 200, height: 200 },
@@ -999,6 +1013,13 @@ function killFocusHelper() {
 
 function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
   if (!sourcePid) return;
+
+  // Grant PowerShell helper permission to call SetForegroundWindow.
+  // This must happen HERE — Electron just received user input (click/hotkey),
+  // so it has foreground privilege to delegate.
+  if (_allowSetForeground && psProc && psProc.pid) {
+    try { _allowSetForeground(psProc.pid); } catch {}
+  }
 
   // Legacy focus for reliable window activation (ALT key trick + SetForegroundWindow)
   focusTerminalWindowLegacy(sourcePid, cwd);
