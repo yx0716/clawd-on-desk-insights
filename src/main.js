@@ -979,7 +979,7 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
                 [WinFocus]::Focus($hwnd); $matched = $true; break
             }
         }
-        if ($matched) { break }` : "";
+        if ($matched) { $focused = $true; break }` : "";
   // Windows Terminal fallback: same title matching but against WT windows
   const wtTitleMatch = psNames ? `
     $wtProcs = Get-Process -Name 'WindowsTerminal' -ErrorAction SilentlyContinue
