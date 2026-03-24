@@ -963,8 +963,13 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
   // Walk up the process tree (same proven logic as before).
   // When we find the process with MainWindowHandle, try title-matching first
   // to support multi-window editors (Cursor/VS Code). Fall back to MainWindowHandle.
+  // Base64-encode cwd candidates so CJK/Unicode chars survive the Node→PowerShell
+  // stdin pipe (PowerShell 5.1 reads stdin as system codepage, not UTF-8).
   const psNames = cwdCandidates.length
-    ? cwdCandidates.map(c => `'${c.replace(/'/g, "''")}'`).join(",")
+    ? cwdCandidates.map(c => {
+        const b64 = Buffer.from(c, "utf8").toString("base64");
+        return `([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))`;
+      }).join(",")
     : "";
   const titleMatchBlock = psNames ? `
         $matched = $false
@@ -999,9 +1004,11 @@ function initFocusHelper() {
     windowsHide: true,
     stdio: ["pipe", "ignore", "ignore"],
   });
-  // Pre-compile the C# type (once, ~500ms, non-blocking)
+  // Set UTF-8 input encoding so Chinese/CJK window titles match correctly,
+  // then pre-compile the C# type (once, ~500ms, non-blocking)
   psProc.on("error", () => { psProc = null; }); // Spawn failure (powershell.exe not found, etc.)
   psProc.stdin.on("error", () => {}); // Suppress EPIPE if process exits unexpectedly
+  psProc.stdin.write("[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n");
   psProc.stdin.write(PS_FOCUS_ADDTYPE + "\n");
   psProc.on("exit", () => { psProc = null; });
   psProc.unref(); // Don't keep the app alive for this
