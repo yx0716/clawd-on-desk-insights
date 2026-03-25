@@ -77,7 +77,7 @@ Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to th
 
 ### Mini Mode
 
-Drag Clawd to the right screen edge (or right-click → "极简模式") to enter mini mode. Clawd hides behind the screen edge with half-body visible, peeking out when you hover.
+Drag Clawd to the right screen edge (or right-click → "Mini Mode") to enter mini mode. Clawd hides behind the screen edge with half-body visible, peeking out when you hover.
 
 | Trigger | Mini Reaction | |
 |---|---|---|
