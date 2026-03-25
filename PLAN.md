@@ -27,6 +27,15 @@
 - [ ] 同一 session 短时间内不重复播放（冷却机制）
 - [ ] DND/sleeping 状态下不播音效
 
+**优先级 1.5 — 随 Claude Code 自动启动（✅ 已合并，PR #12 by yujiachen-y，2026-03-25）**
+
+社区贡献。托盘菜单"随 Claude Code 启动" checkbox，开启后注册 SessionStart hook 自动拉起桌宠。
+
+- [x] `hooks/auto-start.js`：健康检查 `127.0.0.1:23333`，未运行时 spawn 启动（支持源码 / exe / .app）
+- [x] `hooks/install.js`：`registerHooks({ autoStart })` + `unregisterAutoStart()` + `isAutoStartRegistered()`
+- [x] `main.js`：托盘 checkbox、偏好持久化、i18n（en/zh）
+- ⚠️ 仅限 Claude Code，Codex 等其他 agent 不走 hook 系统，需 M3 多 agent 适配时统一处理启动策略
+
 **优先级 2 — Hook 卸载脚本**
 
 用户卸载应用后不要在 `~/.claude/settings.json` 里留垃圾。

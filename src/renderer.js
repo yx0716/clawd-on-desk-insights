@@ -121,6 +121,19 @@ let isDragReacting = false;   // drag reaction is active
 let reactTimer = null;        // auto-return timer
 let currentIdleSvg = null;    // tracks which SVG is currently showing
 
+function getObjectSvgName(objectEl) {
+  if (!objectEl) return null;
+  const data = objectEl.getAttribute("data") || objectEl.data || "";
+  if (!data) return null;
+  const clean = data.split(/[?#]/)[0];
+  const parts = clean.split("/");
+  return parts[parts.length - 1] || null;
+}
+
+function shouldTrackEyes(state, svg) {
+  return (state === "idle" && svg === "clawd-idle-follow.svg") || state === "mini-idle";
+}
+
 function handleClick(clientX) {
   if (miniMode) {
     window.electronAPI.exitMiniMode();
@@ -179,12 +192,9 @@ function playReaction(svgFile, durationMs) {
   }
 
   const next = document.createElement("object");
-  next.data = `../assets/svg/${svgFile}`;
   next.type = "image/svg+xml";
   next.id = "clawd";
   next.style.opacity = "0";
-  container.appendChild(next);
-  pendingNext = next;
 
   const swap = () => {
     if (pendingNext !== next) return;
@@ -195,9 +205,13 @@ function playReaction(svgFile, durationMs) {
     }
     pendingNext = null;
     clawdEl = next;
+    currentDisplayedSvg = svgFile;
   };
 
   next.addEventListener("load", swap, { once: true });
+  next.data = `../assets/svg/${svgFile}`;
+  container.appendChild(next);
+  pendingNext = next;
   setTimeout(() => {
     if (pendingNext !== next) return;
     // If SVG failed to load, abandon swap and keep current display
@@ -230,12 +244,9 @@ function cancelReaction() {
 function swapToSvg(svgFile) {
   if (pendingNext) { pendingNext.remove(); pendingNext = null; }
   const next = document.createElement("object");
-  next.data = `../assets/svg/${svgFile}`;
   next.type = "image/svg+xml";
   next.id = "clawd";
   next.style.opacity = "0";
-  container.appendChild(next);
-  pendingNext = next;
   const swap = () => {
     if (pendingNext !== next) return;
     next.style.transition = "none";
@@ -245,8 +256,12 @@ function swapToSvg(svgFile) {
     }
     pendingNext = null;
     clawdEl = next;
+    currentDisplayedSvg = svgFile;
   };
   next.addEventListener("load", swap, { once: true });
+  next.data = `../assets/svg/${svgFile}`;
+  container.appendChild(next);
+  pendingNext = next;
   setTimeout(() => {
     if (pendingNext !== next) return;
     try { if (!next.contentDocument) { next.remove(); pendingNext = null; return; } } catch {}
@@ -279,6 +294,8 @@ function endDragReaction() {
 // --- State change → switch SVG animation (preload + instant swap) ---
 let clawdEl = document.getElementById("clawd");
 let pendingNext = null;
+let currentDisplayedSvg = getObjectSvgName(clawdEl);
+currentIdleSvg = currentDisplayedSvg;
 
 window.electronAPI.onStateChange((state, svg) => {
   // Main process state change → cancel any active click reaction
@@ -290,13 +307,18 @@ window.electronAPI.onStateChange((state, svg) => {
   }
   detachEyeTracking();
 
+  if (clawdEl && clawdEl.isConnected && currentDisplayedSvg === svg) {
+    if (shouldTrackEyes(state, svg)) {
+      attachEyeTracking(clawdEl);
+    }
+    currentIdleSvg = svg;
+    return;
+  }
+
   const next = document.createElement("object");
-  next.data = `../assets/svg/${svg}`;
   next.type = "image/svg+xml";
   next.id = "clawd";
   next.style.opacity = "0";
-  container.appendChild(next);
-  pendingNext = next;
 
   const swap = () => {
     if (pendingNext !== next) return;
@@ -307,11 +329,10 @@ window.electronAPI.onStateChange((state, svg) => {
     }
     pendingNext = null;
     clawdEl = next;
+    currentDisplayedSvg = svg;
 
-    if (svg === "clawd-idle-follow.svg" || svg.startsWith("clawd-mini-")) {
+    if (shouldTrackEyes(state, svg)) {
       attachEyeTracking(next);
-    } else {
-      detachEyeTracking();
     }
 
     // Track current SVG for click reaction gating
@@ -319,6 +340,9 @@ window.electronAPI.onStateChange((state, svg) => {
   };
 
   next.addEventListener("load", swap, { once: true });
+  next.data = `../assets/svg/${svg}`;
+  container.appendChild(next);
+  pendingNext = next;
   setTimeout(() => {
     if (pendingNext !== next) return;
     try { if (!next.contentDocument) { next.remove(); pendingNext = null; return; } } catch {}
@@ -330,30 +354,11 @@ window.electronAPI.onStateChange((state, svg) => {
 let eyeTarget = null;
 let bodyTarget = null;
 let shadowTarget = null;
+let lastEyeDx = 0;
+let lastEyeDy = 0;
+let eyeAttachToken = 0;
 
-function attachEyeTracking(objectEl) {
-  eyeTarget = null;
-  bodyTarget = null;
-  shadowTarget = null;
-  try {
-    const svgDoc = objectEl.contentDocument;
-    if (svgDoc) {
-      eyeTarget = svgDoc.getElementById("eyes-js");
-      bodyTarget = svgDoc.getElementById("body-js");
-      shadowTarget = svgDoc.getElementById("shadow-js");
-    }
-  } catch (e) {
-    console.warn("Cannot access SVG contentDocument for eye tracking:", e.message);
-  }
-}
-
-function detachEyeTracking() {
-  eyeTarget = null;
-  bodyTarget = null;
-  shadowTarget = null;
-}
-
-window.electronAPI.onEyeMove((dx, dy) => {
+function applyEyeMove(dx, dy) {
   if (eyeTarget) {
     eyeTarget.style.transform = `translate(${dx}px, ${dy}px)`;
   }
@@ -369,6 +374,56 @@ window.electronAPI.onEyeMove((dx, dy) => {
       shadowTarget.style.transform = `translate(${shiftX}px, 0) scaleX(${scaleX})`;
     }
   }
+}
+
+function attachEyeTracking(objectEl) {
+  const token = ++eyeAttachToken;
+  eyeTarget = null;
+  bodyTarget = null;
+  shadowTarget = null;
+
+  const tryAttach = (attempt) => {
+    if (token !== eyeAttachToken) return;
+    if (!objectEl || !objectEl.isConnected) return;
+
+    try {
+      const svgDoc = objectEl.contentDocument;
+      const eyes = svgDoc && svgDoc.getElementById("eyes-js");
+      if (eyes) {
+        eyeTarget = eyes;
+        bodyTarget = svgDoc.getElementById("body-js");
+        shadowTarget = svgDoc.getElementById("shadow-js");
+        applyEyeMove(lastEyeDx, lastEyeDy);
+        window.electronAPI.eyeTrackingReady();
+        return;
+      }
+    } catch (e) {
+      console.warn("Cannot access SVG contentDocument for eye tracking:", e.message);
+      return;
+    }
+
+    if (attempt >= 60) {
+      console.warn("Timed out waiting for SVG eye targets");
+      return;
+    }
+    // setTimeout fallback — rAF may be throttled in unfocused windows
+    setTimeout(() => tryAttach(attempt + 1), 16);
+  };
+
+  tryAttach(0);
+}
+
+function detachEyeTracking() {
+  eyeAttachToken++;
+  eyeTarget = null;
+  bodyTarget = null;
+  shadowTarget = null;
+}
+
+window.electronAPI.onEyeMove((dx, dy) => {
+  lastEyeDx = dx;
+  lastEyeDy = dy;
+  applyEyeMove(dx, dy);
 });
 
 // --- Wake from doze (smooth eye opening) ---

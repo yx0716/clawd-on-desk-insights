@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onStateChange: (callback) => ipcRenderer.on("state-change", (_, state, svg) => callback(state, svg)),
   onEyeMove: (callback) => ipcRenderer.on("eye-move", (_, dx, dy) => callback(dx, dy)),
   onWakeFromDoze: (callback) => ipcRenderer.on("wake-from-doze", () => callback()),
+  eyeTrackingReady: () => ipcRenderer.send("eye-tracking-ready"),
   pauseCursorPolling: () => ipcRenderer.send("pause-cursor-polling"),
   resumeFromReaction: () => ipcRenderer.send("resume-from-reaction"),
   onDndChange: (callback) => ipcRenderer.on("dnd-change", (_, enabled) => callback(enabled)),

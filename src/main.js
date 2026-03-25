@@ -150,6 +150,10 @@ const SVG_IDLE_FOLLOW = "clawd-idle-follow.svg";
 const SVG_IDLE_LOOK = "clawd-idle-look.svg";
 const SVG_IDLE_LIVING = "clawd-idle-living.svg";
 
+function shouldTrackEyes(state, svg) {
+  return (state === "idle" && svg === SVG_IDLE_FOLLOW) || state === "mini-idle";
+}
+
 // ── State → SVG mapping ──
 const STATE_SVGS = {
   idle: [SVG_IDLE_FOLLOW, SVG_IDLE_LIVING],
@@ -272,6 +276,7 @@ let idlePaused = false;
 let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
+let eyeTrackingReady = false;
 
 // ── Mini Mode ──
 const MINI_OFFSET_RATIO = 0.486;
@@ -393,6 +398,7 @@ function applyState(state, svgOverride) {
   const svgs = STATE_SVGS[state] || STATE_SVGS.idle;
   const svg = svgOverride || svgs[Math.floor(Math.random() * svgs.length)];
   currentSvg = svg;
+  eyeTrackingReady = false;
 
   // Update hit box based on SVG
   if (svg === "clawd-sleeping.svg" || svg === "clawd-collapse-sleep.svg") {
@@ -591,13 +597,12 @@ function startMainTick() {
         }, 250 + IDLE_LOOK_DURATION);
         return;
       }
-
-      // Only send eye position when showing idle-follow
-      if (isMouseIdle || (!moved && !forceEyeResend)) return;
-    } else {
-      // miniIdleNow: skip sleep detection, eye tracking only
-      if (!moved && !forceEyeResend) return;
     }
+
+    const trackEyesNow = (idleNow && currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
+    if (!trackEyesNow) return;
+    if (!eyeTrackingReady) return;
+    if (!moved && !forceEyeResend) return;
 
     // ── Eye position calculation (shared by idle and mini-idle) ──
     const skipDedup = forceEyeResend;
@@ -1843,6 +1848,7 @@ function createWindow() {
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      backgroundThrottling: false,
     },
   });
 
@@ -1878,7 +1884,13 @@ function createWindow() {
     // Skip re-send during mini transition (drag-end fires next and will set the right state)
     if (miniTransitioning) return;
     // Re-send current state to renderer without resetting stateChangedAt or timers.
+    eyeTrackingReady = false;
     sendToRenderer("state-change", currentState, currentSvg);
+  });
+  ipcMain.on("eye-tracking-ready", () => {
+    if (!shouldTrackEyes(currentState, currentSvg)) return;
+    eyeTrackingReady = true;
+    forceEyeResend = true;
   });
 
   ipcMain.on("drag-lock", (event, locked) => {
@@ -1984,7 +1996,7 @@ function createWindow() {
       const resolved = resolveDisplayState();
       applyState(resolved, getSvgOverride(resolved));
     } else {
-      applyState("idle");
+      applyState("idle", SVG_IDLE_FOLLOW);
     }
   });
 
@@ -1993,6 +2005,7 @@ function createWindow() {
     console.error("Renderer crashed:", details.reason);
     dragLocked = false;
     idlePaused = false;
+    eyeTrackingReady = false;
     mouseOverPet = false;
     win.setIgnoreMouseEvents(true);
     win.webContents.reload();
