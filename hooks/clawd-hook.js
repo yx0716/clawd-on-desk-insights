@@ -112,8 +112,8 @@ function getStablePid() {
         try {
           const cmdOut = isWin
             ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
-                { encoding: "utf8", timeout: 1500, windowsHide: true })
-            : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 1000 });
+                { encoding: "utf8", timeout: 500, windowsHide: true })
+            : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
           if (cmdOut.includes("claude-code") || cmdOut.includes("@anthropic-ai")) _claudePid = pid;
         } catch {}
       }

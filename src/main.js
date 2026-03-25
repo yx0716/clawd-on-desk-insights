@@ -2580,6 +2580,7 @@ if (!gotTheLock) {
     if (peekAnimTimer) clearTimeout(peekAnimTimer);
     if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
+    if (startupRecoveryTimer) clearTimeout(startupRecoveryTimer);
     stopStaleCleanup();
     stopTopmostWatchdog();
     killFocusHelper();
