@@ -795,15 +795,15 @@ function cleanStaleSessions() {
         sessions.delete(id); changed = true;
       }
     } else if (age > WORKING_STALE_MS) {
-      // Moderately stale (30s): check if terminal was closed
+      // Moderately stale (5 min): check if terminal was closed
       if (s.sourcePid && !isProcessAlive(s.sourcePid)) {
         sessions.delete(id); changed = true;
-      } else if (s.state === "working" || s.state === "juggling") {
-        // No hook event for 30s while working → likely interrupted (Esc)
+      } else if (s.state === "working" || s.state === "juggling" || s.state === "thinking") {
+        // No hook event for 5 min while busy → likely interrupted or stalled
         s.state = "idle"; s.updatedAt = now; changed = true;
       }
     }
-    // Sessions updated <30s ago: skip — recent hook events prove liveness
+    // Sessions updated recently: skip — recent hook events prove liveness
   }
   // If stale sessions were cleaned, re-resolve display state
   if (changed && sessions.size === 0) {
@@ -847,7 +847,7 @@ function detectRunningAgentProcesses(callback) {
 
 function startStaleCleanup() {
   if (staleCleanupTimer) return;
-  staleCleanupTimer = setInterval(cleanStaleSessions, 10000); // every 10s (supports 30s working timeout)
+  staleCleanupTimer = setInterval(cleanStaleSessions, 10000); // every 10s
 }
 
 function stopStaleCleanup() {
