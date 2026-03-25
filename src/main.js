@@ -1292,8 +1292,10 @@ function scheduleHwndRecovery() {
     if (!win || win.isDestroyed() || dragLocked) return;
     win.showInactive();
     win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    mouseOverPet = false;
-    forceMouseStateRefresh = true;
+    // Do NOT reset mouseOverPet here — that would trigger setIgnoreMouseEvents
+    // on the next tick, which undoes the HWND fix that showInactive() just applied.
+    // This mirrors what the context menu callback does (showInactive + setAlwaysOnTop only).
+    forceEyeResend = true;
   }, 1000);
 }
 
@@ -1324,10 +1326,10 @@ function startTopmostWatchdog() {
       win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
       // Periodic HWND refresh — catches silent z-order disruptions that don't
       // trigger always-on-top-changed (e.g. another topmost window appearing).
+      // Only showInactive + setAlwaysOnTop — do NOT reset mouseOverPet, because
+      // the resulting setIgnoreMouseEvents call undoes the HWND fix.
       if (!dragLocked) {
         win.showInactive();
-        mouseOverPet = false;
-        forceMouseStateRefresh = true;
         forceEyeResend = true;
       }
     }
@@ -1933,17 +1935,9 @@ function createWindow() {
 
   ipcMain.on("drag-lock", (event, locked) => {
     dragLocked = !!locked;
-    if (locked) {
-      // Nudge window to reinitialize HWND input routing for pointer capture.
-      if (!isMac) {
-        const { x, y } = win.getBounds();
-        win.setPosition(x + 1, y);
-        win.setPosition(x, y);
-      }
-      if (!mouseOverPet) {
-        mouseOverPet = true;
-        win.setIgnoreMouseEvents(false);
-      }
+    if (locked && !mouseOverPet) {
+      mouseOverPet = true;
+      win.setIgnoreMouseEvents(false);
     }
   });
 
