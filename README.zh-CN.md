@@ -6,14 +6,20 @@
   <a href="README.md">English</a>
 </p>
 
-一个能实时感知 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。
+一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。
 
-> 支持 Windows 11 和 macOS。需要 Node.js 和 Claude Code。
+> 支持 Windows 11 和 macOS。需要 Node.js。支持 **Claude Code**、**Codex CLI** 和 **Copilot CLI**。
 
 ## 功能特性
 
+### 多 Agent 支持
+- **Claude Code** — 通过 command hook + HTTP 权限 hook 完整集成
+- **Codex CLI** — 自动轮询 JSONL 日志（`~/.codex/sessions/`），无需配置
+- **Copilot CLI** — 通过 `~/.copilot/hooks/hooks.json` 配置 command hook
+- **多 Agent 共存** — 三个 Agent 可同时运行，Clawd 独立追踪每个会话
+
 ### 动画与交互
-- **实时状态感知** — 通过 Claude Code hook 系统自动驱动动画
+- **实时状态感知** — 通过 Agent hook 和日志轮询自动驱动动画
 - **12 种动画状态** — 待机、思考、打字、建造、杂耍、指挥、报错、开心、通知、扫地、搬运、睡觉
 - **眼球追踪** — 待机状态下 Clawd 跟随鼠标，身体微倾，影子拉伸
 - **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画

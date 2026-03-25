@@ -213,7 +213,7 @@ const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "
 // ── Session tracking ──
 const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd, editor, pidChain, agentPid, agentId }
 const SESSION_STALE_MS = 300000; // 5 min cleanup
-const WORKING_STALE_MS = 30000;  // 30s: working/thinking with no new event → decay to idle
+const WORKING_STALE_MS = 300000; // 5 min: working/thinking with no new event → decay to idle
 let startupRecoveryActive = false; // suppress sleep sequence while waiting for hooks after restart
 let startupRecoveryTimer = null;   // hard timeout to clear startupRecoveryActive
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
