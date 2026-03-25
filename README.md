@@ -6,25 +6,49 @@
   <a href="README.zh-CN.md">中文版</a>
 </p>
 
-A desktop pet that reacts to your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, celebrating when tasks complete, and sleeping when you're away.
+A desktop pet that reacts to your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away.
 
 > Supports Windows 11 and macOS. Requires Node.js and Claude Code.
 
 ## Features
 
+### Animations & Interaction
 - **Real-time state awareness** — Claude Code hooks drive Clawd's animations automatically
 - **12 animated states** — idle, thinking, typing, building, juggling, conducting, error, happy, notification, sweeping, carrying, sleeping
 - **Eye tracking** — Clawd follows your cursor in idle state, with body lean and shadow stretch
 - **Sleep sequence** — yawning, dozing, collapsing, sleeping after 60s idle; mouse movement triggers a startled wake-up animation
-- **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
 - **Click reactions** — double-click for a poke, 4 clicks for a flail
 - **Drag from any state** — grab Clawd anytime (Pointer Capture prevents fast-flick drops), release to resume
+- **Mini mode** — drag to right edge or right-click "Mini Mode"; Clawd hides at screen edge with peek-on-hover, mini alerts/celebrations, and parabolic jump transitions
+
+### Permission Bubble
+
+<img src="assets/screenshot-permission-bubble.png" width="320" alt="Permission bubble">
+
+- **In-app permission review** — when Claude Code requests tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
+- **Allow / Deny / Suggestions** — one-click approve, reject, or apply permission rules (e.g. "Always allow Read")
+- **Stacking layout** — multiple permission requests stack upward from the bottom-right corner
+- **Auto-dismiss** — if you answer in the terminal first, the bubble disappears automatically
+
+### Session Intelligence
+
+<img src="assets/screenshot-context-menu.png" width="420" alt="Context menu with Sessions">
+
 - **Multi-session tracking** — multiple Claude Code sessions resolve to the highest-priority state
 - **Subagent awareness** — juggling for 1 subagent, conducting for 2+
-- **Position memory** — Clawd remembers where you left it across restarts
+- **Terminal focus** — right-click Clawd → Sessions menu to jump to a specific session's terminal window; notification/attention states auto-focus the relevant terminal
+- **Process liveness detection** — detects crashed/exited Claude Code processes and cleans up orphan sessions within 10 seconds
+- **Startup recovery** — if Clawd restarts while Claude Code is running, it stays awake instead of falling asleep
+
+### System
+- **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
+- **Position memory** — Clawd remembers where you left it across restarts (including mini mode)
 - **Single instance lock** — prevents duplicate Clawd windows
-- **Mini mode** — drag to right edge or right-click "Mini Mode"; Clawd hides at screen edge with peek-on-hover, mini alerts/celebrations, and parabolic jump transitions
-- **System tray** — resize (S/M/L), do-not-disturb mode, auto-start toggle
+- **Auto-start** — Claude Code's SessionStart hook can launch Clawd automatically if it's not running
+- **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Clawd
+- **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
+- **i18n** — English and Chinese UI; switch via right-click menu or tray
+- **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS opens the release page
 
 ## State Mapping
 
@@ -82,11 +106,18 @@ npm start
 ## How It Works
 
 ```
-Claude Code triggers hook event
-  → hooks/clawd-hook.js (reads event + session_id from stdin)
-  → HTTP POST to 127.0.0.1:23333
-  → State machine in main.js (multi-session tracking + priority + min display time)
-  → IPC to renderer.js (SVG preload + crossfade swap)
+State sync (command hook, non-blocking):
+  Claude Code event
+    → hooks/clawd-hook.js (reads event + session_id from stdin)
+    → HTTP POST to 127.0.0.1:23333
+    → State machine in main.js (multi-session + priority + min display time)
+    → IPC to renderer.js (SVG preload + crossfade swap)
+
+Permission review (HTTP hook, blocking):
+  Claude Code PermissionRequest
+    → HTTP POST to 127.0.0.1:23333/permission
+    → Bubble window (bubble.html) with Allow / Deny / suggestion buttons
+    → User clicks → HTTP response → Claude Code proceeds
 ```
 
 Clawd runs as a transparent, always-on-top, unfocusable Electron window with per-region click-through. It never steals focus or blocks your workflow — clicks on transparent areas pass straight through to the window below.
@@ -110,16 +141,21 @@ bash test-mini.sh
 
 ```
 src/
-  main.js        # Electron main process: state machine, HTTP server, window, tray
-  renderer.js    # Renderer: drag, click, SVG switching, eye tracking
-  preload.js     # IPC bridge (contextBridge)
-  index.html     # Page structure
+  main.js            # Electron main: state machine, HTTP server, window, tray, cursor polling
+  renderer.js        # Renderer: drag, click reactions, SVG switching, eye tracking
+  preload.js         # IPC bridge (contextBridge)
+  bubble.html        # Permission bubble UI (tool name, command preview, Allow/Deny/suggestions)
+  preload-bubble.js  # Bubble window IPC bridge
+  index.html         # Main window page structure
 hooks/
-  clawd-hook.js  # Claude Code hook script (zero deps, 1s timeout)
-  install.js     # Safe hook registration into ~/.claude/settings.json
+  clawd-hook.js      # Claude Code command hook (zero deps, <1s, event → state → HTTP POST)
+  install.js         # Safe hook registration into ~/.claude/settings.json (append, never overwrite)
+  auto-start.js      # SessionStart hook: launches Clawd if not running (<500ms)
+extensions/
+  vscode/            # VS Code extension for terminal tab focus via URI protocol
 assets/
-  svg/           # 39 pixel-art SVG animations with CSS keyframes (incl. 8 mini mode)
-  gif/           # Recorded GIFs for documentation
+  svg/               # 40 pixel-art SVG animations with CSS keyframes (incl. 8 mini mode)
+  gif/               # Recorded GIFs for documentation
 ```
 
 ## Acknowledgments

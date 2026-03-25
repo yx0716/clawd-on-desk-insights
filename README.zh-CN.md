@@ -6,25 +6,49 @@
   <a href="README.md">English</a>
 </p>
 
-一个能实时感知 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，任务完成时它庆祝，你离开时它睡觉。
+一个能实时感知 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。
 
 > 支持 Windows 11 和 macOS。需要 Node.js 和 Claude Code。
 
 ## 功能特性
 
+### 动画与交互
 - **实时状态感知** — 通过 Claude Code hook 系统自动驱动动画
 - **12 种动画状态** — 待机、思考、打字、建造、杂耍、指挥、报错、开心、通知、扫地、搬运、睡觉
 - **眼球追踪** — 待机状态下 Clawd 跟随鼠标，身体微倾，影子拉伸
 - **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画
-- **点击穿透** — 透明区域的点击直接穿透到下方窗口，只有角色本体可交互
 - **点击反应** — 双击戳戳，连点 4 下东张西望
 - **任意状态拖拽** — 随时抓起 Clawd（Pointer Capture 防止快甩丢失），松手恢复当前动画
+- **极简模式** — 拖到右边缘或右键"极简模式"；Clawd 藏在屏幕边缘，悬停探头招手，通知/完成有迷你动画，抛物线跳跃过渡
+
+### 权限审批气泡
+
+<img src="assets/screenshot-permission-bubble.png" width="320" alt="权限气泡">
+
+- **桌面端权限审批** — Claude Code 请求工具权限时，Clawd 弹出浮动卡片，无需切回终端
+- **允许 / 拒绝 / 建议** — 一键批准、拒绝，或应用权限规则（如"始终允许 Read"）
+- **堆叠布局** — 多个权限请求从屏幕右下角向上堆叠
+- **自动关闭** — 如果你先在终端回答了，气泡自动消失
+
+### 会话智能
+
+<img src="assets/screenshot-context-menu.png" width="420" alt="右键菜单与会话列表">
+
 - **多会话追踪** — 多个 Claude Code 会话自动解析到最高优先级状态
 - **子代理感知** — 1 个子代理杂耍，2 个以上指挥
-- **位置记忆** — 重启后 Clawd 回到上次的位置
+- **终端聚焦** — 右键 Clawd → 会话菜单，一键跳转到对应会话的终端窗口；通知/注意状态自动聚焦相关终端
+- **进程存活检测** — 检测已崩溃/退出的 Claude Code 进程，10 秒内清理孤儿会话
+- **启动恢复** — 如果 Clawd 在 Claude Code 运行期间重启，会保持清醒等待 hook，而不是直接睡觉
+
+### 系统
+- **点击穿透** — 透明区域的点击直接穿透到下方窗口，只有角色本体可交互
+- **位置记忆** — 重启后 Clawd 回到上次的位置（包括极简模式）
 - **单实例锁** — 防止重复启动
-- **极简模式** — 拖到右边缘或右键"极简模式"；Clawd 藏在屏幕边缘，悬停探头招手，通知/完成有迷你动画，抛物线跳跃过渡
-- **系统托盘** — 调大小（S/M/L）、免打扰模式、开机自启
+- **自动启动** — Claude Code 的 SessionStart hook 可在 Clawd 未运行时自动拉起
+- **免打扰模式** — 右键或托盘菜单进入休眠，所有 hook 事件静默，直到手动唤醒
+- **系统托盘** — 调大小（S/M/L）、免打扰、语言切换、开机自启、检查更新
+- **国际化** — 支持英文和中文界面，右键菜单或托盘切换
+- **自动更新** — 检查 GitHub release；Windows 退出时安装 NSIS 更新包，macOS 打开 release 页面
 
 ## 状态映射
 
@@ -82,11 +106,18 @@ npm start
 ## 工作原理
 
 ```
-Claude Code 触发 hook 事件
-  → hooks/clawd-hook.js（从 stdin 读取事件名 + session_id）
-  → HTTP POST 到 127.0.0.1:23333
-  → main.js 状态机（多会话追踪 + 优先级 + 最小显示时长）
-  → IPC 到 renderer.js（SVG 预加载 + 交叉淡入切换）
+状态同步（command hook，非阻塞）：
+  Claude Code 事件
+    → hooks/clawd-hook.js（从 stdin 读取事件名 + session_id）
+    → HTTP POST 到 127.0.0.1:23333
+    → main.js 状态机（多会话 + 优先级 + 最小显示时长）
+    → IPC 到 renderer.js（SVG 预加载 + 交叉淡入切换）
+
+权限审批（HTTP hook，阻塞）：
+  Claude Code PermissionRequest
+    → HTTP POST 到 127.0.0.1:23333/permission
+    → 气泡窗口（bubble.html）显示允许 / 拒绝 / 建议按钮
+    → 用户点击 → HTTP 响应 → Claude Code 继续执行
 ```
 
 Clawd 以透明无边框、始终置顶、不可聚焦的 Electron 窗口运行，透明区域点击穿透到下方窗口。永远不会抢焦点或打断你的工作流。
@@ -110,16 +141,21 @@ bash test-mini.sh
 
 ```
 src/
-  main.js        # Electron 主进程：状态机、HTTP 服务、窗口管理、系统托盘
-  renderer.js    # 渲染进程：拖拽、点击、SVG 切换、眼球跟踪
-  preload.js     # IPC 桥接（contextBridge）
-  index.html     # 页面结构
+  main.js            # Electron 主进程：状态机、HTTP 服务、窗口管理、托盘、光标轮询
+  renderer.js        # 渲染进程：拖拽、点击反应、SVG 切换、眼球跟踪
+  preload.js         # IPC 桥接（contextBridge）
+  bubble.html        # 权限气泡 UI（工具名、命令预览、允许/拒绝/建议按钮）
+  preload-bubble.js  # 气泡窗口 IPC 桥接
+  index.html         # 主窗口页面结构
 hooks/
-  clawd-hook.js  # Claude Code hook 脚本（零依赖，1 秒超时）
-  install.js     # 安全注册 hook 到 ~/.claude/settings.json
+  clawd-hook.js      # Claude Code command hook（零依赖，<1s，事件 → 状态 → HTTP POST）
+  install.js         # 安全注册 hook 到 ~/.claude/settings.json（追加不覆盖）
+  auto-start.js      # SessionStart hook：Clawd 未运行时自动拉起（<500ms）
+extensions/
+  vscode/            # VS Code 扩展，通过 URI 协议聚焦终端 tab
 assets/
-  svg/           # 39 个像素风 SVG 动画（含 8 个极简模式，CSS 关键帧驱动）
-  gif/           # 录制的 GIF（用于文档展示）
+  svg/               # 40 个像素风 SVG 动画（含 8 个极简模式，CSS 关键帧驱动）
+  gif/               # 录制的 GIF（用于文档展示）
 ```
 
 ## 致谢
