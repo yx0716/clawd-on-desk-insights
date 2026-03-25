@@ -1581,16 +1581,23 @@ function setShowTray(val) {
   savePrefs();
 }
 
+function applyDockVisibility() {
+  if (!isMac) return;
+  if (showDock) {
+    app.setActivationPolicy("regular");
+    if (app.dock) app.dock.show();
+  } else {
+    app.setActivationPolicy("accessory");
+    if (app.dock) app.dock.hide();
+  }
+}
+
 function setShowDock(val) {
   if (!isMac || !app.dock) return;
   // Prevent disabling both Dock and Menu Bar — app would become unquittable
   if (!val && !showTray) return;
   showDock = val;
-  if (showDock) {
-    app.dock.show();
-  } else {
-    app.dock.hide();
-  }
+  applyDockVisibility();
   buildTrayMenu();
   buildContextMenu();
   savePrefs();
@@ -1912,8 +1919,8 @@ function createWindow() {
   }
   if (prefs && typeof prefs.autoStartWithClaude === "boolean") autoStartWithClaude = prefs.autoStartWithClaude;
   // macOS: apply dock visibility (default hidden)
-  if (isMac && app.dock) {
-    if (showDock) app.dock.show(); else app.dock.hide();
+  if (isMac) {
+    applyDockVisibility();
   }
   const size = SIZES[currentSize];
 
@@ -1967,6 +1974,15 @@ function createWindow() {
   }
   win.loadFile(path.join(__dirname, "index.html"));
   win.showInactive();
+
+  // macOS: startup-time dock state can be overridden during app/window activation.
+  // Re-apply once on next tick so persisted showDock reliably takes effect.
+  if (isMac) {
+    setTimeout(() => {
+      if (!win || win.isDestroyed()) return;
+      applyDockVisibility();
+    }, 0);
+  }
 
   buildContextMenu();
   if (!isMac || showTray) createTray();
