@@ -150,10 +150,6 @@ const SVG_IDLE_FOLLOW = "clawd-idle-follow.svg";
 const SVG_IDLE_LOOK = "clawd-idle-look.svg";
 const SVG_IDLE_LIVING = "clawd-idle-living.svg";
 
-function shouldTrackEyes(state, svg) {
-  return (state === "idle" && svg === SVG_IDLE_FOLLOW) || state === "mini-idle";
-}
-
 // ── State → SVG mapping ──
 const STATE_SVGS = {
   idle: [SVG_IDLE_FOLLOW, SVG_IDLE_LIVING],
@@ -276,7 +272,6 @@ let idlePaused = false;
 let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
-let eyeTrackingReady = false;
 
 // ── Mini Mode ──
 const MINI_OFFSET_RATIO = 0.486;
@@ -398,7 +393,11 @@ function applyState(state, svgOverride) {
   const svgs = STATE_SVGS[state] || STATE_SVGS.idle;
   const svg = svgOverride || svgs[Math.floor(Math.random() * svgs.length)];
   currentSvg = svg;
-  eyeTrackingReady = false;
+
+  // Force eye resend after SVG load completes (~300ms)
+  if (state === "idle" || state === "mini-idle") {
+    setTimeout(() => { forceEyeResend = true; }, 300);
+  }
 
   // Update hit box based on SVG
   if (svg === "clawd-sleeping.svg" || svg === "clawd-collapse-sleep.svg") {
@@ -601,7 +600,6 @@ function startMainTick() {
 
     const trackEyesNow = (idleNow && currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
     if (!trackEyesNow) return;
-    if (!eyeTrackingReady) return;
     if (!moved && !forceEyeResend) return;
 
     // ── Eye position calculation (shared by idle and mini-idle) ──
@@ -674,7 +672,7 @@ function wakeFromDoze() {
   // After eye-opening transition, switch to idle
   setTimeout(() => {
     if (currentState === "dozing") {
-      applyState("idle");
+      applyState("idle", SVG_IDLE_FOLLOW);
     }
   }, 350);
 }
@@ -821,6 +819,7 @@ function getWorkingSvg() {
 }
 
 function getSvgOverride(state) {
+  if (state === "idle") return SVG_IDLE_FOLLOW;
   if (state === "working") return getWorkingSvg();
   if (state === "juggling") return getJugglingSvg();
   return null;
@@ -1279,14 +1278,31 @@ function guardAlwaysOnTop(w) {
   if (isMac) return;
   // Event-driven: catches explicit TOPMOST stripping (Alt key, games, etc.)
   w.on("always-on-top-changed", (_, isOnTop) => {
-    if (!isOnTop && w && !w.isDestroyed()) w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    if (!isOnTop && w && !w.isDestroyed()) {
+      w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+      // Pet window only: reset mouse state after z-order recovery
+      if (w === win && !dragLocked) {
+        mouseOverPet = false;
+        win.setIgnoreMouseEvents(true);
+        forceEyeResend = true;
+      }
+    }
   });
 }
 
 function startTopmostWatchdog() {
   if (isMac || topmostWatchdog) return;
   topmostWatchdog = setInterval(() => {
-    if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+      // DWM z-order recovery may invalidate setIgnoreMouseEvents state.
+      // Reset so the next 50ms tick re-evaluates cursor position from scratch.
+      if (!dragLocked) {
+        mouseOverPet = false;
+        win.setIgnoreMouseEvents(true);
+        forceEyeResend = true;
+      }
+    }
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed() && perm.bubble.isVisible()) perm.bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     }
@@ -1884,13 +1900,7 @@ function createWindow() {
     // Skip re-send during mini transition (drag-end fires next and will set the right state)
     if (miniTransitioning) return;
     // Re-send current state to renderer without resetting stateChangedAt or timers.
-    eyeTrackingReady = false;
     sendToRenderer("state-change", currentState, currentSvg);
-  });
-  ipcMain.on("eye-tracking-ready", () => {
-    if (!shouldTrackEyes(currentState, currentSvg)) return;
-    eyeTrackingReady = true;
-    forceEyeResend = true;
   });
 
   ipcMain.on("drag-lock", (event, locked) => {
@@ -2005,7 +2015,6 @@ function createWindow() {
     console.error("Renderer crashed:", details.reason);
     dragLocked = false;
     idlePaused = false;
-    eyeTrackingReady = false;
     mouseOverPet = false;
     win.setIgnoreMouseEvents(true);
     win.webContents.reload();

@@ -43,12 +43,12 @@ document.addEventListener("pointermove", (e) => {
     }
 
     if (!dragRAF) {
-      dragRAF = requestAnimationFrame(() => {
+      dragRAF = setTimeout(() => {
         window.electronAPI.moveWindowBy(pendingDx, pendingDy);
         pendingDx = 0;
         pendingDy = 0;
         dragRAF = null;
-      });
+      }, 0);
     }
   }
 });
@@ -60,7 +60,7 @@ function stopDrag() {
   container.classList.remove("dragging");
   // Flush pending delta before releasing
   if (pendingDx !== 0 || pendingDy !== 0) {
-    if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
+    if (dragRAF) { clearTimeout(dragRAF); dragRAF = null; }
     window.electronAPI.moveWindowBy(pendingDx, pendingDy);
     pendingDx = 0; pendingDy = 0;
   }
@@ -397,7 +397,6 @@ function attachEyeTracking(objectEl) {
         bodyTarget = svgDoc.getElementById("body-js");
         shadowTarget = svgDoc.getElementById("shadow-js");
         applyEyeMove(lastEyeDx, lastEyeDy);
-        window.electronAPI.eyeTrackingReady();
         return;
       }
     } catch (e) {
@@ -426,6 +425,14 @@ function detachEyeTracking() {
 window.electronAPI.onEyeMove((dx, dy) => {
   lastEyeDx = dx;
   lastEyeDy = dy;
+  // Detect stale eye targets (e.g. after DWM z-order recovery invalidates contentDocument)
+  if (eyeTarget && !eyeTarget.ownerDocument?.defaultView) {
+    eyeTarget = null;
+    bodyTarget = null;
+    shadowTarget = null;
+    if (clawdEl && clawdEl.isConnected) attachEyeTracking(clawdEl);
+    return;
+  }
   applyEyeMove(dx, dy);
 });
 
