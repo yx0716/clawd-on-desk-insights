@@ -1,25 +1,20 @@
 #!/usr/bin/env node
-// Clawd Desktop Pet — Claude Code Hook Script
+// Clawd Desktop Pet — Copilot CLI Hook Script
 // Zero dependencies, fast cold start, 1s timeout
-// Usage: node clawd-hook.js <event_name>
-// Reads stdin JSON from Claude Code for session_id
+// Usage: node copilot-hook.js <event_name>
+// Reads stdin JSON from Copilot CLI for sessionId (camelCase)
 
 const EVENT_TO_STATE = {
-  SessionStart: "idle",
-  SessionEnd: "sleeping",
-  UserPromptSubmit: "thinking",
-  PreToolUse: "working",
-  PostToolUse: "working",
-  PostToolUseFailure: "error",
-  Stop: "attention",
-  SubagentStart: "juggling",
-  SubagentStop: "working",
-  PreCompact: "sweeping",
-  PostCompact: "attention",
-  Notification: "notification",
-  // PermissionRequest is handled by HTTP hook (blocking) — not command hook
-  Elicitation: "notification",
-  WorktreeCreate: "carrying",
+  sessionStart: "idle",
+  sessionEnd: "sleeping",
+  userPromptSubmitted: "thinking",
+  preToolUse: "working",
+  postToolUse: "working",
+  errorOccurred: "error",
+  agentStop: "attention",
+  subagentStart: "juggling",
+  subagentStop: "working",
+  preCompact: "sweeping",
 };
 
 const event = process.argv[2];
@@ -27,13 +22,7 @@ const state = EVENT_TO_STATE[event];
 if (!state) process.exit(0);
 
 // Walk the process tree to find the terminal app PID.
-// Claude Code spawns hooks through multiple transient layers (workers, shells).
-// We walk up until we find a known terminal app, then let focusTerminalWindow
-// walk the remaining hops (it has its own parent walk with MainWindowHandle check).
-// Runs synchronously during stdin buffering (~100ms per level × 5-6 levels).
-// Known terminal/launcher apps — outermost match becomes the focus target.
-// focusTerminalWindow() walks further up via MainWindowHandle if needed,
-// so including launchers (e.g. antigravity) that host terminals is correct.
+// Shared logic with clawd-hook.js — duplicated because hook scripts must be zero-dependency.
 const TERMINAL_NAMES_WIN = new Set([
   "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
   "code.exe", "alacritty.exe", "wezterm-gui.exe", "mintty.exe",
@@ -48,18 +37,17 @@ const TERMINAL_NAMES_MAC = new Set([
 const SYSTEM_BOUNDARY_WIN = new Set(["explorer.exe", "services.exe", "winlogon.exe", "svchost.exe"]);
 const SYSTEM_BOUNDARY_MAC = new Set(["launchd", "init", "systemd"]);
 
-// Editor detection — process name → URI scheme name (for VS Code/Cursor tab focus)
 const EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
 const EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
 
-// Claude Code process detection — for liveness check in main.js
-const CLAUDE_NAMES_WIN = new Set(["claude.exe"]);
-const CLAUDE_NAMES_MAC = new Set(["claude"]);
+// Copilot CLI process detection
+const COPILOT_NAMES_WIN = new Set(["copilot.exe"]);
+const COPILOT_NAMES_MAC = new Set(["copilot"]);
 
 let _stablePid = null;
-let _detectedEditor = null; // "code" or "cursor" — for URI scheme terminal tab focus
-let _claudePid = null;       // Claude Code process PID — for crash/orphan detection
-let _pidChain = [];          // all PIDs visited during tree walk
+let _detectedEditor = null;
+let _copilotPid = null;
+let _pidChain = [];
 
 function getStablePid() {
   if (_stablePid) return _stablePid;
@@ -73,8 +61,8 @@ function getStablePid() {
   let terminalPid = null;
   _pidChain = [];
   _detectedEditor = null;
-  _claudePid = null;
-  const claudeNames = isWin ? CLAUDE_NAMES_WIN : CLAUDE_NAMES_MAC;
+  _copilotPid = null;
+  const copilotNames = isWin ? COPILOT_NAMES_WIN : COPILOT_NAMES_MAC;
   for (let i = 0; i < 8; i++) {
     let name, parentPid;
     try {
@@ -93,7 +81,6 @@ function getStablePid() {
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         name = require("path").basename(commOut).toLowerCase();
-        // macOS: VS Code binary is "Electron" — check full comm path for editor detection
         if (!_detectedEditor) {
           const fullLower = commOut.toLowerCase();
           if (fullLower.includes("visual studio code")) _detectedEditor = "code";
@@ -104,17 +91,17 @@ function getStablePid() {
     } catch { break; }
     _pidChain.push(pid);
     if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
-    // Claude Code detection: direct binary match, or node.exe running claude-code
-    if (!_claudePid) {
-      if (claudeNames.has(name)) {
-        _claudePid = pid;
+    // Copilot CLI detection: direct binary match, or node.exe running @github/copilot
+    if (!_copilotPid) {
+      if (copilotNames.has(name)) {
+        _copilotPid = pid;
       } else if (name === "node.exe" || name === "node") {
         try {
           const cmdOut = isWin
             ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
                 { encoding: "utf8", timeout: 500, windowsHide: true })
             : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
-          if (cmdOut.includes("claude-code") || cmdOut.includes("@anthropic-ai")) _claudePid = pid;
+          if (cmdOut.includes("@github/copilot")) _copilotPid = pid;
         } catch {}
       }
     }
@@ -124,15 +111,14 @@ function getStablePid() {
     if (!parentPid || parentPid === pid || parentPid <= 1) break;
     pid = parentPid;
   }
-  // Prefer outermost known terminal; fall back to highest non-system PID
   _stablePid = terminalPid || lastGoodPid;
   return _stablePid;
 }
 
-// Pre-resolve on SessionStart (runs during stdin buffering, not after)
-if (event === "SessionStart") getStablePid();
+// Pre-resolve on sessionStart
+if (event === "sessionStart") getStablePid();
 
-// Read stdin for session_id (Claude Code pipes JSON with session metadata)
+// Read stdin for sessionId (Copilot CLI uses camelCase field names)
 const chunks = [];
 let sent = false;
 
@@ -142,14 +128,13 @@ process.stdin.on("end", () => {
   let cwd = "";
   try {
     const payload = JSON.parse(Buffer.concat(chunks).toString());
-    sessionId = payload.session_id || "default";
+    // Copilot CLI uses camelCase: sessionId, not session_id
+    sessionId = payload.sessionId || payload.session_id || "default";
     cwd = payload.cwd || "";
   } catch {}
   send(sessionId, cwd);
 });
 
-// Safety: if stdin doesn't end in 400ms, send with default session
-// (200ms was too aggressive on slow machines / AV scanning)
 setTimeout(() => send("default", ""), 400);
 
 function send(sessionId, cwd) {
@@ -157,16 +142,11 @@ function send(sessionId, cwd) {
   sent = true;
 
   const body = { state, session_id: sessionId, event };
-  body.agent_id = "claude-code";
+  body.agent_id = "copilot-cli";
   if (cwd) body.cwd = cwd;
-  // Always walk to stable terminal PID — process.ppid is an ephemeral shell
-  // that dies when the hook exits, so it's useless for later focus calls
   body.source_pid = getStablePid();
   if (_detectedEditor) body.editor = _detectedEditor;
-  if (_claudePid) {
-    body.agent_pid = _claudePid;
-    body.claude_pid = _claudePid; // backward compat with older Clawd versions
-  }
+  if (_copilotPid) body.agent_pid = _copilotPid;
   if (_pidChain.length) body.pid_chain = _pidChain;
 
   const data = JSON.stringify(body);
@@ -180,7 +160,7 @@ function send(sessionId, cwd) {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(data),
       },
-      timeout: 500,  // 400ms stdin + 500ms HTTP = 900ms < 1000ms Claude Code budget
+      timeout: 500,
     },
     () => process.exit(0)
   );

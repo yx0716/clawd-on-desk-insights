@@ -211,11 +211,12 @@ const IDLE_LOOK_DURATION = 10000;  // idle-look CSS loop is 10s
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
 
 // ── Session tracking ──
-const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd, editor, pidChain, claudePid }
+const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd, editor, pidChain, agentPid, agentId }
 const SESSION_STALE_MS = 300000; // 5 min cleanup
 const WORKING_STALE_MS = 30000;  // 30s: working/thinking with no new event → decay to idle
 let startupRecoveryActive = false; // suppress sleep sequence while waiting for hooks after restart
 let startupRecoveryTimer = null;   // hard timeout to clear startupRecoveryActive
+let _codexMonitor = null;          // Codex CLI JSONL log polling instance
 const STARTUP_RECOVERY_MAX_MS = 300000; // 5 min: give up waiting for hooks
 const STATE_PRIORITY = {
   error: 8, notification: 7, sweeping: 6, attention: 5,
@@ -693,8 +694,8 @@ function wakeFromDoze() {
 // ── Session management ──
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, claudePid) {
-  // Claude Code is communicating — no need for startup recovery
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId) {
+  // Agent is communicating — no need for startup recovery
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
@@ -714,9 +715,10 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const srcCwd = cwd || (existing && existing.cwd) || "";
   const srcEditor = editor || (existing && existing.editor) || null;
   const srcPidChain = (pidChain && pidChain.length) ? pidChain : (existing && existing.pidChain) || null;
-  const srcClaudePid = claudePid || (existing && existing.claudePid) || null;
+  const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
+  const srcAgentId = agentId || (existing && existing.agentId) || null;
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, claudePid: srcClaudePid };
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId };
 
   if (event === "SessionEnd") {
     sessions.delete(sessionId);
@@ -732,14 +734,14 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
       if (cwd) existing.cwd = cwd;
       if (editor) existing.editor = editor;
       if (pidChain && pidChain.length) existing.pidChain = pidChain;
-      if (claudePid) existing.claudePid = claudePid;
+      if (agentPid) existing.agentPid = agentPid;
     } else {
       sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), ...base });
     }
   } else {
     // Preserve juggling: subagent's own tool use (PreToolUse/PostToolUse)
     // shouldn't override juggling — only SubagentStop should end it.
-    if (existing && existing.state === "juggling" && state === "working" && event !== "SubagentStop") {
+    if (existing && existing.state === "juggling" && state === "working" && event !== "SubagentStop" && event !== "subagentStop") {
       existing.updatedAt = Date.now();
     } else {
       sessions.set(sessionId, { state, updatedAt: Date.now(), ...base });
@@ -775,8 +777,8 @@ function cleanStaleSessions() {
   for (const [id, s] of sessions) {
     const age = now - s.updatedAt;
 
-    // Claude Code process dead → orphan session, delete immediately regardless of age
-    if (s.claudePid && !isProcessAlive(s.claudePid)) {
+    // Agent process dead → orphan session, delete immediately regardless of age
+    if (s.agentPid && !isProcessAlive(s.agentPid)) {
       sessions.delete(id); changed = true;
       continue;
     }
@@ -813,7 +815,7 @@ function cleanStaleSessions() {
 
   // Startup recovery: recheck if Claude Code is still running
   if (startupRecoveryActive && sessions.size === 0) {
-    detectRunningClaudeProcesses((found) => {
+    detectRunningAgentProcesses((found) => {
       if (!found) {
         startupRecoveryActive = false;
         if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
@@ -822,24 +824,22 @@ function cleanStaleSessions() {
   }
 }
 
-// Detect running Claude Code processes (async, for startup recovery).
-// Matches both native claude binary and node.exe running claude-code.
+// Detect running agent processes (async, for startup recovery).
+// Matches Claude Code (native + node), Codex CLI, and Copilot CLI.
 let _detectInFlight = false;
-function detectRunningClaudeProcesses(callback) {
+function detectRunningAgentProcesses(callback) {
   if (_detectInFlight) return;
   _detectInFlight = true;
   const done = (result) => { _detectInFlight = false; callback(result); };
   const { exec } = require("child_process");
   if (process.platform === "win32") {
-    // Restrict to node.exe/claude.exe to avoid matching wmic's own command line
     exec(
-      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\'" get ProcessId /format:csv',
+      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\' or Name=\'codex.exe\' or Name=\'copilot.exe\'" get ProcessId /format:csv',
       { encoding: "utf8", timeout: 5000, windowsHide: true },
       (err, stdout) => done(!err && /\d+/.test(stdout))
     );
   } else {
-    // pgrep -f matches full command line (catches node /path/to/claude-code)
-    exec("pgrep -f claude-code", { timeout: 3000 },
+    exec("pgrep -f 'claude-code|codex|copilot'", { timeout: 3000 },
       (err) => done(!err)
     );
   }
@@ -1221,7 +1221,10 @@ function startHttpServer() {
           const cwd = typeof data.cwd === "string" ? data.cwd : "";
           const editor = (data.editor === "code" || data.editor === "cursor") ? data.editor : null;
           const pidChain = Array.isArray(data.pid_chain) ? data.pid_chain.filter(n => Number.isFinite(n) && n > 0) : null;
-          const claudePid = Number.isFinite(data.claude_pid) && data.claude_pid > 0 ? Math.floor(data.claude_pid) : null;
+          // agent_pid (new) takes precedence over claude_pid (backward compat)
+          const rawAgentPid = data.agent_pid ?? data.claude_pid;
+          const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
+          const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
           if (STATE_SVGS[state]) {
             const sid = session_id || "default";
             // mini-* states are internal — only allow via direct SVG override (test scripts)
@@ -1247,7 +1250,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               setState(state, safeSvg);
             } else {
-              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, claudePid);
+              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId);
             }
             res.writeHead(200);
             res.end("ok");
@@ -2115,7 +2118,7 @@ function createWindow() {
       // then detect running Claude Code processes → suppress sleep sequence
       setTimeout(() => {
         if (sessions.size > 0 || doNotDisturb) return; // hook arrived during wait
-        detectRunningClaudeProcesses((found) => {
+        detectRunningAgentProcesses((found) => {
           if (found && sessions.size === 0 && !doNotDisturb) {
             startupRecoveryActive = true;
             mouseStillSince = Date.now();
@@ -2575,6 +2578,18 @@ if (!gotTheLock) {
       console.warn("Clawd: failed to auto-register hooks:", err.message);
     }
 
+    // Start Codex CLI JSONL log monitor
+    try {
+      const CodexLogMonitor = require("../agents/codex-log-monitor");
+      const codexAgent = require("../agents/codex");
+      _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
+        updateSession(sid, state, event, extra.sourcePid, extra.cwd, null, null, extra.agentPid, "codex");
+      });
+      _codexMonitor.start();
+    } catch (err) {
+      console.warn("Clawd: Codex log monitor not started:", err.message);
+    }
+
     // Auto-install VS Code/Cursor terminal-focus extension
     try { installTerminalFocusExtension(); } catch (err) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
@@ -2597,6 +2612,7 @@ if (!gotTheLock) {
     if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
     if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     if (startupRecoveryTimer) clearTimeout(startupRecoveryTimer);
+    if (_codexMonitor) _codexMonitor.stop();
     stopStaleCleanup();
     stopTopmostWatchdog();
     killFocusHelper();
