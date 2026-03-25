@@ -52,8 +52,13 @@ const SYSTEM_BOUNDARY_MAC = new Set(["launchd", "init", "systemd"]);
 const EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
 const EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
 
+// Claude Code process detection — for liveness check in main.js
+const CLAUDE_NAMES_WIN = new Set(["claude.exe"]);
+const CLAUDE_NAMES_MAC = new Set(["claude"]);
+
 let _stablePid = null;
 let _detectedEditor = null; // "code" or "cursor" — for URI scheme terminal tab focus
+let _claudePid = null;       // Claude Code process PID — for crash/orphan detection
 let _pidChain = [];          // all PIDs visited during tree walk
 
 function getStablePid() {
@@ -68,6 +73,8 @@ function getStablePid() {
   let terminalPid = null;
   _pidChain = [];
   _detectedEditor = null;
+  _claudePid = null;
+  const claudeNames = isWin ? CLAUDE_NAMES_WIN : CLAUDE_NAMES_MAC;
   for (let i = 0; i < 8; i++) {
     let name, parentPid;
     try {
@@ -97,6 +104,20 @@ function getStablePid() {
     } catch { break; }
     _pidChain.push(pid);
     if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
+    // Claude Code detection: direct binary match, or node.exe running claude-code
+    if (!_claudePid) {
+      if (claudeNames.has(name)) {
+        _claudePid = pid;
+      } else if (name === "node.exe" || name === "node") {
+        try {
+          const cmdOut = isWin
+            ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
+                { encoding: "utf8", timeout: 1500, windowsHide: true })
+            : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 1000 });
+          if (cmdOut.includes("claude-code") || cmdOut.includes("@anthropic-ai")) _claudePid = pid;
+        } catch {}
+      }
+    }
     if (systemBoundary.has(name)) break;
     if (terminalNames.has(name)) terminalPid = pid;
     lastGoodPid = pid;
@@ -141,6 +162,7 @@ function send(sessionId, cwd) {
   // that dies when the hook exits, so it's useless for later focus calls
   body.source_pid = getStablePid();
   if (_detectedEditor) body.editor = _detectedEditor;
+  if (_claudePid) body.claude_pid = _claudePid;
   if (_pidChain.length) body.pid_chain = _pidChain;
 
   const data = JSON.stringify(body);

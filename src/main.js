@@ -211,9 +211,10 @@ const IDLE_LOOK_DURATION = 10000;  // idle-look CSS loop is 10s
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
 
 // ── Session tracking ──
-const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd, editor, pidChain }
+const sessions = new Map(); // session_id → { state, updatedAt, sourcePid, cwd, editor, pidChain, claudePid }
 const SESSION_STALE_MS = 300000; // 5 min cleanup
 const WORKING_STALE_MS = 30000;  // 30s: working/thinking with no new event → decay to idle
+let startupRecoveryActive = false; // suppress sleep sequence while waiting for hooks after restart
 const STATE_PRIORITY = {
   error: 8, notification: 7, sweeping: 6, attention: 5,
   carrying: 4, juggling: 4, working: 3, thinking: 2, idle: 1, sleeping: 0,
@@ -569,6 +570,12 @@ function startMainTick() {
 
       const elapsed = Date.now() - mouseStillSince;
 
+      // Startup recovery: Claude Code is running but no hook yet — stay awake
+      // Only suppress sleep sequence, don't skip eye tracking below
+      if (startupRecoveryActive) {
+        mouseStillSince = Date.now();
+      }
+
       // 60s no mouse movement → yawning → dozing
       if (!hasTriggeredYawn && elapsed >= MOUSE_SLEEP_TIMEOUT) {
         hasTriggeredYawn = true;
@@ -684,7 +691,10 @@ function wakeFromDoze() {
 // ── Session management ──
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain) {
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, claudePid) {
+  // Hook arrived → cancel startup recovery (Claude Code is communicating)
+  startupRecoveryActive = false;
+
   // PermissionRequest command hook: show notification animation only, don't mutate session.
   // The HTTP hook runs in parallel and handles the actual decision. If we set session to idle
   // here, it can overwrite a newer "working" state after the user approves.
@@ -699,8 +709,9 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const srcCwd = cwd || (existing && existing.cwd) || "";
   const srcEditor = editor || (existing && existing.editor) || null;
   const srcPidChain = (pidChain && pidChain.length) ? pidChain : (existing && existing.pidChain) || null;
+  const srcClaudePid = claudePid || (existing && existing.claudePid) || null;
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain };
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, claudePid: srcClaudePid };
 
   if (event === "SessionEnd") {
     sessions.delete(sessionId);
@@ -716,6 +727,7 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
       if (cwd) existing.cwd = cwd;
       if (editor) existing.editor = editor;
       if (pidChain && pidChain.length) existing.pidChain = pidChain;
+      if (claudePid) existing.claudePid = claudePid;
     } else {
       sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), ...base });
     }
@@ -758,6 +770,12 @@ function cleanStaleSessions() {
   for (const [id, s] of sessions) {
     const age = now - s.updatedAt;
 
+    // Claude Code process dead → orphan session, delete immediately regardless of age
+    if (s.claudePid && !isProcessAlive(s.claudePid)) {
+      sessions.delete(id); changed = true;
+      continue;
+    }
+
     if (age > SESSION_STALE_MS) {
       // Very stale (5 min): PID check or delete
       if (s.sourcePid) {
@@ -786,6 +804,33 @@ function cleanStaleSessions() {
   } else if (changed) {
     const resolved = resolveDisplayState();
     setState(resolved, getSvgOverride(resolved));
+  }
+
+  // Startup recovery: recheck if Claude Code is still running
+  if (startupRecoveryActive && sessions.size === 0) {
+    detectRunningClaudeProcesses((found) => {
+      if (!found) startupRecoveryActive = false;
+    });
+  }
+}
+
+// Detect running Claude Code processes (async, for startup recovery)
+// Checks both native claude binary and node.exe running claude-code
+function detectRunningClaudeProcesses(callback) {
+  const { exec } = require("child_process");
+  if (process.platform === "win32") {
+    // wmic CommandLine search catches both claude.exe and node.exe running claude-code
+    // Restrict to node.exe/claude.exe to avoid matching wmic's own command line
+    exec(
+      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\'" get ProcessId /format:csv',
+      { encoding: "utf8", timeout: 5000, windowsHide: true },
+      (err, stdout) => callback(!err && /\d+/.test(stdout))
+    );
+  } else {
+    // pgrep -f matches full command line (catches node /path/to/claude-code)
+    exec("pgrep -f claude-code", { timeout: 3000 },
+      (err) => callback(!err)
+    );
   }
 }
 
@@ -1165,6 +1210,7 @@ function startHttpServer() {
           const cwd = typeof data.cwd === "string" ? data.cwd : "";
           const editor = (data.editor === "code" || data.editor === "cursor") ? data.editor : null;
           const pidChain = Array.isArray(data.pid_chain) ? data.pid_chain.filter(n => Number.isFinite(n) && n > 0) : null;
+          const claudePid = Number.isFinite(data.claude_pid) && data.claude_pid > 0 ? Math.floor(data.claude_pid) : null;
           if (STATE_SVGS[state]) {
             const sid = session_id || "default";
             // mini-* states are internal — only allow via direct SVG override (test scripts)
@@ -1190,7 +1236,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               setState(state, safeSvg);
             } else {
-              updateSession(sid, state, event, source_pid, cwd, editor, pidChain);
+              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, claudePid);
             }
             res.writeHead(200);
             res.end("ok");
@@ -2038,6 +2084,17 @@ function createWindow() {
       applyState(resolved, getSvgOverride(resolved));
     } else {
       applyState("idle", SVG_IDLE_FOLLOW);
+      // Startup recovery: delay 5s to let HWND/z-order/drag systems stabilize,
+      // then detect running Claude Code processes → suppress sleep sequence
+      setTimeout(() => {
+        if (sessions.size > 0 || doNotDisturb) return; // hook arrived during wait
+        detectRunningClaudeProcesses((found) => {
+          if (found && sessions.size === 0 && !doNotDisturb) {
+            startupRecoveryActive = true;
+            mouseStillSince = Date.now();
+          }
+        });
+      }, 5000);
     }
   });
 
