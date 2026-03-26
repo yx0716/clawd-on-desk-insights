@@ -1,125 +1,18 @@
-// --- Pointer-based drag + click detection (with Pointer Capture for safety) ---
+// --- Render window: pure view (SVG rendering + eye tracking) ---
+// All input (pointer/drag/click) is handled by the hit window (hit-renderer.js).
+// Reactions are triggered via IPC from main (relayed from hit window).
+
 const container = document.getElementById("pet-container");
-let isDragging = false;
-let didDrag = false; // true if pointer moved > threshold during this press
-let lastScreenX, lastScreenY;
-let mouseDownX, mouseDownY;
-let pendingDx = 0, pendingDy = 0;
-let dragRAF = null;
-const DRAG_THRESHOLD = 3; // px — less than this = click, more = drag
 
-container.addEventListener("pointerdown", (e) => {
-  if (e.button === 0) {
-    if (miniMode) { didDrag = false; return; }
-    container.setPointerCapture(e.pointerId);  // Guarantees pointerup even if pointer leaves window
-    isDragging = true;
-    didDrag = false;
-    lastScreenX = e.screenX;
-    lastScreenY = e.screenY;
-    mouseDownX = e.clientX;
-    mouseDownY = e.clientY;
-    pendingDx = 0;
-    pendingDy = 0;
-    window.electronAPI.dragLock(true);
-    container.classList.add("dragging");
-  }
-});
-
-document.addEventListener("pointermove", (e) => {
-  if (isDragging) {
-    pendingDx += e.screenX - lastScreenX;
-    pendingDy += e.screenY - lastScreenY;
-    lastScreenX = e.screenX;
-    lastScreenY = e.screenY;
-
-    // Mark as drag if moved beyond threshold
-    if (!didDrag) {
-      const totalDx = e.clientX - mouseDownX;
-      const totalDy = e.clientY - mouseDownY;
-      if (Math.abs(totalDx) > DRAG_THRESHOLD || Math.abs(totalDy) > DRAG_THRESHOLD) {
-        didDrag = true;
-        startDragReaction();
-      }
-    }
-
-    if (!dragRAF) {
-      dragRAF = setTimeout(() => {
-        window.electronAPI.moveWindowBy(pendingDx, pendingDy);
-        pendingDx = 0;
-        pendingDy = 0;
-        dragRAF = null;
-      }, 0);
-    }
-  }
-});
-
-function stopDrag() {
-  if (!isDragging) return;
-  isDragging = false;
-  window.electronAPI.dragLock(false);
-  container.classList.remove("dragging");
-  // Flush pending delta before releasing
-  if (pendingDx !== 0 || pendingDy !== 0) {
-    if (dragRAF) { clearTimeout(dragRAF); dragRAF = null; }
-    window.electronAPI.moveWindowBy(pendingDx, pendingDy);
-    pendingDx = 0; pendingDy = 0;
-  }
-  // Only trigger edge snap check on actual drags (not clicks)
-  if (didDrag) {
-    window.electronAPI.dragEnd();
-  }
-  endDragReaction();
-}
-
-document.addEventListener("pointerup", (e) => {
-  if (e.button === 0) {
-    const wasDrag = didDrag;
-    stopDrag();
-    if (!wasDrag) {
-      if (e.ctrlKey || e.metaKey) {
-        window.electronAPI.showSessionMenu();
-      } else {
-        handleClick(e.clientX);
-      }
-    }
-  }
-});
-
-// Pointer Capture can end via OS interruption (Alt+Tab, system dialog, etc.)
-container.addEventListener("pointercancel", stopDrag);
-container.addEventListener("lostpointercapture", () => {
-  if (isDragging) stopDrag();
-});
-
-window.addEventListener("blur", stopDrag);
-
-// --- Do Not Disturb (synced from main process) ---
-let dndEnabled = false;
-window.electronAPI.onDndChange((enabled) => { dndEnabled = enabled; });
-
-// --- Mini Mode (synced from main process) ---
-let miniMode = false;
-window.electronAPI.onMiniModeChange((enabled) => {
-  miniMode = enabled;
-  container.style.cursor = enabled ? "default" : "";
-});
-
-// --- Click reaction (2-click = poke, 4-click = flail) ---
-const CLICK_WINDOW_MS = 400;  // max gap between consecutive clicks
-const REACT_LEFT_SVG = "clawd-react-left.svg";
-const REACT_RIGHT_SVG = "clawd-react-right.svg";
-const REACT_DOUBLE_SVG = "clawd-react-double.svg";
+// --- Reaction state (visual side) ---
 const REACT_DRAG_SVG = "clawd-react-drag.svg";
-const REACT_SINGLE_DURATION = 2500;
-const REACT_DOUBLE_DURATION = 3500;
-
-let clickCount = 0;
-let clickTimer = null;
-let firstClickDir = null;     // direction from the first click in a sequence
-let isReacting = false;       // click reaction animation is playing
-let isDragReacting = false;   // drag reaction is active
-let reactTimer = null;        // auto-return timer
+let isReacting = false;
+let isDragReacting = false;
+let reactTimer = null;
 let currentIdleSvg = null;    // tracks which SVG is currently showing
+let dndEnabled = false;
+
+window.electronAPI.onDndChange((enabled) => { dndEnabled = enabled; });
 
 function getObjectSvgName(objectEl) {
   if (!objectEl) return null;
@@ -136,51 +29,10 @@ function shouldTrackEyes(state, svg) {
   return (state === "idle" && svg === SVG_IDLE_FOLLOW) || state === "mini-idle";
 }
 
-function handleClick(clientX) {
-  if (miniMode) {
-    window.electronAPI.exitMiniMode();
-    return;
-  }
-  if (isReacting || isDragReacting) return;
-
-  // Non-idle states: single click → focus terminal directly, no reaction animation
-  if (currentIdleSvg !== "clawd-idle-follow.svg" && currentIdleSvg !== "clawd-idle-living.svg") {
-    window.electronAPI.focusTerminal();
-    return;
-  }
-
-  // Idle states: immediate focus on first click, still track for reactions
-  clickCount++;
-  if (clickCount === 1) {
-    firstClickDir = clientX < container.offsetWidth / 2 ? "left" : "right";
-    window.electronAPI.focusTerminal();  // Instant — no 400ms wait
-  }
-
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-
-  if (clickCount >= 4) {
-    // 4+ clicks → flail reaction (东张西望)
-    clickCount = 0;
-    firstClickDir = null;
-    playReaction(REACT_DOUBLE_SVG, REACT_DOUBLE_DURATION);
-  } else if (clickCount >= 2) {
-    // 2-3 clicks → wait briefly for more, then poke reaction
-    clickTimer = setTimeout(() => {
-      clickTimer = null;
-      const svg = firstClickDir === "left" ? REACT_LEFT_SVG : REACT_RIGHT_SVG;
-      clickCount = 0;
-      firstClickDir = null;
-      playReaction(svg, REACT_SINGLE_DURATION);
-    }, CLICK_WINDOW_MS);
-  } else {
-    // 1 click → reset counter after timeout
-    clickTimer = setTimeout(() => {
-      clickTimer = null;
-      clickCount = 0;
-      firstClickDir = null;
-    }, CLICK_WINDOW_MS);
-  }
-}
+// --- IPC-triggered reactions (from hit window via main relay) ---
+window.electronAPI.onStartDragReaction(() => startDragReaction());
+window.electronAPI.onEndDragReaction(() => endDragReaction());
+window.electronAPI.onPlayClickReaction((svg, duration) => playReaction(svg, duration));
 
 function playReaction(svgFile, durationMs) {
   isReacting = true;
@@ -232,7 +84,7 @@ function endReaction() {
 }
 
 function cancelReaction() {
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; clickCount = 0; firstClickDir = null; }
+  // Click timers are now in hit-renderer.js — only clear local reaction state
   if (isReacting) {
     if (reactTimer) { clearTimeout(reactTimer); reactTimer = null; }
     isReacting = false;
@@ -446,8 +298,3 @@ window.electronAPI.onWakeFromDoze(() => {
   }
 });
 
-// --- Right-click context menu ---
-document.addEventListener("contextmenu", (e) => {
-  e.preventDefault();
-  window.electronAPI.showContextMenu();
-});

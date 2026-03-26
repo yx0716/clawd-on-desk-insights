@@ -1,5 +1,6 @@
 const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, dialog, shell } = require("electron");
 const http = require("http");
+const https = require("https");
 const path = require("path");
 const fs = require("fs");
 const {
@@ -13,6 +14,7 @@ const {
 
 const isMac = process.platform === "darwin";
 
+
 // ── Windows: AllowSetForegroundWindow via FFI ──
 let _allowSetForeground = null;
 if (!isMac) {
@@ -25,22 +27,6 @@ if (!isMac) {
   }
 }
 
-// Reset DWM input routing for the transparent pet window.
-// Uses the child-window focus cycle (same as right-click menu close) to
-// force Windows to recalculate HWND input routing.  Fixes drag after
-// z-order disruptions from Stretchly, fullscreen games, etc.
-function refreshHwndRouting() {
-  if (isMac || !win || win.isDestroyed()) return;
-  const owner = ensureContextMenuOwner();
-  if (owner && !owner.isDestroyed()) {
-    owner.setBounds({ x: -32000, y: -32000, width: 1, height: 1 });
-    owner.show();
-    owner.focus();
-    owner.hide();
-  }
-  win.showInactive();
-  win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);  // isMac early-returns above
-}
 
 // ── Window size presets ──
 const SIZES = {
@@ -271,6 +257,7 @@ const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-working-building.svg", "cla
 let currentHitBox = HIT_BOXES.default;
 
 let win;
+let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let tray = null;
 let contextMenuOwner = null;
 let currentSize = "S";
@@ -283,6 +270,29 @@ let autoStartWithClaude = false;
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+}
+function sendToHitWin(channel, ...args) {
+  if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
+}
+
+// Sync input window position to match render window's hitbox.
+// Called manually after every win position/size change + event-level safety net.
+let _lastHitW = 0, _lastHitH = 0;
+function syncHitWin() {
+  if (!hitWin || hitWin.isDestroyed() || !win || win.isDestroyed()) return;
+  const bounds = win.getBounds();
+  const hit = getHitRectScreen(bounds);
+  const x = Math.round(hit.left);
+  const y = Math.round(hit.top);
+  const w = Math.round(hit.right - hit.left);
+  const h = Math.round(hit.bottom - hit.top);
+  if (w <= 0 || h <= 0) return;
+  hitWin.setBounds({ x, y, width: w, height: h });
+  // Update shape if hitbox dimensions changed (e.g. after resize)
+  if (w !== _lastHitW || h !== _lastHitH) {
+    _lastHitW = w; _lastHitH = h;
+    hitWin.setShape([{ x: 0, y: 0, width: w, height: h }]);
+  }
 }
 
 // ── State machine ──
@@ -299,7 +309,6 @@ let idlePaused = false;
 let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
-let forceMouseStateRefresh = false;
 let eyeResendTimer = null;
 
 // ── Mini Mode ──
@@ -344,6 +353,7 @@ const PASSTHROUGH_TOOLS = new Set([
   "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TaskOutput",
 ]);
 let permDebugLog = null; // set after app.whenReady()
+let updateDebugLog = null; // set after app.whenReady()
 
 function setState(newState, svgOverride) {
   if (doNotDisturb) return;
@@ -443,6 +453,10 @@ function applyState(state, svgOverride) {
   }
 
   sendToRenderer("state-change", state, svg);
+  // Sync hitWin position/size to match new hitbox + state
+  syncHitWin();
+  sendToHitWin("hit-state-sync", { currentSvg: svg });
+  sendToHitWin("hit-cancel-reaction");
 
   // Reset eyes when leaving idle/mini-idle
   if (state !== "idle" && state !== "mini-idle") {
@@ -507,9 +521,11 @@ function getHitRectScreen(bounds) {
   };
 }
 
-// ── Unified main tick (hit-test + eye tracking + sleep detection) ──
+// ── Unified main tick (cursor polling for eye tracking + sleep + mini peek) ──
+// Input routing is handled by hitWin — no setIgnoreMouseEvents toggling here.
 function startMainTick() {
   if (mainTickTimer) return;
+  // Render window: permanently click-through (set once, never toggle)
   win.setIgnoreMouseEvents(true);
   mouseOverPet = false;
 
@@ -517,19 +533,13 @@ function startMainTick() {
     if (!win || win.isDestroyed()) return;
     const cursor = screen.getCursorScreenPoint();
 
-    // ── Hit-test (always-on) ──
+    // ── Cursor-over-pet tracking (for mini peek + eye tracking, NOT for input routing) ──
     const bounds = win.getBounds();
     if (!dragLocked) {
       const hit = getHitRectScreen(bounds);
       const over = cursor.x >= hit.left && cursor.x <= hit.right
                 && cursor.y >= hit.top  && cursor.y <= hit.bottom;
-      if (over !== mouseOverPet || forceMouseStateRefresh) {
-        // Mouse entering: DWM reset before enabling events
-        if (over && !mouseOverPet && !menuOpen) refreshHwndRouting();
-        forceMouseStateRefresh = false;
-        mouseOverPet = over;
-        win.setIgnoreMouseEvents(!over);
-      }
+      mouseOverPet = over;
     }
 
     // ── Mini mode peek hover ──
@@ -986,6 +996,7 @@ function enableDoNotDisturb() {
   if (doNotDisturb) return;
   doNotDisturb = true;
   sendToRenderer("dnd-change", true);
+    sendToHitWin("hit-state-sync", { dndEnabled: true });
   // Dismiss all pending permission bubbles — DND means no interaction
   for (const perm of [...pendingPermissions]) resolvePermissionEntry(perm, "deny", "DND enabled");
   if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
@@ -1004,6 +1015,7 @@ function disableDoNotDisturb() {
   if (!doNotDisturb) return;
   doNotDisturb = false;
   sendToRenderer("dnd-change", false);
+    sendToHitWin("hit-state-sync", { dndEnabled: false });
   if (miniMode) {
     if (miniSleepPeeked) { miniPeekOut(); miniSleepPeeked = false; }
     applyState("mini-idle");
@@ -1520,26 +1532,25 @@ function scheduleHwndRecovery() {
   if (hwndRecoveryTimer) clearTimeout(hwndRecoveryTimer);
   hwndRecoveryTimer = setTimeout(() => {
     hwndRecoveryTimer = null;
-    if (!win || win.isDestroyed() || dragLocked || menuOpen) return;
-    refreshHwndRouting();
+    if (!win || win.isDestroyed()) return;
+    // Just restore z-order — input routing is handled by hitWin now
+    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    if (hitWin && !hitWin.isDestroyed()) hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     forceEyeResend = true;
   }, 1000);
 }
 
 function guardAlwaysOnTop(w) {
   if (isMac) return;
-  // Event-driven: catches explicit TOPMOST stripping (Alt key, games, etc.)
   w.on("always-on-top-changed", (_, isOnTop) => {
     if (!isOnTop && w && !w.isDestroyed()) {
       w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      // Pet window only: immediate nudge + scheduled heavy recovery.
       if (w === win && !dragLocked) {
-        mouseOverPet = false;
-        forceMouseStateRefresh = true;
         forceEyeResend = true;
         const { x, y } = win.getBounds();
         win.setPosition(x + 1, y);
         win.setPosition(x, y);
+        syncHitWin();
         scheduleHwndRecovery();
       }
     }
@@ -1551,13 +1562,10 @@ function startTopmostWatchdog() {
   topmostWatchdog = setInterval(() => {
     if (win && !win.isDestroyed()) {
       win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      // Periodic HWND refresh — catches silent z-order disruptions that don't
-      // trigger always-on-top-changed (e.g. another topmost window appearing).
-      // Only showInactive + setAlwaysOnTop — do NOT reset mouseOverPet, because
-      // the resulting setIgnoreMouseEvents call undoes the HWND fix.
-      if (!dragLocked) {
-        win.showInactive();
-      }
+    }
+    // Keep hitWin topmost too
+    if (hitWin && !hitWin.isDestroyed()) {
+      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     }
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed() && perm.bubble.isVisible()) perm.bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
@@ -1697,6 +1705,11 @@ function resolvePermissionEntry(permEntry, behavior, message) {
 function permLog(msg) {
   if (!permDebugLog) return;
   fs.appendFileSync(permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+}
+
+function updateLog(msg) {
+  if (!updateDebugLog) return;
+  fs.appendFileSync(updateDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 function sendPermissionResponse(res, decisionOrBehavior, message) {
@@ -1855,8 +1868,12 @@ function getAutoUpdater() {
       _autoUpdater = require("electron-updater").autoUpdater;
       _autoUpdater.autoDownload = false;
       _autoUpdater.autoInstallOnAppQuit = true;
-    } catch {
-      console.warn("Clawd: electron-updater not available, auto-update disabled");
+      updateLog("Auto-updater initialized successfully");
+    } catch (err) {
+      const errMsg = `electron-updater load failed: ${err.message}`;
+      console.warn("Clawd:", errMsg);
+      updateLog(`ERROR: ${errMsg}`);
+      updateLog(`Stack: ${err.stack}`);
       return null;
     }
   }
@@ -1867,16 +1884,28 @@ let updateStatus = "idle"; // idle | checking | available | downloading | ready 
 
 function setupAutoUpdater() {
   const autoUpdater = getAutoUpdater();
-  if (!autoUpdater) return;
+  if (!autoUpdater) {
+    updateLog("setupAutoUpdater: autoUpdater is null, skipping event setup");
+    return;
+  }
+  updateLog("Setting up auto-updater event handlers");
+
   autoUpdater.on("update-available", (info) => {
+    updateLog(`Update available: v${info.version} (current: v${app.getVersion()})`);
     const wasManual = manualUpdateCheck;
     manualUpdateCheck = false;
     // Silent check during DND/mini: skip dialog, stay idle so user can check later
-    if (!wasManual && (doNotDisturb || miniMode)) return;
+    if (!wasManual && (doNotDisturb || miniMode)) {
+      updateLog("Silent mode (DND/mini), skipping dialog");
+      updateStatus = "idle";
+      rebuildAllMenus();
+      return;
+    }
     updateStatus = "available";
     rebuildAllMenus();
     if (isMac) {
       // macOS: no code signing → can't auto-update, open GitHub Releases page instead
+      updateLog("macOS detected: will open GitHub Releases page");
       dialog.showMessageBox({
         type: "info",
         title: t("updateAvailable"),
@@ -1886,13 +1915,17 @@ function setupAutoUpdater() {
         noLink: true,
       }).then(({ response }) => {
         if (response === 0) {
+          updateLog("User chose to download, opening GitHub Releases");
           shell.openExternal("https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
+        } else {
+          updateLog("User chose to download later");
         }
         updateStatus = "idle";
         rebuildAllMenus();
       });
     } else {
       // Windows: auto-download
+      updateLog("Windows detected: will offer auto-download");
       dialog.showMessageBox({
         type: "info",
         title: t("updateAvailable"),
@@ -1902,10 +1935,12 @@ function setupAutoUpdater() {
         noLink: true,
       }).then(({ response }) => {
         if (response === 0) {
+          updateLog("User chose to download, starting download");
           updateStatus = "downloading";
           rebuildAllMenus();
           autoUpdater.downloadUpdate();
         } else {
+          updateLog("User chose to download later");
           updateStatus = "idle";
           rebuildAllMenus();
         }
@@ -1913,11 +1948,13 @@ function setupAutoUpdater() {
     }
   });
 
-  autoUpdater.on("update-not-available", () => {
+  autoUpdater.on("update-not-available", (info) => {
+    updateLog(`No update available: current v${app.getVersion()} is latest`);
     updateStatus = "idle";
     rebuildAllMenus();
     if (manualUpdateCheck) {
       manualUpdateCheck = false;
+      updateLog("Showing 'up to date' dialog");
       dialog.showMessageBox({
         type: "info",
         title: t("updateNotAvailable"),
@@ -1928,6 +1965,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    updateLog(`Update downloaded: v${info.version}`);
     updateStatus = "ready";
     rebuildAllMenus();
     dialog.showMessageBox({
@@ -1939,16 +1977,50 @@ function setupAutoUpdater() {
       noLink: true,
     }).then(({ response }) => {
       if (response === 0) {
+        updateLog("User chose to restart now");
         autoUpdater.quitAndInstall(false, true);
+      } else {
+        updateLog("User chose to restart later");
       }
     });
   });
 
-  autoUpdater.on("error", () => {
-    updateStatus = "error";
-    rebuildAllMenus();
-    if (manualUpdateCheck) {
-      manualUpdateCheck = false;
+  autoUpdater.on("error", (err) => {
+    updateLog(`ERROR: AutoUpdater error: ${err.message}`);
+    updateLog(`Error code: ${err.code || 'none'}`);
+    updateLog(`Error stack: ${err.stack}`);
+
+    // Note: 404 errors during download might mean:
+    // 1. Release files not uploaded yet (check GitHub first)
+    // 2. Real network error
+    // Since we now check GitHub API first, 404 here likely means
+    // the release exists but files aren't ready
+    // For auto-checks (not manual), just log silently
+    if (!manualUpdateCheck) {
+      updateLog("Auto-check error, not showing dialog");
+      updateStatus = "error";
+      rebuildAllMenus();
+      return;
+    }
+
+    // For manual checks, show user-friendly error
+    manualUpdateCheck = false;
+    if (isUpdate404Error(err)) {
+      // 404 after GitHub API check = release exists but files missing
+      updateStatus = "idle";
+      rebuildAllMenus();
+      updateLog("404 error: release files not ready, showing 'up to date'");
+      dialog.showMessageBox({
+        type: "info",
+        title: t("updateNotAvailable"),
+        message: t("updateNotAvailableMsg").replace("{version}", app.getVersion()),
+        noLink: true,
+      });
+    } else {
+      // Real error: network, permissions, corrupted download, etc.
+      updateStatus = "error";
+      rebuildAllMenus();
+      updateLog("Real error: showing error dialog");
       dialog.showMessageBox({
         type: "error",
         title: t("updateError"),
@@ -1961,24 +2033,202 @@ function setupAutoUpdater() {
 
 let manualUpdateCheck = false;
 
-function checkForUpdates(manual = false) {
-  if (updateStatus === "checking" || updateStatus === "downloading") return;
+// ── Version comparison utilities ──
+// Compare two version strings (e.g., "0.5.0" vs "0.5.1")
+// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+function compareVersions(v1, v2) {
+  const parts1 = v1.replace('v', '').split('.').map(Number);
+  const parts2 = v2.replace('v', '').split('.').map(Number);
+  const maxLength = Math.max(parts1.length, parts2.length);
+
+  for (let i = 0; i < maxLength; i++) {
+    const p1 = parts1[i] || 0;
+    const p2 = parts2[i] || 0;
+    if (p1 < p2) return -1;
+    if (p1 > p2) return 1;
+  }
+  return 0;
+}
+
+// Fetch latest release version from GitHub API (10s timeout)
+function fetchLatestVersion() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/rullerzhou-afk/clawd-on-desk/releases/latest',
+      headers: {
+        'User-Agent': 'Clawd-on-Desk'
+      }
+    };
+
+    const req = https.get(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try {
+            const release = JSON.parse(data);
+            if (!release.tag_name) return reject(new Error('No tag_name in release'));
+            resolve(release.tag_name);
+          } catch (err) {
+            reject(new Error(`Failed to parse GitHub response: ${err.message}`));
+          }
+        } else if (res.statusCode === 404) {
+          reject(new Error('No releases found'));
+        } else {
+          reject(new Error(`GitHub API returned ${res.statusCode}`));
+        }
+      });
+    }).on('error', reject);
+
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('GitHub API request timed out (10s)'));
+    });
+  });
+}
+
+function isUpdate404Error(err) {
+  return err.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' ||
+         err.message?.includes('404') ||
+         err.message?.includes('Cannot find latest.yml');
+}
+
+async function checkForUpdates(manual = false) {
+  try { return await _checkForUpdatesInner(manual); }
+  catch (e) {
+    updateLog(`ERROR: unhandled in checkForUpdates: ${e.message}`);
+    updateStatus = "idle";
+    manualUpdateCheck = false;
+    rebuildAllMenus();
+  }
+}
+
+async function _checkForUpdatesInner(manual) {
+  if (updateStatus === "checking" || updateStatus === "downloading") {
+    updateLog(`Check skipped: already ${updateStatus}`);
+    return;
+  }
+
+  const currentVersion = app.getVersion();
+  updateLog(`Starting update check (manual: ${manual}, current version: v${currentVersion})`);
   manualUpdateCheck = manual;
   updateStatus = "checking";
   rebuildAllMenus();
-  const au = getAutoUpdater();
-  if (!au) return;
-  au.checkForUpdates().then((result) => {
-    // Dev mode: electron-updater resolves null without emitting events
-    if (!result) {
-      updateStatus = "idle";
-      manualUpdateCheck = false;
-      rebuildAllMenus();
-    }
-  }).catch(() => {
+
+  // Step 1: Check GitHub API for latest version
+  updateLog("Fetching latest version from GitHub API...");
+  let latestVersion;
+  try {
+    latestVersion = await fetchLatestVersion();
+    updateLog(`Latest version on GitHub: ${latestVersion}`);
+  } catch (err) {
+    updateLog(`ERROR: Failed to fetch latest version: ${err.message}`);
+
+    // Network error or GitHub API issue
     updateStatus = "error";
     manualUpdateCheck = false;
     rebuildAllMenus();
+    if (manual) {
+      updateLog("Showing error dialog (GitHub API failed)");
+      dialog.showMessageBox({
+        type: "error",
+        title: t("updateError"),
+        message: t("updateErrorMsg"),
+        noLink: true,
+      });
+    }
+    return;
+  }
+
+  // Step 2: Compare versions
+  const versionCompare = compareVersions(currentVersion, latestVersion);
+  updateLog(`Version comparison: ${currentVersion} vs ${latestVersion} = ${versionCompare}`);
+
+  if (versionCompare >= 0) {
+    // Current version is up-to-date or newer
+    updateLog("Current version is up-to-date or newer");
+    updateStatus = "idle";
+    manualUpdateCheck = false;
+    rebuildAllMenus();
+    if (manual) {
+      updateLog("Showing 'up to date' dialog");
+      dialog.showMessageBox({
+        type: "info",
+        title: t("updateNotAvailable"),
+        message: t("updateNotAvailableMsg").replace("{version}", currentVersion),
+        noLink: true,
+      });
+    }
+    return;
+  }
+
+  // Step 3: Newer version available, use electron-updater to download
+  updateLog(`Newer version available: ${latestVersion}, proceeding with electron-updater`);
+  const au = getAutoUpdater();
+  if (!au) {
+    updateLog("ERROR: AutoUpdater not available");
+    updateStatus = "error";
+    manualUpdateCheck = false;
+    rebuildAllMenus();
+    if (manual) {
+      updateLog("Showing error dialog (auto-updater not available)");
+      dialog.showMessageBox({
+        type: "error",
+        title: t("updateError"),
+        message: t("updateErrorMsg"),
+        noLink: true,
+      });
+    }
+    return;
+  }
+
+  // Let electron-updater handle the download
+  au.checkForUpdates().then((result) => {
+    if (!result) {
+      updateLog("Update check returned null (likely dev mode)");
+      updateStatus = "idle";
+      manualUpdateCheck = false;
+      rebuildAllMenus();
+    } else {
+      updateLog(`Update check result: ${JSON.stringify(result)}`);
+    }
+  }).catch((err) => {
+    updateLog(`ERROR: checkForUpdates promise rejected: ${err.message}`);
+    updateLog(`Stack: ${err.stack}`);
+
+    // Distinguish between real errors and "no newer version"
+    if (isUpdate404Error(err)) {
+      // This might mean the release files aren't ready yet
+      updateLog("404 error: release files may not be uploaded yet");
+      updateStatus = "idle";
+      manualUpdateCheck = false;
+      rebuildAllMenus();
+      if (manual) {
+        updateLog("Showing 'up to date' dialog (release files not found)");
+        dialog.showMessageBox({
+          type: "info",
+          title: t("updateNotAvailable"),
+          message: t("updateNotAvailableMsg").replace("{version}", currentVersion),
+          noLink: true,
+        });
+      }
+    } else {
+      // Real error: network, permissions, etc.
+      updateLog("Real error in promise: showing error dialog");
+      updateStatus = "error";
+      manualUpdateCheck = false;
+      rebuildAllMenus();
+      if (manual) {
+        updateLog("Showing error dialog (check failed)");
+        dialog.showMessageBox({
+          type: "error",
+          title: t("updateError"),
+          message: t("updateErrorMsg"),
+          noLink: true,
+        });
+      }
+    }
   });
 }
 
@@ -2160,6 +2410,62 @@ function createWindow() {
   if (!isMac || showTray) createTray();
   ensureContextMenuOwner();
 
+
+
+  // ── Create input window (hitWin) — small rect over hitbox, receives all pointer events ──
+  {
+    const initBounds = win.getBounds();
+    const initHit = getHitRectScreen(initBounds);
+    const hx = Math.round(initHit.left), hy = Math.round(initHit.top);
+    const hw = Math.round(initHit.right - initHit.left);
+    const hh = Math.round(initHit.bottom - initHit.top);
+
+    hitWin = new BrowserWindow({
+      width: hw, height: hh, x: hx, y: hy,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      focusable: true,  // KEY EXPERIMENT: allow activation to avoid WS_EX_NOACTIVATE input routing bugs
+      webPreferences: {
+        preload: path.join(__dirname, "preload-hit.js"),
+        backgroundThrottling: false,
+      },
+    });
+    // setShape: native hit region, no per-pixel alpha dependency.
+    // hitWin has no visual content — clipping is irrelevant.
+    hitWin.setShape([{ x: 0, y: 0, width: hw, height: hh }]);
+    hitWin.setIgnoreMouseEvents(false);  // PERMANENT — never toggle
+    hitWin.showInactive();
+    if (isMac) {
+      hitWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+      hitWin.setAlwaysOnTop(true, "floating");
+    } else {
+      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    }
+    hitWin.loadFile(path.join(__dirname, "hit.html"));
+    if (!isMac) guardAlwaysOnTop(hitWin);
+
+    // Event-level safety net for position sync
+    win.on("move", syncHitWin);
+    win.on("resize", syncHitWin);
+
+    // Send initial state to hitWin once it's ready
+    hitWin.webContents.on("did-finish-load", () => {
+      sendToHitWin("hit-state-sync", {
+        currentSvg, miniMode, dndEnabled: doNotDisturb,
+      });
+    });
+
+    // Crash recovery for hitWin
+    hitWin.webContents.on("render-process-gone", (_event, details) => {
+      console.error("hitWin renderer crashed:", details.reason);
+      hitWin.webContents.reload();
+    });
+  }
+
   ipcMain.on("show-context-menu", showPetContextMenu);
 
   ipcMain.on("move-window-by", (event, dx, dy) => {
@@ -2168,23 +2474,26 @@ function createWindow() {
     const size = SIZES[currentSize];
     const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
     win.setBounds({ ...clamped, width: size.width, height: size.height });
+    syncHitWin();
   });
 
   ipcMain.on("pause-cursor-polling", () => { idlePaused = true; });
   ipcMain.on("resume-from-reaction", () => {
     idlePaused = false;
-    // Skip re-send during mini transition (drag-end fires next and will set the right state)
     if (miniTransitioning) return;
-    // Re-send current state to renderer without resetting stateChangedAt or timers.
     sendToRenderer("state-change", currentState, currentSvg);
   });
 
   ipcMain.on("drag-lock", (event, locked) => {
     dragLocked = !!locked;
-    if (locked && !mouseOverPet) {
-      mouseOverPet = true;
-      win.setIgnoreMouseEvents(false);
-    }
+    if (locked) mouseOverPet = true;
+  });
+
+  // Reaction relay: hitWin → main → renderWin
+  ipcMain.on("start-drag-reaction", () => sendToRenderer("start-drag-reaction"));
+  ipcMain.on("end-drag-reaction", () => sendToRenderer("end-drag-reaction"));
+  ipcMain.on("play-click-reaction", (_, svg, duration) => {
+    sendToRenderer("play-click-reaction", svg, duration);
   });
 
   ipcMain.on("drag-end", () => {
@@ -2268,9 +2577,11 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => {
     if (miniMode) {
       sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
     }
     if (doNotDisturb) {
       sendToRenderer("dnd-change", true);
+    sendToHitWin("hit-state-sync", { dndEnabled: true });
       if (miniMode) {
         applyState("mini-sleep");
       } else {
@@ -2308,7 +2619,6 @@ function createWindow() {
     dragLocked = false;
     idlePaused = false;
     mouseOverPet = false;
-    win.setIgnoreMouseEvents(true);
     win.webContents.reload();
   });
 
@@ -2390,6 +2700,7 @@ function animateWindowX(targetX, durationMs) {
     const eased = t * (2 - t);
     const x = Math.round(startX + (targetX - startX) * eased);
     win.setBounds({ x, y: snapY, width: snapW, height: snapH });
+    syncHitWin();
     if (t < 1) {
       peekAnimTimer = setTimeout(step, 16);
     } else {
@@ -2420,6 +2731,7 @@ function animateWindowParabola(targetX, targetY, durationMs, onDone) {
     const arc = -4 * JUMP_PEAK_HEIGHT * t * (t - 1);
     const y = Math.round(startY + (targetY - startY) * eased - arc);
     win.setPosition(x, y);
+    syncHitWin();
     if (t < 1) {
       peekAnimTimer = setTimeout(step, 16);
     } else {
@@ -2483,6 +2795,7 @@ function enterMiniMode(wa, viaMenu) {
   stopWakePoll();
 
   sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
   miniTransitioning = true;
   buildContextMenu();
   buildTrayMenu();
@@ -2526,6 +2839,7 @@ function exitMiniMode() {
   miniSnap = null;
   miniSleepPeeked = false;
   sendToRenderer("mini-mode-change", false);
+    sendToHitWin("hit-state-sync", { miniMode: false });
   buildContextMenu();
   buildTrayMenu();
 
@@ -2546,6 +2860,7 @@ function exitMiniMode() {
     if (doNotDisturb) {
       doNotDisturb = false;
       sendToRenderer("dnd-change", false);
+    sendToHitWin("hit-state-sync", { dndEnabled: false });
       buildContextMenu();
       buildTrayMenu();
       applyState("waking");
@@ -2567,6 +2882,7 @@ function enterMiniViaMenu() {
 
   // Tell renderer early so it blocks drag during crabwalk
   sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
 
   applyState("mini-crabwalk");
 
@@ -2724,6 +3040,7 @@ if (!gotTheLock) {
 } else {
   app.on("second-instance", () => {
     if (win) win.showInactive();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.showInactive();
   });
 
   // macOS: hide dock icon early if user previously disabled it
@@ -2736,6 +3053,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     permDebugLog = path.join(app.getPath("userData"), "permission-debug.log");
+    updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     createWindow();
 
     // Auto-register Claude Code hooks on every launch (dedup-safe)
@@ -2781,6 +3099,7 @@ if (!gotTheLock) {
     clearMacFocusCooldownTimer();
     macQueuedFocusRequest = null;
     macFocusInFlight = false;
+    if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
     killFocusHelper();
     // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
     for (const perm of [...pendingPermissions]) {
