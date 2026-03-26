@@ -7,6 +7,7 @@ const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
   DEFAULT_SERVER_PORT,
+  clearRuntimeConfig,
   getPortCandidates,
   readRuntimePort,
   writeRuntimeConfig,
@@ -1224,7 +1225,7 @@ function executeMacFocusRequest(request) {
     if (macQueuedFocusRequest) flushQueuedMacFocus();
   };
 
-  focusTerminalWindowLegacy(request.sourcePid, request.cwd, finalize);
+  focusTerminalWindowLegacy(request.sourcePid, request.cwd, finalize, request.pidChain);
   scheduleTerminalTabFocus(request.editor, request.pidChain);
 }
 
@@ -1273,14 +1274,27 @@ function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
   scheduleTerminalTabFocus(editor, pidChain);
 }
 
-function focusTerminalWindowLegacy(sourcePid, cwd, onDone) {
+function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
   if (isMac) {
+    const pidCandidates = [sourcePid];
+    if (Array.isArray(pidChain)) {
+      for (const pid of pidChain) {
+        if (!Number.isFinite(pid) || pid <= 0 || pidCandidates.includes(pid)) continue;
+        pidCandidates.push(pid);
+        if (pidCandidates.length >= 3) break;
+      }
+    }
+    const applePidList = pidCandidates.join(", ");
     const script = `
       tell application "System Events"
-        set pList to every process whose unix id is ${sourcePid}
-        if (count of pList) > 0 then
-          set frontmost of item 1 of pList to true
-        end if
+        repeat with targetPid in {${applePidList}}
+          set pidValue to contents of targetPid
+          set pList to every process whose unix id is pidValue
+          if (count of pList) > 0 then
+            set frontmost of item 1 of pList to true
+            exit repeat
+          end if
+        end repeat
       end tell`;
     execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (err) => {
       if (err) console.warn("focusTerminal macOS failed:", err.message);
@@ -3100,6 +3114,7 @@ if (!gotTheLock) {
     macQueuedFocusRequest = null;
     macFocusInFlight = false;
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
+    clearRuntimeConfig();
     killFocusHelper();
     // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
     for (const perm of [...pendingPermissions]) {

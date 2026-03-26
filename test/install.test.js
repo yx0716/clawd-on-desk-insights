@@ -89,7 +89,7 @@ describe("Hook installer version compatibility", () => {
     assert.strictEqual(result.versionStatus, "unknown");
   });
 
-  it("removes stale Clawd StopFailure hooks while preserving third-party entries", () => {
+  it("removes stale Clawd StopFailure hooks while preserving third-party entries when version is known too old", () => {
     const settingsPath = makeTempSettings({
       hooks: {
         StopFailure: [
@@ -111,7 +111,7 @@ describe("Hook installer version compatibility", () => {
     const result = registerHooks({
       silent: true,
       settingsPath,
-      claudeVersionInfo: { version: null, source: null, status: "unknown" },
+      claudeVersionInfo: { version: "2.1.75", source: "test", status: "known" },
     });
 
     const settings = readSettings(settingsPath);
@@ -120,6 +120,74 @@ describe("Hook installer version compatibility", () => {
     assert.ok(Array.isArray(settings.hooks.PreCompact));
     assert.strictEqual(settings.hooks.PreCompact[0].hooks[0].command.includes("third-party-hook.js"), true);
     assert.strictEqual(result.removed, 1);
+  });
+
+  it("keeps existing versioned hooks when Claude Code version is unknown", () => {
+    const settingsPath = makeTempSettings({
+      hooks: {
+        StopFailure: [
+          {
+            matcher: "",
+            hooks: [{ type: "command", command: 'node "/tmp/clawd-hook.js" StopFailure' }],
+          },
+        ],
+      },
+    });
+
+    const result = registerHooks({
+      silent: true,
+      settingsPath,
+      claudeVersionInfo: { version: null, source: null, status: "unknown" },
+    });
+
+    const settings = readSettings(settingsPath);
+    assert.ok(Array.isArray(settings.hooks.StopFailure));
+    assert.strictEqual(getClawdCommands(settings, "StopFailure").length, 1);
+    assert.strictEqual(result.removed, 0);
+  });
+
+  it("updates stale hook paths when command marker already exists", () => {
+    const settingsPath = makeTempSettings({
+      hooks: {
+        Stop: [
+          {
+            matcher: "",
+            hooks: [{ type: "command", command: 'node "/old/path/clawd-hook.js" Stop' }],
+          },
+        ],
+      },
+    });
+
+    const result = registerHooks({
+      silent: true,
+      settingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+
+    const settings = readSettings(settingsPath);
+    const commands = getClawdCommands(settings, "Stop");
+    assert.strictEqual(result.updated, 1);
+    assert.strictEqual(commands.length, 1);
+    assert.ok(commands[0].includes('hooks/clawd-hook.js'));
+    assert.ok(!commands[0].includes('/old/path/'));
+  });
+
+  it("is idempotent on repeated registration", () => {
+    const settingsPath = makeTempSettings({});
+    registerHooks({
+      silent: true,
+      settingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+
+    const result = registerHooks({
+      silent: true,
+      settingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+
+    assert.strictEqual(result.added, 0);
+    assert.strictEqual(result.updated, 0);
   });
 
   it("checks macOS absolute Claude paths before PATH fallback", () => {

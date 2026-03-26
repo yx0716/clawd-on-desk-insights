@@ -252,9 +252,16 @@ function getSupportedVersionedHooks(versionInfo) {
   return { supported, unsupported };
 }
 
-function reconcileVersionedHooks(settings, supportedEvents) {
+function shouldReconcileVersionedHooks(versionInfo) {
+  return versionInfo.status === "known";
+}
+
+function reconcileVersionedHooks(settings, supportedEvents, versionInfo) {
   let removed = 0;
   let changed = false;
+  if (!shouldReconcileVersionedHooks(versionInfo)) {
+    return { removed, changed };
+  }
 
   for (const { event } of VERSIONED_HOOKS) {
     if (supportedEvents.has(event)) continue;
@@ -325,7 +332,7 @@ function registerHooks(options = {}) {
   const supportedVersionedEvents = new Set(supportedVersionedHooks.map((hook) => hook.event));
   versionSkipped = unsupportedVersionedHooks.length;
 
-  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents);
+  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo);
   removed += reconcileResult.removed;
   changed = changed || reconcileResult.changed;
 
@@ -548,6 +555,7 @@ module.exports = {
     versionLessThan,
     removeMatchingCommandHooks,
     reconcileVersionedHooks,
+    shouldReconcileVersionedHooks,
   },
 };
 

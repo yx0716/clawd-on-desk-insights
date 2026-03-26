@@ -51,9 +51,23 @@ function writeRuntimeConfig(port) {
   }
 }
 
-function getPortCandidates(preferredPort) {
+function clearRuntimeConfig(filePath = RUNTIME_CONFIG_PATH) {
+  try {
+    fs.unlinkSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getPortCandidates(preferredPort, options = {}) {
   const ports = [];
   const seen = new Set();
+  const runtimePort = normalizePort(
+    Object.prototype.hasOwnProperty.call(options, "runtimePort")
+      ? options.runtimePort
+      : readRuntimePort()
+  );
   const add = (value) => {
     const port = normalizePort(value);
     if (!port || seen.has(port)) return;
@@ -63,9 +77,38 @@ function getPortCandidates(preferredPort) {
 
   if (Array.isArray(preferredPort)) preferredPort.forEach(add);
   else add(preferredPort);
-  add(readRuntimePort());
+  add(runtimePort);
   SERVER_PORTS.forEach(add);
   return ports;
+}
+
+function splitPortCandidates(preferredPort, options = {}) {
+  const runtimePort = normalizePort(
+    Object.prototype.hasOwnProperty.call(options, "runtimePort")
+      ? options.runtimePort
+      : readRuntimePort()
+  );
+  const all = getPortCandidates(preferredPort, { runtimePort });
+  const direct = [];
+  const fallback = [];
+  const directSeen = new Set();
+
+  const addDirect = (port) => {
+    if (!port || directSeen.has(port)) return;
+    directSeen.add(port);
+    direct.push(port);
+  };
+
+  if (Array.isArray(preferredPort)) preferredPort.forEach((port) => addDirect(normalizePort(port)));
+  else addDirect(normalizePort(preferredPort));
+  addDirect(runtimePort);
+
+  for (const port of all) {
+    if (directSeen.has(port)) continue;
+    fallback.push(port);
+  }
+
+  return { direct, fallback, all };
 }
 
 function buildPermissionUrl(port) {
@@ -89,9 +132,69 @@ function isClawdResponse(res, body) {
   }
 }
 
+function probePort(port, timeoutMs, callback, options = {}) {
+  const httpGet = options.httpGet || http.get;
+  const req = httpGet(
+    { hostname: "127.0.0.1", port, path: STATE_PATH, timeout: timeoutMs },
+    (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        if (body.length < 256) body += chunk;
+      });
+      res.on("end", () => callback(isClawdResponse(res, body)));
+    }
+  );
+
+  req.on("error", () => callback(false));
+  req.on("timeout", () => {
+    req.destroy();
+    callback(false);
+  });
+}
+
+function postStateToPort(port, payload, timeoutMs, callback, options = {}) {
+  const httpRequest = options.httpRequest || http.request;
+  const req = httpRequest(
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: STATE_PATH,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: timeoutMs,
+    },
+    (res) => {
+      if (readHeader(res, CLAWD_SERVER_HEADER) === CLAWD_SERVER_ID) {
+        res.resume();
+        callback(true, port);
+        return;
+      }
+
+      let responseBody = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        if (responseBody.length < 256) responseBody += chunk;
+      });
+      res.on("end", () => callback(isClawdResponse(res, responseBody), port));
+    }
+  );
+
+  req.on("error", () => callback(false, port));
+  req.on("timeout", () => {
+    req.destroy();
+    callback(false, port);
+  });
+  req.end(payload);
+}
+
 function discoverClawdPort(options, callback) {
   const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 100;
-  const ports = getPortCandidates(options && options.preferredPort);
+  const ports = getPortCandidates(options && options.preferredPort, options);
+  const probe = options && options.probePort ? options.probePort : probePort;
   let index = 0;
 
   const tryNext = () => {
@@ -101,29 +204,13 @@ function discoverClawdPort(options, callback) {
     }
 
     const port = ports[index++];
-    const req = http.get(
-      { hostname: "127.0.0.1", port, path: STATE_PATH, timeout: timeoutMs },
-      (res) => {
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => {
-          if (body.length < 256) body += chunk;
-        });
-        res.on("end", () => {
-          if (isClawdResponse(res, body)) {
-            callback(port);
-            return;
-          }
-          tryNext();
-        });
+    probe(port, timeoutMs, (ok) => {
+      if (ok) {
+        callback(port);
+        return;
       }
-    );
-
-    req.on("error", () => tryNext());
-    req.on("timeout", () => {
-      req.destroy();
       tryNext();
-    });
+    }, options);
   };
 
   tryNext();
@@ -131,60 +218,52 @@ function discoverClawdPort(options, callback) {
 
 function postStateToRunningServer(body, options, callback) {
   const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 100;
-  const ports = getPortCandidates(options && options.preferredPort);
   const payload = typeof body === "string" ? body : JSON.stringify(body);
-  let index = 0;
+  const { direct, fallback } = splitPortCandidates(options && options.preferredPort, options);
+  const probe = options && options.probePort ? options.probePort : probePort;
+  const post = options && options.postStateToPort ? options.postStateToPort : postStateToPort;
+  let directIndex = 0;
+  let fallbackIndex = 0;
 
-  const tryNext = () => {
-    if (index >= ports.length) {
+  const tryFallback = () => {
+    if (fallbackIndex >= fallback.length) {
       callback(false, null);
       return;
     }
 
-    const port = ports[index++];
-    const req = http.request(
-      {
-        hostname: "127.0.0.1",
-        port,
-        path: STATE_PATH,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload),
-        },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        if (readHeader(res, CLAWD_SERVER_HEADER) === CLAWD_SERVER_ID) {
-          res.resume();
-          callback(true, port);
+    const port = fallback[fallbackIndex++];
+    probe(port, timeoutMs, (ok) => {
+      if (!ok) {
+        tryFallback();
+        return;
+      }
+      post(port, payload, timeoutMs, (posted, confirmedPort) => {
+        if (posted) {
+          callback(true, confirmedPort);
           return;
         }
-
-        let responseBody = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => {
-          if (responseBody.length < 256) responseBody += chunk;
-        });
-        res.on("end", () => {
-          if (isClawdResponse(res, responseBody)) {
-            callback(true, port);
-            return;
-          }
-          tryNext();
-        });
-      }
-    );
-
-    req.on("error", () => tryNext());
-    req.on("timeout", () => {
-      req.destroy();
-      tryNext();
-    });
-    req.end(payload);
+        tryFallback();
+      }, options);
+    }, options);
   };
 
-  tryNext();
+  const tryDirect = () => {
+    if (directIndex >= direct.length) {
+      tryFallback();
+      return;
+    }
+
+    const port = direct[directIndex++];
+    post(port, payload, timeoutMs, (posted, confirmedPort) => {
+      if (posted) {
+        callback(true, confirmedPort);
+        return;
+      }
+      tryDirect();
+    }, options);
+  };
+
+  tryDirect();
 }
 
 module.exports = {
@@ -196,9 +275,13 @@ module.exports = {
   SERVER_PORTS,
   STATE_PATH,
   buildPermissionUrl,
+  clearRuntimeConfig,
   discoverClawdPort,
   getPortCandidates,
   postStateToRunningServer,
+  probePort,
   readRuntimePort,
+  splitPortCandidates,
+  postStateToPort,
   writeRuntimeConfig,
 };

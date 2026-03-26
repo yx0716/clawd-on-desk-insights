@@ -2,7 +2,7 @@
 // Clawd Desktop Pet — Auto-Start Script
 // Registered as a SessionStart hook BEFORE clawd-hook.js.
 // Checks if the Electron app is running; if not, launches it detached.
-// Zero dependencies, must exit in <500ms.
+// Uses shared server discovery helpers and should exit quickly in normal cases.
 
 const { spawn } = require("child_process");
 const path = require("path");
