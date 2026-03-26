@@ -1758,6 +1758,8 @@ function setupAutoUpdater() {
     // Silent check during DND/mini: skip dialog, stay idle so user can check later
     if (!wasManual && (doNotDisturb || miniMode)) {
       updateLog("Silent mode (DND/mini), skipping dialog");
+      updateStatus = "idle";
+      rebuildAllMenus();
       return;
     }
     updateStatus = "available";
@@ -1854,12 +1856,11 @@ function setupAutoUpdater() {
     // 2. Real network error
     // Since we now check GitHub API first, 404 here likely means
     // the release exists but files aren't ready
-    updateStatus = "error";
-    rebuildAllMenus();
-
     // For auto-checks (not manual), just log silently
     if (!manualUpdateCheck) {
       updateLog("Auto-check error, not showing dialog");
+      updateStatus = "error";
+      rebuildAllMenus();
       return;
     }
 
@@ -1867,6 +1868,8 @@ function setupAutoUpdater() {
     manualUpdateCheck = false;
     if (isUpdate404Error(err)) {
       // 404 after GitHub API check = release exists but files missing
+      updateStatus = "idle";
+      rebuildAllMenus();
       updateLog("404 error: release files not ready, showing 'up to date'");
       dialog.showMessageBox({
         type: "info",
@@ -1876,6 +1879,8 @@ function setupAutoUpdater() {
       });
     } else {
       // Real error: network, permissions, corrupted download, etc.
+      updateStatus = "error";
+      rebuildAllMenus();
       updateLog("Real error: showing error dialog");
       dialog.showMessageBox({
         type: "error",
@@ -1952,7 +1957,12 @@ function isUpdate404Error(err) {
 
 async function checkForUpdates(manual = false) {
   try { return await _checkForUpdatesInner(manual); }
-  catch (e) { updateLog(`ERROR: unhandled in checkForUpdates: ${e.message}`); }
+  catch (e) {
+    updateLog(`ERROR: unhandled in checkForUpdates: ${e.message}`);
+    updateStatus = "idle";
+    manualUpdateCheck = false;
+    rebuildAllMenus();
+  }
 }
 
 async function _checkForUpdatesInner(manual) {
