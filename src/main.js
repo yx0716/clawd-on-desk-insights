@@ -31,7 +31,7 @@ function refreshHwndRouting() {
     owner.hide();
   }
   win.showInactive();
-  win.setAlwaysOnTop(true, isMac ? "floating" : WIN_TOPMOST_LEVEL);
+  win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);  // isMac early-returns above
 }
 
 // ── Window size presets ──
@@ -517,7 +517,7 @@ function startMainTick() {
                 && cursor.y >= hit.top  && cursor.y <= hit.bottom;
       if (over !== mouseOverPet || forceMouseStateRefresh) {
         // Mouse entering: DWM reset before enabling events
-        if (over && !mouseOverPet) refreshHwndRouting();
+        if (over && !mouseOverPet && !menuOpen) refreshHwndRouting();
         forceMouseStateRefresh = false;
         mouseOverPet = over;
         win.setIgnoreMouseEvents(!over);
@@ -1384,7 +1384,7 @@ function scheduleHwndRecovery() {
   if (hwndRecoveryTimer) clearTimeout(hwndRecoveryTimer);
   hwndRecoveryTimer = setTimeout(() => {
     hwndRecoveryTimer = null;
-    if (!win || win.isDestroyed() || dragLocked) return;
+    if (!win || win.isDestroyed() || dragLocked || menuOpen) return;
     refreshHwndRouting();
     forceEyeResend = true;
   }, 1000);
