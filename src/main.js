@@ -2657,6 +2657,7 @@ if (!gotTheLock) {
 } else {
   app.on("second-instance", () => {
     if (win) win.showInactive();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.showInactive();
   });
 
   // macOS: hide dock icon early if user previously disabled it
