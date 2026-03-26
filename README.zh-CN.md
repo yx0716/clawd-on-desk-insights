@@ -193,16 +193,12 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 
 感谢每一位让 Clawd 变得更好的贡献者：
 
-<table>
-  <tr>
-    <td align="center"><a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" /><br /><sub>PixelCookie-zyf</sub></a><br />macOS 适配、终端聚焦、权限气泡</td>
-    <td align="center"><a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" /><br /><sub>yujiachen-y</sub></a><br />随 Claude Code 自动启动</td>
-    <td align="center"><a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" /><br /><sub>AooooooZzzz</sub></a><br />ELECTRON_RUN_AS_NODE 修复、Win10 兼容</td>
-    <td align="center"><a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" /><br /><sub>purefkh</sub></a><br />macOS Dock 可见性修复</td>
-    <td align="center"><a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" /><br /><sub>Tobeabellwether</sub></a><br />macOS 屏幕顶部拖拽修复</td>
-    <td align="center"><a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" /><br /><sub>Jasonhonghh</sub></a><br />自动更新错误处理优化</td>
-  </tr>
-</table>
+<a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /></a>
 
 ## 致谢
 
