@@ -6,8 +6,6 @@ const fs = require("fs");
 const isMac = process.platform === "darwin";
 
 // ── Windows: AllowSetForegroundWindow via FFI ──
-// Grants the PowerShell helper process permission to call SetForegroundWindow.
-// Must be called from Electron (which received user input) before each focus request.
 let _allowSetForeground = null;
 if (!isMac) {
   try {
@@ -17,6 +15,23 @@ if (!isMac) {
   } catch (err) {
     console.warn("Clawd: koffi/AllowSetForegroundWindow not available:", err.message);
   }
+}
+
+// Reset DWM input routing for the transparent pet window.
+// Uses the child-window focus cycle (same as right-click menu close) to
+// force Windows to recalculate HWND input routing.  Fixes drag after
+// z-order disruptions from Stretchly, fullscreen games, etc.
+function refreshHwndRouting() {
+  if (isMac || !win || win.isDestroyed()) return;
+  const owner = ensureContextMenuOwner();
+  if (owner && !owner.isDestroyed()) {
+    owner.setBounds({ x: -32000, y: -32000, width: 1, height: 1 });
+    owner.show();
+    owner.focus();
+    owner.hide();
+  }
+  win.showInactive();
+  win.setAlwaysOnTop(true, isMac ? "floating" : WIN_TOPMOST_LEVEL);
 }
 
 // ── Window size presets ──
@@ -501,6 +516,8 @@ function startMainTick() {
       const over = cursor.x >= hit.left && cursor.x <= hit.right
                 && cursor.y >= hit.top  && cursor.y <= hit.bottom;
       if (over !== mouseOverPet || forceMouseStateRefresh) {
+        // Mouse entering: DWM reset before enabling events
+        if (over && !mouseOverPet) refreshHwndRouting();
         forceMouseStateRefresh = false;
         mouseOverPet = over;
         win.setIgnoreMouseEvents(!over);
@@ -1365,17 +1382,10 @@ let hwndRecoveryTimer = null;
 function scheduleHwndRecovery() {
   if (isMac) return;
   if (hwndRecoveryTimer) clearTimeout(hwndRecoveryTimer);
-  // Debounce: wait for z-order transitions to settle before refreshing.
-  // Immediate nudge handles simple single-drop cases; this delayed recovery
-  // catches secondary disruptions (e.g. Start menu → click another item).
   hwndRecoveryTimer = setTimeout(() => {
     hwndRecoveryTimer = null;
     if (!win || win.isDestroyed() || dragLocked) return;
-    win.showInactive();
-    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    // Do NOT reset mouseOverPet here — that would trigger setIgnoreMouseEvents
-    // on the next tick, which undoes the HWND fix that showInactive() just applied.
-    // This mirrors what the context menu callback does (showInactive + setAlwaysOnTop only).
+    refreshHwndRouting();
     forceEyeResend = true;
   }, 1000);
 }
