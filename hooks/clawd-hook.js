@@ -4,6 +4,8 @@
 // Usage: node clawd-hook.js <event_name>
 // Reads stdin JSON from Claude Code for session_id
 
+const { postStateToRunningServer } = require("./server-config");
+
 const EVENT_TO_STATE = {
   SessionStart: "idle",
   SessionEnd: "sleeping",
@@ -171,21 +173,9 @@ function send(sessionId, cwd) {
   if (_pidChain.length) body.pid_chain = _pidChain;
 
   const data = JSON.stringify(body);
-  const req = require("http").request(
-    {
-      hostname: "127.0.0.1",
-      port: 23333,
-      path: "/state",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(data),
-      },
-      timeout: 500,  // 400ms stdin + 500ms HTTP = 900ms < 1000ms Claude Code budget
-    },
+  postStateToRunningServer(
+    data,
+    { timeoutMs: 100 }, // runtime port first, then a small local fallback range
     () => process.exit(0)
   );
-  req.on("error", () => process.exit(0));
-  req.on("timeout", () => { req.destroy(); process.exit(0); });
-  req.end(data);
 }

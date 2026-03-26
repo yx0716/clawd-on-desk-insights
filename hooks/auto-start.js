@@ -4,29 +4,17 @@
 // Checks if the Electron app is running; if not, launches it detached.
 // Zero dependencies, must exit in <500ms.
 
-const http = require("http");
 const { spawn } = require("child_process");
 const path = require("path");
+const { discoverClawdPort } = require("./server-config");
 
 const TIMEOUT_MS = 300;
-const PORT = 23333;
 
-// Check if app is already running
-const req = http.get(
-  { hostname: "127.0.0.1", port: PORT, path: "/state", timeout: TIMEOUT_MS },
-  () => {
-    // Any response (200, 404, etc.) means server is alive
+discoverClawdPort({ timeoutMs: TIMEOUT_MS }, (port) => {
+  if (port) {
     process.exit(0);
+    return;
   }
-);
-
-req.on("error", () => {
-  launchApp();
-  process.exit(0);
-});
-
-req.on("timeout", () => {
-  req.destroy();
   launchApp();
   process.exit(0);
 });
