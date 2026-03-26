@@ -5,6 +5,7 @@ const fs = require("fs");
 
 const isMac = process.platform === "darwin";
 
+
 // ── Windows: AllowSetForegroundWindow via FFI ──
 let _allowSetForeground = null;
 if (!isMac) {
@@ -17,22 +18,6 @@ if (!isMac) {
   }
 }
 
-// Reset DWM input routing for the transparent pet window.
-// Uses the child-window focus cycle (same as right-click menu close) to
-// force Windows to recalculate HWND input routing.  Fixes drag after
-// z-order disruptions from Stretchly, fullscreen games, etc.
-function refreshHwndRouting() {
-  if (isMac || !win || win.isDestroyed()) return;
-  const owner = ensureContextMenuOwner();
-  if (owner && !owner.isDestroyed()) {
-    owner.setBounds({ x: -32000, y: -32000, width: 1, height: 1 });
-    owner.show();
-    owner.focus();
-    owner.hide();
-  }
-  win.showInactive();
-  win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);  // isMac early-returns above
-}
 
 // ── Window size presets ──
 const SIZES = {
@@ -263,6 +248,7 @@ const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-working-building.svg", "cla
 let currentHitBox = HIT_BOXES.default;
 
 let win;
+let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let tray = null;
 let contextMenuOwner = null;
 let currentSize = "S";
@@ -275,6 +261,29 @@ let autoStartWithClaude = false;
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+}
+function sendToHitWin(channel, ...args) {
+  if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
+}
+
+// Sync input window position to match render window's hitbox.
+// Called manually after every win position/size change + event-level safety net.
+let _lastHitW = 0, _lastHitH = 0;
+function syncHitWin() {
+  if (!hitWin || hitWin.isDestroyed() || !win || win.isDestroyed()) return;
+  const bounds = win.getBounds();
+  const hit = getHitRectScreen(bounds);
+  const x = Math.round(hit.left);
+  const y = Math.round(hit.top);
+  const w = Math.round(hit.right - hit.left);
+  const h = Math.round(hit.bottom - hit.top);
+  if (w <= 0 || h <= 0) return;
+  hitWin.setBounds({ x, y, width: w, height: h });
+  // Update shape if hitbox dimensions changed (e.g. after resize)
+  if (w !== _lastHitW || h !== _lastHitH) {
+    _lastHitW = w; _lastHitH = h;
+    hitWin.setShape([{ x: 0, y: 0, width: w, height: h }]);
+  }
 }
 
 // ── State machine ──
@@ -291,7 +300,6 @@ let idlePaused = false;
 let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
-let forceMouseStateRefresh = false;
 let eyeResendTimer = null;
 
 // ── Mini Mode ──
@@ -435,6 +443,9 @@ function applyState(state, svgOverride) {
   }
 
   sendToRenderer("state-change", state, svg);
+  // Sync state to hitWin (for click behavior decisions) + cancel active reactions
+  sendToHitWin("hit-state-sync", { currentSvg: svg });
+  sendToHitWin("hit-cancel-reaction");
 
   // Reset eyes when leaving idle/mini-idle
   if (state !== "idle" && state !== "mini-idle") {
@@ -499,9 +510,11 @@ function getHitRectScreen(bounds) {
   };
 }
 
-// ── Unified main tick (hit-test + eye tracking + sleep detection) ──
+// ── Unified main tick (cursor polling for eye tracking + sleep + mini peek) ──
+// Input routing is handled by hitWin — no setIgnoreMouseEvents toggling here.
 function startMainTick() {
   if (mainTickTimer) return;
+  // Render window: permanently click-through (set once, never toggle)
   win.setIgnoreMouseEvents(true);
   mouseOverPet = false;
 
@@ -509,19 +522,13 @@ function startMainTick() {
     if (!win || win.isDestroyed()) return;
     const cursor = screen.getCursorScreenPoint();
 
-    // ── Hit-test (always-on) ──
+    // ── Cursor-over-pet tracking (for mini peek + eye tracking, NOT for input routing) ──
     const bounds = win.getBounds();
     if (!dragLocked) {
       const hit = getHitRectScreen(bounds);
       const over = cursor.x >= hit.left && cursor.x <= hit.right
                 && cursor.y >= hit.top  && cursor.y <= hit.bottom;
-      if (over !== mouseOverPet || forceMouseStateRefresh) {
-        // Mouse entering: DWM reset before enabling events
-        if (over && !mouseOverPet && !menuOpen) refreshHwndRouting();
-        forceMouseStateRefresh = false;
-        mouseOverPet = over;
-        win.setIgnoreMouseEvents(!over);
-      }
+      mouseOverPet = over;
     }
 
     // ── Mini mode peek hover ──
@@ -978,6 +985,7 @@ function enableDoNotDisturb() {
   if (doNotDisturb) return;
   doNotDisturb = true;
   sendToRenderer("dnd-change", true);
+    sendToHitWin("hit-state-sync", { dndEnabled: true });
   // Dismiss all pending permission bubbles — DND means no interaction
   for (const perm of [...pendingPermissions]) resolvePermissionEntry(perm, "deny", "DND enabled");
   if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
@@ -996,6 +1004,7 @@ function disableDoNotDisturb() {
   if (!doNotDisturb) return;
   doNotDisturb = false;
   sendToRenderer("dnd-change", false);
+    sendToHitWin("hit-state-sync", { dndEnabled: false });
   if (miniMode) {
     if (miniSleepPeeked) { miniPeekOut(); miniSleepPeeked = false; }
     applyState("mini-idle");
@@ -1384,26 +1393,25 @@ function scheduleHwndRecovery() {
   if (hwndRecoveryTimer) clearTimeout(hwndRecoveryTimer);
   hwndRecoveryTimer = setTimeout(() => {
     hwndRecoveryTimer = null;
-    if (!win || win.isDestroyed() || dragLocked || menuOpen) return;
-    refreshHwndRouting();
+    if (!win || win.isDestroyed()) return;
+    // Just restore z-order — input routing is handled by hitWin now
+    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    if (hitWin && !hitWin.isDestroyed()) hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     forceEyeResend = true;
   }, 1000);
 }
 
 function guardAlwaysOnTop(w) {
   if (isMac) return;
-  // Event-driven: catches explicit TOPMOST stripping (Alt key, games, etc.)
   w.on("always-on-top-changed", (_, isOnTop) => {
     if (!isOnTop && w && !w.isDestroyed()) {
       w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      // Pet window only: immediate nudge + scheduled heavy recovery.
       if (w === win && !dragLocked) {
-        mouseOverPet = false;
-        forceMouseStateRefresh = true;
         forceEyeResend = true;
         const { x, y } = win.getBounds();
         win.setPosition(x + 1, y);
         win.setPosition(x, y);
+        syncHitWin();
         scheduleHwndRecovery();
       }
     }
@@ -1415,13 +1423,10 @@ function startTopmostWatchdog() {
   topmostWatchdog = setInterval(() => {
     if (win && !win.isDestroyed()) {
       win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      // Periodic HWND refresh — catches silent z-order disruptions that don't
-      // trigger always-on-top-changed (e.g. another topmost window appearing).
-      // Only showInactive + setAlwaysOnTop — do NOT reset mouseOverPet, because
-      // the resulting setIgnoreMouseEvents call undoes the HWND fix.
-      if (!dragLocked) {
-        win.showInactive();
-      }
+    }
+    // Keep hitWin topmost too
+    if (hitWin && !hitWin.isDestroyed()) {
+      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     }
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed() && perm.bubble.isVisible()) perm.bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
@@ -2021,6 +2026,62 @@ function createWindow() {
   if (!isMac || showTray) createTray();
   ensureContextMenuOwner();
 
+
+
+  // ── Create input window (hitWin) — small rect over hitbox, receives all pointer events ──
+  {
+    const initBounds = win.getBounds();
+    const initHit = getHitRectScreen(initBounds);
+    const hx = Math.round(initHit.left), hy = Math.round(initHit.top);
+    const hw = Math.round(initHit.right - initHit.left);
+    const hh = Math.round(initHit.bottom - initHit.top);
+
+    hitWin = new BrowserWindow({
+      width: hw, height: hh, x: hx, y: hy,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      focusable: true,  // KEY EXPERIMENT: allow activation to avoid WS_EX_NOACTIVATE input routing bugs
+      webPreferences: {
+        preload: path.join(__dirname, "preload-hit.js"),
+        backgroundThrottling: false,
+      },
+    });
+    // setShape: native hit region, no per-pixel alpha dependency.
+    // hitWin has no visual content — clipping is irrelevant.
+    hitWin.setShape([{ x: 0, y: 0, width: hw, height: hh }]);
+    hitWin.setIgnoreMouseEvents(false);  // PERMANENT — never toggle
+    hitWin.showInactive();
+    if (isMac) {
+      hitWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+      hitWin.setAlwaysOnTop(true, "floating");
+    } else {
+      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    }
+    hitWin.loadFile(path.join(__dirname, "hit.html"));
+    if (!isMac) guardAlwaysOnTop(hitWin);
+
+    // Event-level safety net for position sync
+    win.on("move", syncHitWin);
+    win.on("resize", syncHitWin);
+
+    // Send initial state to hitWin once it's ready
+    hitWin.webContents.on("did-finish-load", () => {
+      sendToHitWin("hit-state-sync", {
+        currentSvg, miniMode, dndEnabled: doNotDisturb,
+      });
+    });
+
+    // Crash recovery for hitWin
+    hitWin.webContents.on("render-process-gone", (_event, details) => {
+      console.error("hitWin renderer crashed:", details.reason);
+      hitWin.webContents.reload();
+    });
+  }
+
   ipcMain.on("show-context-menu", showPetContextMenu);
 
   ipcMain.on("move-window-by", (event, dx, dy) => {
@@ -2029,23 +2090,26 @@ function createWindow() {
     const size = SIZES[currentSize];
     const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
     win.setBounds({ ...clamped, width: size.width, height: size.height });
+    syncHitWin();
   });
 
   ipcMain.on("pause-cursor-polling", () => { idlePaused = true; });
   ipcMain.on("resume-from-reaction", () => {
     idlePaused = false;
-    // Skip re-send during mini transition (drag-end fires next and will set the right state)
     if (miniTransitioning) return;
-    // Re-send current state to renderer without resetting stateChangedAt or timers.
     sendToRenderer("state-change", currentState, currentSvg);
   });
 
   ipcMain.on("drag-lock", (event, locked) => {
     dragLocked = !!locked;
-    if (locked && !mouseOverPet) {
-      mouseOverPet = true;
-      win.setIgnoreMouseEvents(false);
-    }
+    if (locked) mouseOverPet = true;
+  });
+
+  // Reaction relay: hitWin → main → renderWin
+  ipcMain.on("start-drag-reaction", () => sendToRenderer("start-drag-reaction"));
+  ipcMain.on("end-drag-reaction", () => sendToRenderer("end-drag-reaction"));
+  ipcMain.on("play-click-reaction", (_, svg, duration) => {
+    sendToRenderer("play-click-reaction", svg, duration);
   });
 
   ipcMain.on("drag-end", () => {
@@ -2129,9 +2193,11 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => {
     if (miniMode) {
       sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
     }
     if (doNotDisturb) {
       sendToRenderer("dnd-change", true);
+    sendToHitWin("hit-state-sync", { dndEnabled: true });
       if (miniMode) {
         applyState("mini-sleep");
       } else {
@@ -2169,7 +2235,6 @@ function createWindow() {
     dragLocked = false;
     idlePaused = false;
     mouseOverPet = false;
-    win.setIgnoreMouseEvents(true);
     win.webContents.reload();
   });
 
@@ -2251,6 +2316,7 @@ function animateWindowX(targetX, durationMs) {
     const eased = t * (2 - t);
     const x = Math.round(startX + (targetX - startX) * eased);
     win.setBounds({ x, y: snapY, width: snapW, height: snapH });
+    syncHitWin();
     if (t < 1) {
       peekAnimTimer = setTimeout(step, 16);
     } else {
@@ -2281,6 +2347,7 @@ function animateWindowParabola(targetX, targetY, durationMs, onDone) {
     const arc = -4 * JUMP_PEAK_HEIGHT * t * (t - 1);
     const y = Math.round(startY + (targetY - startY) * eased - arc);
     win.setPosition(x, y);
+    syncHitWin();
     if (t < 1) {
       peekAnimTimer = setTimeout(step, 16);
     } else {
@@ -2344,6 +2411,7 @@ function enterMiniMode(wa, viaMenu) {
   stopWakePoll();
 
   sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
   miniTransitioning = true;
   buildContextMenu();
   buildTrayMenu();
@@ -2387,6 +2455,7 @@ function exitMiniMode() {
   miniSnap = null;
   miniSleepPeeked = false;
   sendToRenderer("mini-mode-change", false);
+    sendToHitWin("hit-state-sync", { miniMode: false });
   buildContextMenu();
   buildTrayMenu();
 
@@ -2407,6 +2476,7 @@ function exitMiniMode() {
     if (doNotDisturb) {
       doNotDisturb = false;
       sendToRenderer("dnd-change", false);
+    sendToHitWin("hit-state-sync", { dndEnabled: false });
       buildContextMenu();
       buildTrayMenu();
       applyState("waking");
@@ -2428,6 +2498,7 @@ function enterMiniViaMenu() {
 
   // Tell renderer early so it blocks drag during crabwalk
   sendToRenderer("mini-mode-change", true);
+    sendToHitWin("hit-state-sync", { miniMode: true });
 
   applyState("mini-crabwalk");
 
@@ -2645,6 +2716,7 @@ if (!gotTheLock) {
     if (_codexMonitor) _codexMonitor.stop();
     stopStaleCleanup();
     stopTopmostWatchdog();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
     killFocusHelper();
     // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
     for (const perm of [...pendingPermissions]) {
