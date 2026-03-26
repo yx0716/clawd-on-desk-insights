@@ -1979,6 +1979,7 @@ function createWindow() {
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
+    enableLargerThanScreen: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       backgroundThrottling: false,
