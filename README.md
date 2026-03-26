@@ -229,6 +229,7 @@ Thanks to everyone who has helped make Clawd better:
 - [@yujiachen-y](https://github.com/yujiachen-y) — auto-start with Claude Code
 - [@AooooooZzzz](https://github.com/AooooooZzzz) — ELECTRON_RUN_AS_NODE launch fix, Windows 10 compatibility
 - [@purefkh](https://github.com/purefkh) — macOS dock visibility fix
+- [@Tobeabellwether](https://github.com/Tobeabellwether) — macOS top-of-screen drag constraint fix
 
 ## Acknowledgments
 

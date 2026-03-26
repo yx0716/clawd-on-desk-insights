@@ -197,6 +197,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 - [@yujiachen-y](https://github.com/yujiachen-y) — 随 Claude Code 自动启动
 - [@AooooooZzzz](https://github.com/AooooooZzzz) — ELECTRON_RUN_AS_NODE 启动修复、Windows 10 兼容
 - [@purefkh](https://github.com/purefkh) — macOS Dock 可见性修复
+- [@Tobeabellwether](https://github.com/Tobeabellwether) — macOS 屏幕顶部拖拽限制修复
 
 ## 致谢
 
