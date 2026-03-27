@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain } = require("electron");
+const { app, BrowserWindow, screen, Menu, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -559,6 +559,7 @@ function createWindow() {
   ipcMain.on("bubble-height", (event, height) => _perm.handleBubbleHeight(event, height));
   ipcMain.on("permission-decide", (event, behavior) => _perm.handleDecide(event, behavior));
 
+  initFocusHelper();
   startMainTick();
   startHttpServer();
   startStaleCleanup();
@@ -788,15 +789,16 @@ if (!gotTheLock) {
   app.on("before-quit", () => {
     isQuitting = true;
     savePrefs();
+    _perm.cleanup();
+    _server.cleanup();
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
     stopTopmostWatchdog();
+    if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
-    _server.cleanup();
-    _perm.cleanup();
   });
 
   app.on("window-all-closed", () => {
