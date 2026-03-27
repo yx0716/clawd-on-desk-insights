@@ -1,0 +1,226 @@
+// src/permission.js — Permission bubble management (stacking, show/hide, responses)
+// Extracted from main.js L349-357, L1594-1746
+
+const { BrowserWindow } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const {
+  CLAWD_SERVER_HEADER,
+  CLAWD_SERVER_ID,
+} = require("../hooks/server-config");
+
+const isMac = process.platform === "darwin";
+const WIN_TOPMOST_LEVEL = "pop-up-menu";
+
+module.exports = function initPermission(ctx) {
+
+// Each entry: { res, abortHandler, suggestions, sessionId, bubble, hideTimer, toolName, toolInput, resolvedSuggestion, createdAt, measuredHeight }
+const pendingPermissions = [];
+// Pure-metadata tools auto-allowed without showing a bubble (zero side effects)
+const PASSTHROUGH_TOOLS = new Set([
+  "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TaskOutput",
+]);
+
+// Fallback height before renderer reports actual measurement
+function estimateBubbleHeight(sugCount) {
+  return 200 + (sugCount || 0) * 37;
+}
+
+function repositionBubbles() {
+  // Stack bubbles from bottom-right upward. Newest (last in array) at bottom.
+  const margin = 8;
+  const gap = 6;
+  const bw = 340;
+  const petBounds = ctx.win.getBounds();
+  const cx = petBounds.x + petBounds.width / 2;
+  const cy = petBounds.y + petBounds.height / 2;
+  const wa = ctx.getNearestWorkArea(cx, cy);
+  const x = wa.x + wa.width - bw - margin;
+
+  let yBottom = wa.y + wa.height - margin;
+  // Iterate in reverse: newest bubble (end of array) gets the bottom slot
+  for (let i = pendingPermissions.length - 1; i >= 0; i--) {
+    const perm = pendingPermissions[i];
+    const bh = perm.measuredHeight || estimateBubbleHeight((perm.suggestions || []).length);
+    const y = yBottom - bh;
+    yBottom = y - gap;
+    if (perm.bubble && !perm.bubble.isDestroyed()) {
+      perm.bubble.setBounds({ x, y, width: bw, height: bh });
+    }
+  }
+}
+
+function showPermissionBubble(permEntry) {
+  const sugCount = (permEntry.suggestions || []).length;
+  const bh = estimateBubbleHeight(sugCount);
+  // Temporary position — repositionBubbles() will finalize after renderer reports real height
+  const pos = { x: 0, y: 0, width: 340, height: bh };
+
+  const bub = new BrowserWindow({
+    width: pos.width,
+    height: pos.height,
+    x: pos.x,
+    y: pos.y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-bubble.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  permEntry.bubble = bub;
+
+  if (isMac) {
+    bub.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    bub.setAlwaysOnTop(true, "floating");
+  } else {
+    bub.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+  }
+
+  bub.loadFile(path.join(__dirname, "bubble.html"));
+
+  bub.webContents.once("did-finish-load", () => {
+    bub.webContents.send("permission-show", {
+      toolName: permEntry.toolName,
+      toolInput: permEntry.toolInput,
+      suggestions: permEntry.suggestions || [],
+      lang: ctx.lang,
+    });
+    // Don't call bub.focus() — it steals focus from terminal and can trigger
+    // false "User answered in terminal" denials in Claude Code, wasting tokens.
+  });
+
+  repositionBubbles();
+  bub.showInactive();
+
+  bub.on("closed", () => {
+    const idx = pendingPermissions.indexOf(permEntry);
+    if (idx !== -1) {
+      resolvePermissionEntry(permEntry, "deny", "Bubble window closed by user");
+    }
+  });
+
+  ctx.guardAlwaysOnTop(bub);
+}
+
+function resolvePermissionEntry(permEntry, behavior, message) {
+  const idx = pendingPermissions.indexOf(permEntry);
+  if (idx === -1) return;
+  pendingPermissions.splice(idx, 1);
+
+  const { res, abortHandler, bubble: bub } = permEntry;
+  if (abortHandler) res.removeListener("close", abortHandler);
+
+  // Hide this bubble (fade out + destroy)
+  if (bub && !bub.isDestroyed()) {
+    bub.webContents.send("permission-hide");
+    if (permEntry.hideTimer) clearTimeout(permEntry.hideTimer);
+    permEntry.hideTimer = setTimeout(() => {
+      if (bub && !bub.isDestroyed()) bub.destroy();
+    }, 250);
+  }
+
+  // Reposition remaining bubbles to fill the gap
+  repositionBubbles();
+
+  // Guard: client may have disconnected
+  if (res.writableEnded || res.destroyed) return;
+
+  const decision = { behavior: behavior === "deny" ? "deny" : "allow" };
+  if (behavior === "deny" && message) decision.message = message;
+  if (permEntry.resolvedSuggestion) {
+    decision.updatedPermissions = [permEntry.resolvedSuggestion];
+  }
+
+  sendPermissionResponse(res, decision);
+}
+
+function permLog(msg) {
+  if (!ctx.permDebugLog) return;
+  fs.appendFileSync(ctx.permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+}
+
+function sendPermissionResponse(res, decisionOrBehavior, message) {
+  let decision;
+  if (typeof decisionOrBehavior === "string") {
+    decision = { behavior: decisionOrBehavior };
+    if (message) decision.message = message;
+  } else {
+    decision = decisionOrBehavior;
+  }
+  const responseBody = JSON.stringify({
+    hookSpecificOutput: { hookEventName: "PermissionRequest", decision },
+  });
+  permLog(`response: ${responseBody}`);
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+  });
+  res.end(responseBody);
+}
+
+function handleBubbleHeight(event, height) {
+  const senderWin = BrowserWindow.fromWebContents(event.sender);
+  const perm = pendingPermissions.find(p => p.bubble === senderWin);
+  if (perm && typeof height === "number" && height > 0) {
+    perm.measuredHeight = Math.ceil(height);
+    repositionBubbles();
+  }
+}
+
+function handleDecide(event, behavior) {
+  // Identify which permission this bubble belongs to via sender webContents
+  const senderWin = BrowserWindow.fromWebContents(event.sender);
+  const perm = pendingPermissions.find(p => p.bubble === senderWin);
+  permLog(`IPC permission-decide: behavior=${behavior} matched=${!!perm}`);
+  if (!perm) return;
+  // "suggestion:N" — user picked a permission suggestion
+  if (typeof behavior === "string" && behavior.startsWith("suggestion:")) {
+    const idx = parseInt(behavior.split(":")[1], 10);
+    const suggestion = perm.suggestions?.[idx];
+    if (!suggestion) { resolvePermissionEntry(perm, "deny", "Invalid suggestion index"); return; }
+    permLog(`suggestion raw: ${JSON.stringify(suggestion)}`);
+    if (suggestion.type === "addRules") {
+      const rules = Array.isArray(suggestion.rules) ? suggestion.rules
+        : [{ toolName: suggestion.toolName, ruleContent: suggestion.ruleContent }];
+      perm.resolvedSuggestion = {
+        type: "addRules",
+        destination: suggestion.destination || "localSettings",
+        behavior: suggestion.behavior || "allow",
+        rules,
+      };
+    } else if (suggestion.type === "setMode") {
+      perm.resolvedSuggestion = {
+        type: "setMode",
+        mode: suggestion.mode,
+        destination: suggestion.destination || "localSettings",
+      };
+    }
+    resolvePermissionEntry(perm, "allow");
+  } else {
+    resolvePermissionEntry(perm, behavior === "allow" ? "allow" : "deny");
+  }
+}
+
+function cleanup() {
+  // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
+  for (const perm of [...pendingPermissions]) {
+    resolvePermissionEntry(perm, "deny", "Clawd is quitting");
+  }
+}
+
+return {
+  showPermissionBubble, resolvePermissionEntry,
+  sendPermissionResponse, repositionBubbles, permLog,
+  pendingPermissions, PASSTHROUGH_TOOLS,
+  handleBubbleHeight, handleDecide, cleanup,
+};
+
+};
