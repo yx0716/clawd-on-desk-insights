@@ -368,7 +368,7 @@ const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel
 function createWindow() {
   const prefs = loadPrefs();
   if (prefs && SIZES[prefs.size]) currentSize = prefs.size;
-  if (prefs && i18n[prefs.lang]) lang = prefs.lang;
+  if (prefs && (prefs.lang === "en" || prefs.lang === "zh")) lang = prefs.lang;
   // macOS: restore tray/dock visibility from prefs
   if (isMac && prefs) {
     if (typeof prefs.showTray === "boolean") showTray = prefs.showTray;
