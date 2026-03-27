@@ -36,93 +36,7 @@ const SIZES = {
   L: { width: 360, height: 360 },
 };
 
-// ── Internationalization ──
-const i18n = {
-  en: {
-    size: "Size",
-    small: "Small (S)",
-    medium: "Medium (M)",
-    large: "Large (L)",
-    miniMode: "Mini Mode",
-    exitMiniMode: "Exit Mini Mode",
-    sleep: "Sleep (Do Not Disturb)",
-    wake: "Wake Clawd",
-    startOnLogin: "Start on Login",
-    startWithClaude: "Start with Claude Code",
-    showInMenuBar: "Show in Menu Bar",
-    showInDock: "Show in Dock",
-    language: "Language",
-    checkForUpdates: "Check for Updates",
-    checkingForUpdates: "Checking for Updates…",
-    updateAvailable: "Update Available",
-    updateAvailableMsg: "v{version} is available. Download and install now?",
-    updateAvailableMacMsg: "v{version} is available. Open the download page?",
-    updateNotAvailable: "You're Up to Date",
-    updateNotAvailableMsg: "Clawd v{version} is the latest version.",
-    updateDownloading: "Downloading Update…",
-    updateReady: "Update Ready",
-    updateReadyMsg: "v{version} has been downloaded. Restart now to update?",
-    updateError: "Update Error",
-    updateErrorMsg: "Failed to check for updates. Please try again later.",
-    restartNow: "Restart Now",
-    restartLater: "Later",
-    download: "Download",
-    sessions: "Sessions",
-    noSessions: "No active sessions",
-    sessionWorking: "Working",
-    sessionThinking: "Thinking",
-    sessionJuggling: "Juggling",
-    sessionIdle: "Idle",
-    sessionSleeping: "Sleeping",
-    sessionJustNow: "just now",
-    sessionMinAgo: "{n}m ago",
-    sessionHrAgo: "{n}h ago",
-    quit: "Quit",
-  },
-  zh: {
-    size: "大小",
-    small: "小 (S)",
-    medium: "中 (M)",
-    large: "大 (L)",
-    miniMode: "极简模式",
-    exitMiniMode: "退出极简模式",
-    sleep: "休眠（免打扰）",
-    wake: "唤醒 Clawd",
-    startOnLogin: "开机自启",
-    startWithClaude: "随 Claude Code 启动",
-    showInMenuBar: "在菜单栏显示",
-    showInDock: "在 Dock 显示",
-    language: "语言",
-    checkForUpdates: "检查更新",
-    checkingForUpdates: "正在检查更新…",
-    updateAvailable: "发现新版本",
-    updateAvailableMsg: "v{version} 已发布，是否下载并安装？",
-    updateAvailableMacMsg: "v{version} 已发布，是否打开下载页面？",
-    updateNotAvailable: "已是最新版本",
-    updateNotAvailableMsg: "Clawd v{version} 已是最新版本。",
-    updateDownloading: "正在下载更新…",
-    updateReady: "更新就绪",
-    updateReadyMsg: "v{version} 已下载完成，是否立即重启以完成更新？",
-    updateError: "更新失败",
-    updateErrorMsg: "检查更新失败，请稍后再试。",
-    restartNow: "立即重启",
-    restartLater: "稍后",
-    download: "下载",
-    sessions: "会话",
-    noSessions: "无活跃会话",
-    sessionWorking: "工作中",
-    sessionThinking: "思考中",
-    sessionJuggling: "多任务",
-    sessionIdle: "空闲",
-    sessionSleeping: "睡眠",
-    sessionJustNow: "刚刚",
-    sessionMinAgo: "{n}分钟前",
-    sessionHrAgo: "{n}小时前",
-    quit: "退出",
-  },
-};
 let lang = "en";
-function t(key) { return (i18n[lang] || i18n.en)[key] || key; }
 
 // ── Position persistence ──
 const PREFS_PATH = path.join(app.getPath("userData"), "clawd-prefs.json");
@@ -583,134 +497,51 @@ function updateLog(msg) {
   fs.appendFileSync(updateDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
-// ── System tray ──
-function createTray() {
-  if (tray) return;
-  let icon;
-  if (isMac) {
-    icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-iconTemplate.png"));
-    icon.setTemplateImage(true);
-  } else {
-    icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-icon.png")).resize({ width: 32, height: 32 });
-  }
-  tray = new Tray(icon);
-  tray.setToolTip("Clawd Desktop Pet");
-  buildTrayMenu();
-}
-
-function destroyTray() {
-  if (!tray) return;
-  tray.destroy();
-  tray = null;
-}
-
-function setShowTray(val) {
-  // Prevent disabling both Menu Bar and Dock — app would become unquittable
-  if (!val && !showDock) return;
-  showTray = val;
-  if (showTray) {
-    createTray();
-  } else {
-    destroyTray();
-  }
-  buildContextMenu();
-  savePrefs();
-}
-
-function applyDockVisibility() {
-  if (!isMac) return;
-  if (showDock) {
-    app.setActivationPolicy("regular");
-    if (app.dock) app.dock.show();
-  } else {
-    app.setActivationPolicy("accessory");
-    if (app.dock) app.dock.hide();
-  }
-}
-
-function setShowDock(val) {
-  if (!isMac || !app.dock) return;
-  // Prevent disabling both Dock and Menu Bar — app would become unquittable
-  if (!val && !showTray) return;
-  showDock = val;
-  applyDockVisibility();
-  buildTrayMenu();
-  buildContextMenu();
-  savePrefs();
-}
-
-function buildTrayMenu() {
-  if (!tray) return;
-  const items = [
-    {
-      label: doNotDisturb ? t("wake") : t("sleep"),
-      click: () => doNotDisturb ? disableDoNotDisturb() : enableDoNotDisturb(),
-    },
-    { type: "separator" },
-    {
-      label: t("startOnLogin"),
-      type: "checkbox",
-      checked: app.getLoginItemSettings().openAtLogin,
-      click: (menuItem) => {
-        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
-      },
-    },
-    {
-      label: t("startWithClaude"),
-      type: "checkbox",
-      checked: autoStartWithClaude,
-      click: (menuItem) => {
-        autoStartWithClaude = menuItem.checked;
-        try {
-          const { registerHooks, unregisterAutoStart } = require("../hooks/install.js");
-          if (autoStartWithClaude) {
-            registerHooks({ silent: true, autoStart: true, port: getHookServerPort() });
-          } else {
-            unregisterAutoStart();
-          }
-        } catch (err) {
-          console.warn("Clawd: failed to toggle auto-start hook:", err.message);
-        }
-        savePrefs();
-      },
-    },
-  ];
-  // macOS: Dock and Menu Bar visibility toggles
-  if (isMac) {
-    items.push(
-      { type: "separator" },
-      {
-        label: t("showInMenuBar"),
-        type: "checkbox",
-        checked: showTray,
-        enabled: showTray ? showDock : true, // can't uncheck if Dock is already hidden
-        click: (menuItem) => setShowTray(menuItem.checked),
-      },
-      {
-        label: t("showInDock"),
-        type: "checkbox",
-        checked: showDock,
-        enabled: showDock ? showTray : true, // can't uncheck if Menu Bar is already hidden
-        click: (menuItem) => setShowDock(menuItem.checked),
-      },
-    );
-  }
-  items.push(
-    { type: "separator" },
-    getUpdateMenuItem(),
-    { type: "separator" },
-    {
-      label: t("language"),
-      submenu: [
-        { label: "English", type: "radio", checked: lang === "en", click: () => setLanguage("en") },
-        { label: "中文", type: "radio", checked: lang === "zh", click: () => setLanguage("zh") },
-      ],
-    },
-    { type: "separator" },
-    { label: t("quit"), click: () => requestAppQuit() },
-  );
-  tray.setContextMenu(Menu.buildFromTemplate(items));
-}
+// ── Menu — delegated to src/menu.js ──
+const _menuCtx = {
+  get win() { return win; },
+  get sessions() { return sessions; },
+  get currentSize() { return currentSize; },
+  set currentSize(v) { currentSize = v; },
+  get doNotDisturb() { return doNotDisturb; },
+  get lang() { return lang; },
+  set lang(v) { lang = v; },
+  get showTray() { return showTray; },
+  set showTray(v) { showTray = v; },
+  get showDock() { return showDock; },
+  set showDock(v) { showDock = v; },
+  get autoStartWithClaude() { return autoStartWithClaude; },
+  set autoStartWithClaude(v) { autoStartWithClaude = v; },
+  get isQuitting() { return isQuitting; },
+  set isQuitting(v) { isQuitting = v; },
+  get menuOpen() { return menuOpen; },
+  set menuOpen(v) { menuOpen = v; },
+  get tray() { return tray; },
+  set tray(v) { tray = v; },
+  get contextMenuOwner() { return contextMenuOwner; },
+  set contextMenuOwner(v) { contextMenuOwner = v; },
+  get contextMenu() { return contextMenu; },
+  set contextMenu(v) { contextMenu = v; },
+  enableDoNotDisturb: () => enableDoNotDisturb(),
+  disableDoNotDisturb: () => disableDoNotDisturb(),
+  enterMiniViaMenu: () => enterMiniViaMenu(),
+  exitMiniMode: () => exitMiniMode(),
+  getMiniMode: () => _mini.getMiniMode(),
+  getMiniTransitioning: () => _mini.getMiniTransitioning(),
+  miniHandleResize: (sizeKey) => _mini.handleResize(sizeKey),
+  focusTerminalWindow: (...args) => focusTerminalWindow(...args),
+  checkForUpdates: (...args) => checkForUpdates(...args),
+  getUpdateMenuItem: () => getUpdateMenuItem(),
+  buildSessionSubmenu: () => buildSessionSubmenu(),
+  savePrefs,
+  getHookServerPort: () => getHookServerPort(),
+  clampToScreen,
+  getNearestWorkArea,
+};
+const _menu = require("./menu")(_menuCtx);
+const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
+        showPetContextMenu, popupMenuAt, ensureContextMenuOwner,
+        requestAppQuit, resizeWindow, applyDockVisibility } = _menu;
 
 // ── Auto-updater — delegated to src/updater.js ──
 const _updaterCtx = {
@@ -720,84 +551,6 @@ const _updaterCtx = {
 };
 const _updater = require("./updater")(_updaterCtx);
 const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel } = _updater;
-
-function rebuildAllMenus() {
-  buildTrayMenu();
-  buildContextMenu();
-}
-
-// ── Window creation ──
-function requestAppQuit() {
-  isQuitting = true;
-  app.quit();
-}
-
-function ensureContextMenuOwner() {
-  if (contextMenuOwner && !contextMenuOwner.isDestroyed()) return contextMenuOwner;
-  if (!win || win.isDestroyed()) return null;
-
-  contextMenuOwner = new BrowserWindow({
-    parent: win,
-    x: 0,
-    y: 0,
-    width: 1,
-    height: 1,
-    show: false,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    focusable: true,
-    closable: false,
-    minimizable: false,
-    maximizable: false,
-    hasShadow: false,
-  });
-
-  contextMenuOwner.on("close", (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      contextMenuOwner.hide();
-    }
-  });
-
-  contextMenuOwner.on("closed", () => {
-    contextMenuOwner = null;
-  });
-
-  return contextMenuOwner;
-}
-
-function popupMenuAt(menu) {
-  if (menuOpen) return;
-  const owner = ensureContextMenuOwner();
-  if (!owner) return;
-
-  const cursor = screen.getCursorScreenPoint();
-  owner.setBounds({ x: cursor.x, y: cursor.y, width: 1, height: 1 });
-  owner.show();
-  owner.focus();
-
-  menuOpen = true;
-  menu.popup({
-    window: owner,
-    callback: () => {
-      menuOpen = false;
-      if (owner && !owner.isDestroyed()) owner.hide();
-      if (win && !win.isDestroyed()) {
-        win.showInactive();
-        win.setAlwaysOnTop(true, isMac ? "floating" : WIN_TOPMOST_LEVEL);
-      }
-    },
-  });
-}
-
-function showPetContextMenu() {
-  if (!win || win.isDestroyed()) return;
-  buildContextMenu();
-  popupMenuAt(contextMenu);
-}
 
 function createWindow() {
   const prefs = loadPrefs();
@@ -1122,88 +875,6 @@ const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
 // Convenience getters for mini state (used throughout main.js)
 Object.defineProperties(this || {}, {}); // no-op placeholder
 // Mini state is accessed via _mini getters in ctx objects below
-
-function buildContextMenu() {
-  const template = [
-    {
-      label: t("size"),
-      submenu: [
-        { label: t("small"), type: "radio", checked: currentSize === "S", click: () => resizeWindow("S") },
-        { label: t("medium"), type: "radio", checked: currentSize === "M", click: () => resizeWindow("M") },
-        { label: t("large"), type: "radio", checked: currentSize === "L", click: () => resizeWindow("L") },
-      ],
-    },
-    { type: "separator" },
-    {
-      label: _mini.getMiniMode() ? t("exitMiniMode") : t("miniMode"),
-      enabled: !_mini.getMiniTransitioning() && !(doNotDisturb && !_mini.getMiniMode()),
-      click: () => _mini.getMiniMode() ? exitMiniMode() : enterMiniViaMenu(),
-    },
-    { type: "separator" },
-    {
-      label: doNotDisturb ? t("wake") : t("sleep"),
-      click: () => doNotDisturb ? disableDoNotDisturb() : enableDoNotDisturb(),
-    },
-    { type: "separator" },
-    {
-      label: `${t("sessions")} (${sessions.size})`,
-      submenu: buildSessionSubmenu(),
-    },
-  ];
-  // macOS: Dock and Menu Bar visibility toggles
-  if (isMac) {
-    template.push(
-      { type: "separator" },
-      {
-        label: t("showInMenuBar"),
-        type: "checkbox",
-        checked: showTray,
-        enabled: showTray ? showDock : true, // can't uncheck if Dock is already hidden
-        click: (menuItem) => setShowTray(menuItem.checked),
-      },
-      {
-        label: t("showInDock"),
-        type: "checkbox",
-        checked: showDock,
-        enabled: showDock ? showTray : true, // can't uncheck if Menu Bar is already hidden
-        click: (menuItem) => setShowDock(menuItem.checked),
-      },
-    );
-  }
-  template.push(
-    { type: "separator" },
-    getUpdateMenuItem(),
-    { type: "separator" },
-    {
-      label: t("language"),
-      submenu: [
-        { label: "English", type: "radio", checked: lang === "en", click: () => setLanguage("en") },
-        { label: "中文", type: "radio", checked: lang === "zh", click: () => setLanguage("zh") },
-      ],
-    },
-    { type: "separator" },
-    { label: t("quit"), click: () => requestAppQuit() },
-  );
-  contextMenu = Menu.buildFromTemplate(template);
-}
-
-function setLanguage(newLang) {
-  lang = newLang;
-  rebuildAllMenus();
-  savePrefs();
-}
-
-function resizeWindow(sizeKey) {
-  currentSize = sizeKey;
-  const size = SIZES[sizeKey];
-  if (!_mini.handleResize(sizeKey)) {
-    const { x, y } = win.getBounds();
-    const clamped = clampToScreen(x, y, size.width, size.height);
-    win.setBounds({ ...clamped, width: size.width, height: size.height });
-  }
-  buildContextMenu();
-  savePrefs();
-}
 
 // ── Auto-install VS Code / Cursor terminal-focus extension ──
 const EXT_ID = "clawd.clawd-terminal-focus";
