@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { buildPermissionUrl, DEFAULT_SERVER_PORT, PERMISSION_PATH, readRuntimePort } = require("./server-config");
 
 // Hooks supported by all Claude Code versions
 const CORE_HOOKS = [
@@ -31,6 +32,13 @@ const VERSIONED_HOOKS = [
   { event: "StopFailure", minVersion: "2.1.78" },
 ];
 
+const CLAUDE_VERSION_PATTERN = /(\d+\.\d+\.\d+)/;
+const UNKNOWN_CLAUDE_VERSION = Object.freeze({
+  version: null,
+  source: null,
+  status: "unknown",
+});
+
 /**
  * Compare two semver strings: return true if a < b.
  */
@@ -45,28 +53,174 @@ function versionLessThan(a, b) {
 }
 
 /**
- * Detect installed Claude Code version by running `claude --version`.
- * Returns version string (e.g. "2.1.78") or null if detection fails.
+ * Detect installed Claude Code version.
+ * On macOS, try known absolute install paths before falling back to PATH.
+ * Returns an object describing the result so callers can fail closed.
  */
-function getClaudeVersion() {
-  try {
-    const { execSync } = require("child_process");
-    const out = execSync("claude --version", {
-      encoding: "utf8",
-      timeout: 5000,
-      windowsHide: true,
-    });
-    const match = out.match(/(\d+\.\d+\.\d+)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
+function getClaudeVersion(options = {}) {
+  const platform = options.platform || process.platform;
+  const homeDir = options.homeDir || os.homedir();
+  const execFileSync = options.execFileSync || require("child_process").execFileSync;
+  const candidates = [];
+
+  if (platform === "darwin") {
+    candidates.push(
+      path.join(homeDir, ".local", "bin", "claude"),
+      path.join(homeDir, ".claude", "local", "claude"),
+      "/opt/homebrew/bin/claude",
+      "/usr/local/bin/claude"
+    );
   }
+  candidates.push("claude");
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      const out = execFileSync(candidate, ["--version"], {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+      });
+      const match = out.match(CLAUDE_VERSION_PATTERN);
+      if (!match) continue;
+      return {
+        version: match[1],
+        source: candidate === "claude" ? "PATH:claude" : candidate,
+        status: "known",
+      };
+    } catch {}
+  }
+  return { ...UNKNOWN_CLAUDE_VERSION };
 }
 
 const MARKER = "clawd-hook.js";
 const AUTO_START_MARKER = "auto-start.js";
 const LEGACY_AUTO_START_MARKER = "auto-start.sh";
-const HTTP_MARKER = "23333/permission";
+const HTTP_MARKER = PERMISSION_PATH;
+
+function forEachCommandHook(entries, visitor) {
+  if (!Array.isArray(entries)) return;
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.command === "string") {
+      visitor(entry.command, (next) => { entry.command = next; });
+    }
+    if (Array.isArray(entry.hooks)) {
+      for (const hook of entry.hooks) {
+        if (!hook || typeof hook !== "object" || typeof hook.command !== "string") continue;
+        visitor(hook.command, (next) => { hook.command = next; });
+      }
+    }
+  }
+}
+
+function syncCommandHook(entries, marker, expectedCommand) {
+  let found = false;
+  let changed = false;
+  forEachCommandHook(entries, (command, update) => {
+    if (!command.includes(marker)) return;
+    found = true;
+    if (command !== expectedCommand) {
+      update(expectedCommand);
+      changed = true;
+    }
+  });
+  return { found, changed };
+}
+
+function removeMatchingCommandHooks(entries, predicate) {
+  if (!Array.isArray(entries)) return { entries, removed: 0, changed: false };
+
+  let removed = 0;
+  let changed = false;
+  const nextEntries = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (typeof entry.command === "string" && predicate(entry.command)) {
+      removed++;
+      changed = true;
+      continue;
+    }
+
+    if (!Array.isArray(entry.hooks)) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    const nextHooks = entry.hooks.filter((hook) => {
+      if (!hook || typeof hook !== "object" || typeof hook.command !== "string") return true;
+      if (!predicate(hook.command)) return true;
+      removed++;
+      changed = true;
+      return false;
+    });
+
+    if (nextHooks.length === entry.hooks.length) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (nextHooks.length === 0 && typeof entry.command !== "string") {
+      continue;
+    }
+
+    nextEntries.push({ ...entry, hooks: nextHooks });
+  }
+
+  return { entries: nextEntries, removed, changed };
+}
+
+function writeJsonAtomic(filePath, data) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+}
+
+function syncHttpHook(entries, expectedUrl) {
+  let found = false;
+  let changed = false;
+  if (!Array.isArray(entries)) return { found, changed };
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.type === "http" && typeof entry.url === "string" && entry.url.includes(HTTP_MARKER)) {
+      found = true;
+      if (entry.url !== expectedUrl) {
+        entry.url = expectedUrl;
+        changed = true;
+      }
+    }
+    if (!Array.isArray(entry.hooks)) continue;
+    for (const hook of entry.hooks) {
+      if (!hook || typeof hook !== "object" || hook.type !== "http" || typeof hook.url !== "string") continue;
+      if (!hook.url.includes(HTTP_MARKER)) continue;
+      found = true;
+      if (hook.url !== expectedUrl) {
+        hook.url = expectedUrl;
+        changed = true;
+      }
+    }
+  }
+  return { found, changed };
+}
+
+function getHookServerPort(explicitPort) {
+  return Number.isInteger(explicitPort) ? explicitPort : (readRuntimePort() || DEFAULT_SERVER_PORT);
+}
 
 // HTTP hooks: PermissionRequest uses bidirectional HTTP hook for permission decisions.
 // Claude Code fires PermissionRequest for tools needing approval (primarily Bash).
@@ -82,16 +236,71 @@ const HTTP_HOOKS = {
   },
 };
 
+function getSupportedVersionedHooks(versionInfo) {
+  const supported = [];
+  const unsupported = [];
+
+  for (const hook of VERSIONED_HOOKS) {
+    const isSupported = (
+      versionInfo.status === "known" &&
+      !versionLessThan(versionInfo.version, hook.minVersion)
+    );
+    if (isSupported) supported.push(hook);
+    else unsupported.push(hook);
+  }
+
+  return { supported, unsupported };
+}
+
+function shouldReconcileVersionedHooks(versionInfo) {
+  return versionInfo.status === "known";
+}
+
+function reconcileVersionedHooks(settings, supportedEvents, versionInfo) {
+  let removed = 0;
+  let changed = false;
+  if (!shouldReconcileVersionedHooks(versionInfo)) {
+    return { removed, changed };
+  }
+
+  for (const { event } of VERSIONED_HOOKS) {
+    if (supportedEvents.has(event)) continue;
+    if (!Array.isArray(settings.hooks[event])) continue;
+    if (settings.hooks[event].length === 0) {
+      delete settings.hooks[event];
+      changed = true;
+      continue;
+    }
+
+    const result = removeMatchingCommandHooks(
+      settings.hooks[event],
+      (command) => command.includes(MARKER)
+    );
+
+    if (!result.changed) continue;
+
+    removed += result.removed;
+    changed = true;
+    if (result.entries.length > 0) settings.hooks[event] = result.entries;
+    else delete settings.hooks[event];
+  }
+
+  return { removed, changed };
+}
+
 /**
  * Register Clawd hooks into ~/.claude/settings.json.
  * Safe to call multiple times — skips already-registered hooks.
  * @param {object} [options]
  * @param {boolean} [options.silent] - suppress console output (for auto-registration)
  * @param {boolean} [options.autoStart] - register auto-start hook for SessionStart
- * @returns {{ added: number, skipped: number }}
+ * @param {string} [options.settingsPath] - internal override for tests
+ * @param {{ version: string|null, source: string|null, status: "known"|"unknown" }} [options.claudeVersionInfo]
+ * @returns {{ added: number, skipped: number, updated: number, removed: number, version: string|null, versionStatus: "known"|"unknown", versionSource: string|null }}
  */
 function registerHooks(options = {}) {
-  const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
+  const settingsPath = options.settingsPath || path.join(os.homedir(), ".claude", "settings.json");
+  const hookPort = getHookServerPort(options.port);
   let hookScript = path.resolve(__dirname, "clawd-hook.js").replace(/\\/g, "/");
   // In packaged builds, __dirname points to app.asar (virtual); the actual
   // unpacked file lives under app.asar.unpacked (see package.json asarUnpack).
@@ -112,21 +321,24 @@ function registerHooks(options = {}) {
   let added = 0;
   let skipped = 0;
   let versionSkipped = 0;
+  let updated = 0;
+  let removed = 0;
   let changed = false;
 
   // Detect CC version for versioned hooks filtering
-  const ccVersion = getClaudeVersion();
+  const versionInfo = options.claudeVersionInfo || getClaudeVersion();
+  const { supported: supportedVersionedHooks, unsupported: unsupportedVersionedHooks } =
+    getSupportedVersionedHooks(versionInfo);
+  const supportedVersionedEvents = new Set(supportedVersionedHooks.map((hook) => hook.event));
+  versionSkipped = unsupportedVersionedHooks.length;
+
+  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo);
+  removed += reconcileResult.removed;
+  changed = changed || reconcileResult.changed;
 
   // Build the full hook list: core + version-compatible hooks
   const hookEvents = [...CORE_HOOKS];
-  for (const { event, minVersion } of VERSIONED_HOOKS) {
-    if (ccVersion && versionLessThan(ccVersion, minVersion)) {
-      versionSkipped++;
-      if (!options.silent) {
-        console.log(`  Skipped ${event} (requires CC >= ${minVersion}, found ${ccVersion})`);
-      }
-      continue;
-    }
+  for (const { event } of supportedVersionedHooks) {
     hookEvents.push(event);
   }
 
@@ -139,19 +351,15 @@ function registerHooks(options = {}) {
     }
 
     // Check if our hook is already registered (search nested hooks arrays too)
-    const alreadyExists = settings.hooks[event].some((entry) => {
-      if (!entry || typeof entry !== "object") return false;
-      // Flat format: { type, command }
-      if (typeof entry.command === "string" && entry.command.includes(MARKER)) return true;
-      // Nested format: { matcher, hooks: [{ type, command }] }
-      if (Array.isArray(entry.hooks)) {
-        return entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(MARKER));
+    const desiredCommand = `node "${hookScript}" ${event}`;
+    const commandSync = syncCommandHook(settings.hooks[event], MARKER, desiredCommand);
+    if (commandSync.found) {
+      if (commandSync.changed) {
+        updated++;
+        changed = true;
+      } else {
+        skipped++;
       }
-      return false;
-    });
-
-    if (alreadyExists) {
-      skipped++;
       continue;
     }
 
@@ -161,7 +369,7 @@ function registerHooks(options = {}) {
       hooks: [
         {
           type: "command",
-          command: `node "${hookScript}" ${event}`,
+          command: desiredCommand,
         },
       ],
     });
@@ -178,22 +386,18 @@ function registerHooks(options = {}) {
       changed = true;
     }
 
-    const autoStartExists = settings.hooks.SessionStart.some((entry) => {
-      if (!entry || typeof entry !== "object") return false;
-      if (typeof entry.command === "string" && entry.command.includes(AUTO_START_MARKER)) return true;
-      if (Array.isArray(entry.hooks)) {
-        return entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(AUTO_START_MARKER));
-      }
-      return false;
-    });
-
-    if (!autoStartExists) {
+    const autoStartCommand = `node "${autoStartScript}"`;
+    const autoStartSync = syncCommandHook(settings.hooks.SessionStart, AUTO_START_MARKER, autoStartCommand);
+    if (!autoStartSync.found) {
       // Insert at index 0 — must run BEFORE clawd-hook.js so the app is starting
       settings.hooks.SessionStart.unshift({
         matcher: "",
-        hooks: [{ type: "command", command: `node "${autoStartScript}"` }],
+        hooks: [{ type: "command", command: autoStartCommand }],
       });
       added++;
+    } else if (autoStartSync.changed) {
+      updated++;
+      changed = true;
     } else {
       skipped++;
     }
@@ -218,49 +422,64 @@ function registerHooks(options = {}) {
       changed = true;
     }
 
-    // Check if HTTP hook already registered (by URL marker + matcher)
-    const httpExists = settings.hooks[event].some((entry) => {
-      if (!entry || typeof entry !== "object") return false;
-      // Flat format: { type: "http", url }
-      if (entry.type === "http" && typeof entry.url === "string" && entry.url.includes(HTTP_MARKER)) return true;
-      // Nested format: { matcher, hooks: [{ type: "http", url }] }
-      if (Array.isArray(entry.hooks)) {
-        return entry.hooks.some((h) => h && h.type === "http" && typeof h.url === "string" && h.url.includes(HTTP_MARKER));
+    const desiredHook = { ...hook, url: buildPermissionUrl(hookPort) };
+    const httpSync = syncHttpHook(settings.hooks[event], desiredHook.url);
+    if (httpSync.found) {
+      if (httpSync.changed) {
+        updated++;
+        changed = true;
+      } else {
+        skipped++;
       }
-      return false;
-    });
-
-    if (httpExists) {
-      skipped++;
       continue;
     }
 
     settings.hooks[event].push({
       matcher,
-      hooks: [hook],
+      hooks: [desiredHook],
     });
     added++;
   }
 
   // Only write if something changed (avoid unnecessary disk I/O)
   if (added > 0 || changed) {
-    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+    writeJsonAtomic(settingsPath, settings);
   }
 
   if (!options.silent) {
+    const versionLabel = versionInfo.status === "known" ? versionInfo.version : "unknown";
+    const versionSource = versionInfo.source || "unavailable";
     console.log(`Clawd hooks installed to ${settingsPath}`);
-    console.log(`  Claude Code version: ${ccVersion || "unknown (registering all hooks)"}`);
+    console.log(`  Claude Code version: ${versionLabel}`);
+    console.log(`  Detection source: ${versionSource}`);
+    if (versionInfo.status === "unknown") {
+      console.log("  Versioned hooks: disabled (Claude Code version could not be detected)");
+    }
     console.log(`  Added: ${added} hooks`);
+    if (updated > 0) console.log(`  Updated: ${updated} stale hook paths`);
+    if (removed > 0) console.log(`  Removed: ${removed} incompatible versioned hooks`);
     if (skipped > 0) console.log(`  Skipped: ${skipped} (already registered)`);
-    if (versionSkipped > 0) console.log(`  Skipped: ${versionSkipped} (version too old)`);
+    if (versionSkipped > 0) {
+      const reason = versionInfo.status === "known"
+        ? `version too old for ${unsupportedVersionedHooks.map((hook) => hook.event).join(", ")}`
+        : "version unknown, versioned hooks disabled";
+      console.log(`  Skipped: ${versionSkipped} (${reason})`);
+    }
     console.log(`\nHook events: ${hookEvents.join(", ")}`);
     if (Object.keys(HTTP_HOOKS).length > 0) {
       console.log(`HTTP hooks: ${Object.keys(HTTP_HOOKS).join(", ")}`);
     }
   }
 
-  return { added, skipped };
+  return {
+    added,
+    skipped,
+    updated,
+    removed,
+    version: versionInfo.version,
+    versionStatus: versionInfo.status,
+    versionSource: versionInfo.source,
+  };
 }
 
 /**
@@ -297,7 +516,7 @@ function unregisterAutoStart() {
   });
 
   if (settings.hooks.SessionStart.length < before) {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+    writeJsonAtomic(settingsPath, settings);
     return true;
   }
   return false;
@@ -327,7 +546,18 @@ function isAutoStartRegistered() {
 }
 
 // Export for use by main.js
-module.exports = { registerHooks, unregisterAutoStart, isAutoStartRegistered };
+module.exports = {
+  registerHooks,
+  unregisterAutoStart,
+  isAutoStartRegistered,
+  __test: {
+    getClaudeVersion,
+    versionLessThan,
+    removeMatchingCommandHooks,
+    reconcileVersionedHooks,
+    shouldReconcileVersionedHooks,
+  },
+};
 
 // CLI: run directly with `node hooks/install.js`
 if (require.main === module) {

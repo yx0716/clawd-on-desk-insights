@@ -5,7 +5,41 @@
 
 set -e
 
-PORT=23333
+detect_port() {
+  local candidates=()
+  local runtime_file="$HOME/.clawd/runtime.json"
+  if [ -f "$runtime_file" ]; then
+    local runtime_port
+    runtime_port=$(node -e 'try { const fs = require("fs"); const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (Number.isInteger(raw.port)) process.stdout.write(String(raw.port)); } catch {}' "$runtime_file")
+    if [ -n "$runtime_port" ]; then
+      candidates+=("$runtime_port")
+    fi
+  fi
+
+  for port in 23333 23334 23335 23336 23337; do
+    local seen=0
+    for existing in "${candidates[@]}"; do
+      if [ "$existing" = "$port" ]; then
+        seen=1
+        break
+      fi
+    done
+    if [ "$seen" -eq 0 ]; then
+      candidates+=("$port")
+    fi
+  done
+
+  for port in "${candidates[@]}"; do
+    if curl -s -D - -o /dev/null --connect-timeout 1 "http://127.0.0.1:$port/state" 2>/dev/null | tr -d '\r' | grep -iq '^x-clawd-server: clawd-on-desk$'; then
+      echo "$port"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+PORT="$(detect_port || true)"
 BASE="http://127.0.0.1:$PORT"
 HOOK="hooks/clawd-hook.js"
 BOLD='\033[1m'
@@ -24,11 +58,11 @@ header() { echo -e "\n${BOLD}${CYAN}[$1]${RESET} $2"; }
 # ─── Pre-flight ───
 header "0" "Pre-flight checks"
 
-if ! curl -s -o /dev/null --connect-timeout 1 "$BASE/state" -X POST -d '{}' 2>/dev/null; then
-  fail "Clawd not running on port $PORT. Start the app first: npm start"
+if [ -z "$PORT" ]; then
+  fail "Clawd not found on ports 23333-23337. Start the app first: npm start"
   exit 1
 fi
-pass "Clawd HTTP server is reachable"
+pass "Clawd HTTP server is reachable on port $PORT"
 
 if [ "$(uname)" != "Darwin" ]; then
   fail "This script is for macOS only"

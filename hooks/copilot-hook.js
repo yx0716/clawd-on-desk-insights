@@ -4,6 +4,8 @@
 // Usage: node copilot-hook.js <event_name>
 // Reads stdin JSON from Copilot CLI for sessionId (camelCase)
 
+const { postStateToRunningServer } = require("./server-config");
+
 const EVENT_TO_STATE = {
   sessionStart: "idle",
   sessionEnd: "sleeping",
@@ -150,21 +152,9 @@ function send(sessionId, cwd) {
   if (_pidChain.length) body.pid_chain = _pidChain;
 
   const data = JSON.stringify(body);
-  const req = require("http").request(
-    {
-      hostname: "127.0.0.1",
-      port: 23333,
-      path: "/state",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(data),
-      },
-      timeout: 500,
-    },
+  postStateToRunningServer(
+    data,
+    { timeoutMs: 100 },
     () => process.exit(0)
   );
-  req.on("error", () => process.exit(0));
-  req.on("timeout", () => { req.destroy(); process.exit(0); });
-  req.end(data);
 }

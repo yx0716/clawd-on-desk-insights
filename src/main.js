@@ -3,6 +3,15 @@ const http = require("http");
 const https = require("https");
 const path = require("path");
 const fs = require("fs");
+const {
+  CLAWD_SERVER_HEADER,
+  CLAWD_SERVER_ID,
+  DEFAULT_SERVER_PORT,
+  clearRuntimeConfig,
+  getPortCandidates,
+  readRuntimePort,
+  writeRuntimeConfig,
+} = require("../hooks/server-config");
 
 const isMac = process.platform === "darwin";
 
@@ -1130,6 +1139,14 @@ if (-not $focused) {${wtTitleMatch}
 
 // Persistent PowerShell process — warm at startup, reused for all focus calls
 let psProc = null;
+// macOS Accessibility/System Events calls can pile up fast, so serialize focus attempts.
+const MAC_FOCUS_THROTTLE_MS = 1500;
+const MAC_FOCUS_TIMEOUT_MS = 1500;
+let macFocusInFlight = false;
+let macFocusLastRunAt = 0;
+let macFocusLastPid = null;
+let macQueuedFocusRequest = null;
+let macFocusCooldownTimer = null;
 
 function initFocusHelper() {
   if (isMac || psProc) return;
@@ -1151,8 +1168,96 @@ function killFocusHelper() {
   if (psProc) { psProc.kill(); psProc = null; }
 }
 
+function scheduleTerminalTabFocus(editor, pidChain) {
+  if (!editor || !pidChain || !pidChain.length) return;
+  setTimeout(() => {
+    const body = JSON.stringify({ pids: pidChain });
+    for (let port = 23456; port <= 23460; port++) {
+      const tabReq = http.request({
+        hostname: "127.0.0.1", port, path: "/focus-tab", method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        timeout: 300,
+      }, () => {});
+      tabReq.on("error", () => {});
+      tabReq.on("timeout", () => tabReq.destroy());
+      tabReq.end(body);
+    }
+  }, 800);
+}
+
+function clearMacFocusCooldownTimer() {
+  if (macFocusCooldownTimer) {
+    clearTimeout(macFocusCooldownTimer);
+    macFocusCooldownTimer = null;
+  }
+}
+
+function scheduleQueuedMacFocus(delayMs) {
+  clearMacFocusCooldownTimer();
+  if (!macQueuedFocusRequest) return;
+  macFocusCooldownTimer = setTimeout(() => {
+    macFocusCooldownTimer = null;
+    flushQueuedMacFocus();
+  }, Math.max(0, delayMs));
+}
+
+function flushQueuedMacFocus() {
+  if (!macQueuedFocusRequest || macFocusInFlight) return;
+  const elapsed = Date.now() - macFocusLastRunAt;
+  const remaining = Math.max(0, MAC_FOCUS_THROTTLE_MS - elapsed);
+  if (remaining > 0) {
+    scheduleQueuedMacFocus(remaining);
+    return;
+  }
+
+  const nextRequest = macQueuedFocusRequest;
+  macQueuedFocusRequest = null;
+  executeMacFocusRequest(nextRequest);
+}
+
+function executeMacFocusRequest(request) {
+  macFocusInFlight = true;
+  macFocusLastRunAt = Date.now();
+  macFocusLastPid = request.sourcePid;
+
+  const finalize = () => {
+    macFocusInFlight = false;
+    if (macQueuedFocusRequest) flushQueuedMacFocus();
+  };
+
+  focusTerminalWindowLegacy(request.sourcePid, request.cwd, finalize, request.pidChain);
+  scheduleTerminalTabFocus(request.editor, request.pidChain);
+}
+
+function requestMacFocus(sourcePid, cwd, editor, pidChain) {
+  const elapsed = Date.now() - macFocusLastRunAt;
+  const inCooldown = elapsed < MAC_FOCUS_THROTTLE_MS;
+  if (inCooldown && macFocusLastPid === sourcePid) return;
+
+  const request = { sourcePid, cwd, editor, pidChain };
+  if (macFocusInFlight) {
+    macQueuedFocusRequest = request;
+    return;
+  }
+
+  if (inCooldown) {
+    macQueuedFocusRequest = request;
+    scheduleQueuedMacFocus(MAC_FOCUS_THROTTLE_MS - elapsed);
+    return;
+  }
+
+  macQueuedFocusRequest = null;
+  clearMacFocusCooldownTimer();
+  executeMacFocusRequest(request);
+}
+
 function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
   if (!sourcePid) return;
+
+  if (isMac) {
+    requestMacFocus(sourcePid, cwd, editor, pidChain);
+    return;
+  }
 
   // Grant PowerShell helper permission to call SetForegroundWindow.
   // This must happen HERE — Electron just received user input (click/hotkey),
@@ -1166,24 +1271,38 @@ function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
 
   // VS Code / Cursor: request precise terminal tab switch via extension's HTTP server.
   // Delayed so legacy PowerShell focus completes first (it's fire-and-forget via stdin).
-  if (editor && pidChain && pidChain.length) {
-    setTimeout(() => {
-      const body = JSON.stringify({ pids: pidChain });
-      for (let port = 23456; port <= 23460; port++) {
-        const tabReq = http.request({
-          hostname: "127.0.0.1", port, path: "/focus-tab", method: "POST",
-          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
-          timeout: 300,
-        }, () => {});
-        tabReq.on("error", () => {});
-        tabReq.on("timeout", () => tabReq.destroy());
-        tabReq.end(body);
-      }
-    }, 800);
-  }
+  scheduleTerminalTabFocus(editor, pidChain);
 }
 
-function focusTerminalWindowLegacy(sourcePid, cwd) {
+function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
+  if (isMac) {
+    const pidCandidates = [sourcePid];
+    if (Array.isArray(pidChain)) {
+      for (const pid of pidChain) {
+        if (!Number.isFinite(pid) || pid <= 0 || pidCandidates.includes(pid)) continue;
+        pidCandidates.push(pid);
+        if (pidCandidates.length >= 3) break;
+      }
+    }
+    const applePidList = pidCandidates.join(", ");
+    const script = `
+      tell application "System Events"
+        repeat with targetPid in {${applePidList}}
+          set pidValue to contents of targetPid
+          set pList to every process whose unix id is pidValue
+          if (count of pList) > 0 then
+            set frontmost of item 1 of pList to true
+            exit repeat
+          end if
+        end repeat
+      end tell`;
+    execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (err) => {
+      if (err) console.warn("focusTerminal macOS failed:", err.message);
+      if (onDone) onDone();
+    });
+    return;
+  }
+
   // Build candidate folder names from cwd for title matching (deepest first).
   // e.g. "C:\Users\X\GPT_Test\redbook" → ['redbook', 'GPT_Test']
   // Cursor window title typically shows workspace root, which may not be the deepest folder.
@@ -1196,31 +1315,6 @@ function focusTerminalWindowLegacy(sourcePid, cwd) {
       cwdCandidates.push(name);
       dir = path.dirname(dir);
     }
-  }
-  if (isMac) {
-    const script = `
-      set pid to ${sourcePid}
-      repeat 8 times
-        try
-          set pInfo to do shell script "ps -o ppid=,comm= -p " & pid
-          set ppid to (word 1 of pInfo) as integer
-          tell application "System Events"
-            set pList to every process whose unix id is pid
-            if (count of pList) > 0 then
-              set frontmost of item 1 of pList to true
-              return
-            end if
-          end tell
-          if ppid is less than or equal to 1 then exit repeat
-          set pid to ppid
-        on error
-          exit repeat
-        end try
-      end repeat`;
-    execFile("osascript", ["-e", script], { timeout: 5000 }, (err) => {
-      if (err) console.warn("focusTerminal macOS failed:", err.message);
-    });
-    return;
   }
 
   // Windows: send command to persistent PowerShell process (near-instant)
@@ -1242,20 +1336,57 @@ function focusTerminalWindowLegacy(sourcePid, cwd) {
 
 // ── HTTP server ──
 let httpServer = null;
+let activeServerPort = null;
+
+function getHookServerPort() {
+  return activeServerPort || readRuntimePort() || DEFAULT_SERVER_PORT;
+}
+
+function syncClawdHooks() {
+  try {
+    const { registerHooks } = require("../hooks/install.js");
+    const { added, updated, removed } = registerHooks({
+      silent: true,
+      autoStart: autoStartWithClaude,
+      port: getHookServerPort(),
+    });
+    if (added > 0 || updated > 0 || removed > 0) {
+      console.log(`Clawd: synced hooks (added ${added}, updated ${updated}, removed ${removed})`);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to sync hooks:", err.message);
+  }
+}
+
+function sendStateHealthResponse(res) {
+  const body = JSON.stringify({ ok: true, app: CLAWD_SERVER_ID, port: getHookServerPort() });
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+  });
+  res.end(body);
+}
 
 function startHttpServer() {
   httpServer = http.createServer((req, res) => {
-    if (req.method === "POST" && req.url === "/state") {
+    if (req.method === "GET" && req.url === "/state") {
+      sendStateHealthResponse(res);
+    } else if (req.method === "POST" && req.url === "/state") {
       let body = "";
       let bodySize = 0;
-      let destroyed = false;
+      let tooLarge = false;
       req.on("data", (chunk) => {
+        if (tooLarge) return;
         bodySize += chunk.length;
-        if (bodySize > 1024) { destroyed = true; req.destroy(); return; }
+        if (bodySize > 1024) { tooLarge = true; return; }
         body += chunk;
       });
       req.on("end", () => {
-        if (destroyed) return;
+        if (tooLarge) {
+          res.writeHead(413);
+          res.end("state payload too large");
+          return;
+        }
         try {
           const data = JSON.parse(body);
           const { state, svg, session_id, event } = data;
@@ -1294,7 +1425,7 @@ function startHttpServer() {
             } else {
               updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId);
             }
-            res.writeHead(200);
+            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
             res.end("ok");
           } else {
             res.writeHead(400);
@@ -1310,14 +1441,19 @@ function startHttpServer() {
       permLog(`/permission hit | DND=${doNotDisturb} pending=${pendingPermissions.length}`);
       let body = "";
       let bodySize = 0;
-      let destroyed = false;
+      let tooLarge = false;
       req.on("data", (chunk) => {
+        if (tooLarge) return;
         bodySize += chunk.length;
-        if (bodySize > 8192) { destroyed = true; req.destroy(); return; }
+        if (bodySize > 8192) { tooLarge = true; return; }
         body += chunk;
       });
       req.on("end", () => {
-        if (destroyed) return;
+        if (tooLarge) {
+          permLog("SKIPPED: permission payload too large");
+          sendPermissionResponse(res, "deny", "Permission request too large for Clawd bubble; answer in terminal");
+          return;
+        }
 
         // DND mode: explicitly deny so Claude Code falls back to terminal prompt
         if (doNotDisturb) {
@@ -1364,17 +1500,31 @@ function startHttpServer() {
     }
   });
 
-  httpServer.listen(23333, "127.0.0.1", () => {
-    console.log("Clawd state server listening on 127.0.0.1:23333");
-  });
-
+  const listenPorts = getPortCandidates();
+  let listenIndex = 0;
   httpServer.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.warn("Port 23333 is in use — running in idle-only mode (no state sync)");
+    if (!activeServerPort && err.code === "EADDRINUSE" && listenIndex < listenPorts.length - 1) {
+      listenIndex++;
+      httpServer.listen(listenPorts[listenIndex], "127.0.0.1");
+      return;
+    }
+    if (!activeServerPort && err.code === "EADDRINUSE") {
+      const firstPort = listenPorts[0];
+      const lastPort = listenPorts[listenPorts.length - 1];
+      console.warn(`Ports ${firstPort}-${lastPort} are occupied — state sync and permission bubbles are disabled`);
     } else {
       console.error("HTTP server error:", err.message);
     }
   });
+
+  httpServer.on("listening", () => {
+    activeServerPort = listenPorts[listenIndex];
+    writeRuntimeConfig(activeServerPort);
+    console.log(`Clawd state server listening on 127.0.0.1:${activeServerPort}`);
+    syncClawdHooks();
+  });
+
+  httpServer.listen(listenPorts[listenIndex], "127.0.0.1");
 }
 
 // ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
@@ -1588,7 +1738,10 @@ function sendPermissionResponse(res, decisionOrBehavior, message) {
     hookSpecificOutput: { hookEventName: "PermissionRequest", decision },
   });
   permLog(`response: ${responseBody}`);
-  res.writeHead(200, { "Content-Type": "application/json" });
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+  });
   res.end(responseBody);
 }
 
@@ -1673,7 +1826,7 @@ function buildTrayMenu() {
         try {
           const { registerHooks, unregisterAutoStart } = require("../hooks/install.js");
           if (autoStartWithClaude) {
-            registerHooks({ silent: true, autoStart: true });
+            registerHooks({ silent: true, autoStart: true, port: getHookServerPort() });
           } else {
             unregisterAutoStart();
           }
@@ -2918,13 +3071,7 @@ if (!gotTheLock) {
     createWindow();
 
     // Auto-register Claude Code hooks on every launch (dedup-safe)
-    try {
-      const { registerHooks } = require("../hooks/install.js");
-      const { added } = registerHooks({ silent: true, autoStart: autoStartWithClaude });
-      if (added > 0) console.log(`Clawd: auto-registered ${added} Claude Code hooks`);
-    } catch (err) {
-      console.warn("Clawd: failed to auto-register hooks:", err.message);
-    }
+    syncClawdHooks();
 
     // Start Codex CLI JSONL log monitor
     try {
@@ -2963,7 +3110,11 @@ if (!gotTheLock) {
     if (_codexMonitor) _codexMonitor.stop();
     stopStaleCleanup();
     stopTopmostWatchdog();
+    clearMacFocusCooldownTimer();
+    macQueuedFocusRequest = null;
+    macFocusInFlight = false;
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
+    clearRuntimeConfig();
     killFocusHelper();
     // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
     for (const perm of [...pendingPermissions]) {

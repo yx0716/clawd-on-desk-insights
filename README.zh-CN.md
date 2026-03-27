@@ -95,7 +95,7 @@ cd clawd-on-desk
 # 安装依赖
 npm install
 
-# 注册 Claude Code hooks（自动检测版本，跳过不兼容的 hook）
+# 注册 Claude Code hooks（仅在确认版本兼容时注册 versioned hooks；版本未知时自动回退到核心 hooks 并清理旧的不兼容条目）
 node hooks/install.js
 
 # 启动 Clawd

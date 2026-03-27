@@ -103,7 +103,7 @@ npm start
 
 ### Agent Setup
 
-**Claude Code** — works out of the box. Hooks are auto-registered on launch. The installer detects your Claude Code version and only registers compatible hooks (e.g. `PreCompact`, `PostCompact`, `StopFailure` require CC ≥ 2.1.76+).
+**Claude Code** — works out of the box. Hooks are auto-registered on launch. Versioned hooks (`PreCompact`, `PostCompact`, `StopFailure`) are registered only when Clawd can positively detect a compatible Claude Code version; if detection fails (common for packaged macOS launches), Clawd falls back to core hooks and removes stale incompatible versioned hooks automatically.
 
 **Codex CLI** — works out of the box. Clawd polls `~/.codex/sessions/` for JSONL logs automatically.
 
