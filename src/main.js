@@ -211,13 +211,10 @@ const AUTO_RETURN_MS = {
   "mini-happy": 4000,
 };
 
-const MOUSE_IDLE_TIMEOUT = 20000;   // 20s → idle-look
-const MOUSE_SLEEP_TIMEOUT = 60000;  // 60s → yawning → dozing
 const DEEP_SLEEP_TIMEOUT = 600000;  // 10min → collapsing → sleeping
 const YAWN_DURATION = 3000;
 const COLLAPSE_DURATION = 800;
 const WAKE_DURATION = 1500;
-const IDLE_LOOK_DURATION = 10000;  // idle-look CSS loop is 10s
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
 
 // ── Session tracking ──
@@ -302,13 +299,10 @@ let currentSvg = null;
 let stateChangedAt = Date.now();
 let pendingTimer = null;
 let autoReturnTimer = null;
-let mainTickTimer = null;
 let mouseOverPet = false;
 let dragLocked = false;
 let menuOpen = false;
 let idlePaused = false;
-let idleWasActive = false;
-let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
 let eyeResendTimer = null;
 
@@ -330,15 +324,6 @@ let miniTransitionTimer = null;
 let peekAnimTimer = null;
 let isAnimating = false;
 
-
-// ── Mouse idle tracking ──
-let lastCursorX = null, lastCursorY = null;
-let mouseStillSince = Date.now();
-let isMouseIdle = false;       // showing idle-look
-let hasTriggeredYawn = false;  // 60s threshold already fired
-let idleLookPlayed = false;    // idle-look already played once since last movement
-let idleLookReturnTimer = null;
-let yawnDelayTimer = null;     // tracked setTimeout for yawn/idle-look transitions
 
 // ── Wake poll (during dozing) ──
 let wakePollTimer = null;
@@ -526,171 +511,34 @@ function getHitRectScreen(bounds) {
   };
 }
 
-// ── Unified main tick (cursor polling for eye tracking + sleep + mini peek) ──
-// Input routing is handled by hitWin — no setIgnoreMouseEvents toggling here.
-function startMainTick() {
-  if (mainTickTimer) return;
-  // Render window: permanently click-through (set once, never toggle)
-  win.setIgnoreMouseEvents(true);
-  mouseOverPet = false;
-
-  mainTickTimer = setInterval(() => {
-    if (!win || win.isDestroyed()) return;
-    const cursor = screen.getCursorScreenPoint();
-
-    // ── Cursor-over-pet tracking (for mini peek + eye tracking, NOT for input routing) ──
-    const bounds = win.getBounds();
-    if (!dragLocked) {
-      const hit = getHitRectScreen(bounds);
-      const over = cursor.x >= hit.left && cursor.x <= hit.right
-                && cursor.y >= hit.top  && cursor.y <= hit.bottom;
-      mouseOverPet = over;
-    }
-
-    // ── Mini mode peek hover ──
-    if (miniMode && !miniTransitioning && !dragLocked && !menuOpen) {
-      const canPeek = currentState === "mini-idle" || currentState === "mini-peek"
-        || currentState === "mini-sleep";
-      if (!isAnimating && canPeek) {
-        if (mouseOverPet && currentState === "mini-sleep" && !miniSleepPeeked) {
-          miniPeekIn();
-          miniSleepPeeked = true;
-        } else if (!mouseOverPet && currentState === "mini-sleep" && miniSleepPeeked) {
-          miniPeekOut();
-          miniSleepPeeked = false;
-        } else if (mouseOverPet && currentState !== "mini-peek" && currentState !== "mini-sleep") {
-          miniPeekIn();
-          applyState("mini-peek");
-        } else if (!mouseOverPet && currentState === "mini-peek") {
-          miniPeekOut();
-          applyState("mini-idle");
-        }
-      }
-    }
-
-    // ── Eye tracking + sleep detection (idle only, not during reactions) ──
-    const idleNow = currentState === "idle" && !idlePaused;
-    const miniIdleNow = currentState === "mini-idle" && !idlePaused && !miniTransitioning;
-
-    // Edge detection: idle entry → reset state variables
-    if (idleNow && !idleWasActive) {
-      isMouseIdle = false;
-      hasTriggeredYawn = false;
-      idleLookPlayed = false;
-      lastCursorX = null;
-      lastCursorY = null;
-      mouseStillSince = Date.now();
-      lastEyeDx = 0;
-      lastEyeDy = 0;
-      if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
-      if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-    }
-
-    // Edge detection: idle exit → clear pending timers
-    // (variable resets not needed here — idle entry will overwrite them all)
-    if (!idleNow && idleWasActive) {
-      if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
-      if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-    }
-    idleWasActive = idleNow;
-
-    if (!idleNow && !miniIdleNow) return;
-
-    // ── Below: idle or mini-idle logic ──
-    const moved = lastCursorX !== null && (cursor.x !== lastCursorX || cursor.y !== lastCursorY);
-    lastCursorX = cursor.x;
-    lastCursorY = cursor.y;
-
-    // Normal idle: mouse idle detection + sleep sequence
-    if (idleNow) {
-      if (moved) {
-        mouseStillSince = Date.now();
-        hasTriggeredYawn = false;
-        idleLookPlayed = false;
-        if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
-        if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-        if (isMouseIdle) {
-          isMouseIdle = false;
-          sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
-        }
-      }
-
-      const elapsed = Date.now() - mouseStillSince;
-
-      // Startup recovery: Claude Code is running but no hook yet — stay awake
-      // Only suppress sleep sequence, don't skip eye tracking below
-      if (startupRecoveryActive) {
-        mouseStillSince = Date.now();
-      }
-
-      // 60s no mouse movement → yawning → dozing
-      if (!hasTriggeredYawn && elapsed >= MOUSE_SLEEP_TIMEOUT) {
-        hasTriggeredYawn = true;
-        if (!isMouseIdle) sendToRenderer("eye-move", 0, 0);
-        yawnDelayTimer = setTimeout(() => {
-          yawnDelayTimer = null;
-          if (currentState === "idle") setState("yawning");
-        }, isMouseIdle ? 50 : 250);
-        return;
-      }
-
-      // 20s no mouse movement → idle-look (play once, then return)
-      if (!isMouseIdle && !hasTriggeredYawn && !idleLookPlayed && elapsed >= MOUSE_IDLE_TIMEOUT) {
-        isMouseIdle = true;
-        idleLookPlayed = true;
-        sendToRenderer("eye-move", 0, 0);
-        setTimeout(() => {
-          if (isMouseIdle && currentState === "idle") {
-            sendToRenderer("state-change", "idle", SVG_IDLE_LOOK);
-          }
-        }, 250);
-        idleLookReturnTimer = setTimeout(() => {
-          idleLookReturnTimer = null;
-          if (isMouseIdle && currentState === "idle") {
-            isMouseIdle = false;
-            sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
-            setTimeout(() => { forceEyeResend = true; }, 200);
-          }
-        }, 250 + IDLE_LOOK_DURATION);
-        return;
-      }
-    }
-
-    const trackEyesNow = (idleNow && currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
-    if (!trackEyesNow) return;
-    if (!moved && !forceEyeResend) return;
-
-    // ── Eye position calculation (shared by idle and mini-idle) ──
-    const skipDedup = forceEyeResend;
-    forceEyeResend = false;
-
-    const obj = getObjRect(bounds);
-    const eyeScreenX = obj.x + obj.w * (22 / 45);
-    const eyeScreenY = obj.y + obj.h * (34 / 45);
-
-    const relX = cursor.x - eyeScreenX;
-    const relY = cursor.y - eyeScreenY;
-
-    const MAX_OFFSET = 3;
-    const dist = Math.sqrt(relX * relX + relY * relY);
-    let eyeDx = 0, eyeDy = 0;
-    if (dist > 1) {
-      const scale = Math.min(1, dist / 300);
-      eyeDx = (relX / dist) * MAX_OFFSET * scale;
-      eyeDy = (relY / dist) * MAX_OFFSET * scale;
-    }
-
-    eyeDx = Math.round(eyeDx * 2) / 2;
-    eyeDy = Math.round(eyeDy * 2) / 2;
-    eyeDy = Math.max(-1.5, Math.min(1.5, eyeDy));
-
-    if (skipDedup || eyeDx !== lastEyeDx || eyeDy !== lastEyeDy) {
-      lastEyeDx = eyeDx;
-      lastEyeDy = eyeDy;
-      sendToRenderer("eye-move", eyeDx, eyeDy);
-    }
-  }, 50); // ~20fps — hit-test needs faster response than 67ms eye tracking
-}
+// ── Main tick — delegated to src/tick.js ──
+const _tickCtx = {
+  get win() { return win; },
+  get currentState() { return currentState; },
+  get currentSvg() { return currentSvg; },
+  get miniMode() { return miniMode; },
+  get miniTransitioning() { return miniTransitioning; },
+  get dragLocked() { return dragLocked; },
+  get menuOpen() { return menuOpen; },
+  get idlePaused() { return idlePaused; },
+  get isAnimating() { return isAnimating; },
+  get miniSleepPeeked() { return miniSleepPeeked; },
+  set miniSleepPeeked(v) { miniSleepPeeked = v; },
+  get mouseOverPet() { return mouseOverPet; },
+  set mouseOverPet(v) { mouseOverPet = v; },
+  get forceEyeResend() { return forceEyeResend; },
+  set forceEyeResend(v) { forceEyeResend = v; },
+  get startupRecoveryActive() { return startupRecoveryActive; },
+  sendToRenderer,
+  setState,
+  applyState,
+  miniPeekIn,
+  miniPeekOut,
+  getObjRect,
+  getHitRectScreen,
+};
+const _tick = require("./tick")(_tickCtx);
+const { startMainTick, resetIdleTimer } = _tick;
 
 // ── Wake poll (detect mouse movement during dozing → wake up) ──
 function startWakePoll() {
@@ -2230,12 +2078,10 @@ if (!gotTheLock) {
     savePrefs();
     if (pendingTimer) clearTimeout(pendingTimer);
     if (autoReturnTimer) clearTimeout(autoReturnTimer);
-    if (mainTickTimer) clearInterval(mainTickTimer);
+    _tick.cleanup();
     if (wakePollTimer) clearInterval(wakePollTimer);
     if (miniTransitionTimer) clearTimeout(miniTransitionTimer);
     if (peekAnimTimer) clearTimeout(peekAnimTimer);
-    if (yawnDelayTimer) clearTimeout(yawnDelayTimer);
-    if (idleLookReturnTimer) clearTimeout(idleLookReturnTimer);
     if (startupRecoveryTimer) clearTimeout(startupRecoveryTimer);
     if (_codexMonitor) _codexMonitor.stop();
     stopStaleCleanup();
