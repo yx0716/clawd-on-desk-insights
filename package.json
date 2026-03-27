@@ -41,6 +41,7 @@
     "win": {
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false,
+      "artifactName": "Clawd-on-Desk-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
