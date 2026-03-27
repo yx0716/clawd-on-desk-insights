@@ -1,17 +1,6 @@
-const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, dialog, shell } = require("electron");
-const http = require("http");
-const https = require("https");
+const { app, BrowserWindow, screen, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const {
-  CLAWD_SERVER_HEADER,
-  CLAWD_SERVER_ID,
-  DEFAULT_SERVER_PORT,
-  clearRuntimeConfig,
-  getPortCandidates,
-  readRuntimePort,
-  writeRuntimeConfig,
-} = require("../hooks/server-config");
 
 const isMac = process.platform === "darwin";
 
@@ -235,198 +224,22 @@ const { startMainTick, resetIdleTimer } = _tick;
 const _focus = require("./focus")({ _allowSetForeground });
 const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer } = _focus;
 
-// ── HTTP server ──
-let httpServer = null;
-let activeServerPort = null;
-
-function getHookServerPort() {
-  return activeServerPort || readRuntimePort() || DEFAULT_SERVER_PORT;
-}
-
-function syncClawdHooks() {
-  try {
-    const { registerHooks } = require("../hooks/install.js");
-    const { added, updated, removed } = registerHooks({
-      silent: true,
-      autoStart: autoStartWithClaude,
-      port: getHookServerPort(),
-    });
-    if (added > 0 || updated > 0 || removed > 0) {
-      console.log(`Clawd: synced hooks (added ${added}, updated ${updated}, removed ${removed})`);
-    }
-  } catch (err) {
-    console.warn("Clawd: failed to sync hooks:", err.message);
-  }
-}
-
-function sendStateHealthResponse(res) {
-  const body = JSON.stringify({ ok: true, app: CLAWD_SERVER_ID, port: getHookServerPort() });
-  res.writeHead(200, {
-    "Content-Type": "application/json",
-    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
-  });
-  res.end(body);
-}
-
-function startHttpServer() {
-  httpServer = http.createServer((req, res) => {
-    if (req.method === "GET" && req.url === "/state") {
-      sendStateHealthResponse(res);
-    } else if (req.method === "POST" && req.url === "/state") {
-      let body = "";
-      let bodySize = 0;
-      let tooLarge = false;
-      req.on("data", (chunk) => {
-        if (tooLarge) return;
-        bodySize += chunk.length;
-        if (bodySize > 1024) { tooLarge = true; return; }
-        body += chunk;
-      });
-      req.on("end", () => {
-        if (tooLarge) {
-          res.writeHead(413);
-          res.end("state payload too large");
-          return;
-        }
-        try {
-          const data = JSON.parse(body);
-          const { state, svg, session_id, event } = data;
-          const source_pid = Number.isFinite(data.source_pid) && data.source_pid > 0 ? Math.floor(data.source_pid) : null;
-          const cwd = typeof data.cwd === "string" ? data.cwd : "";
-          const editor = (data.editor === "code" || data.editor === "cursor") ? data.editor : null;
-          const pidChain = Array.isArray(data.pid_chain) ? data.pid_chain.filter(n => Number.isFinite(n) && n > 0) : null;
-          // agent_pid (new) takes precedence over claude_pid (backward compat)
-          const rawAgentPid = data.agent_pid ?? data.claude_pid;
-          const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
-          const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
-          if (STATE_SVGS[state]) {
-            const sid = session_id || "default";
-            // mini-* states are internal — only allow via direct SVG override (test scripts)
-            if (state.startsWith("mini-") && !svg) {
-              res.writeHead(400);
-              res.end("mini states require svg override");
-              return;
-            }
-            // Detect "user answered in terminal": only PostToolUse/PostToolUseFailure
-            // reliably indicate the tool ran or was rejected (i.e. permission resolved).
-            // Other events (PreToolUse, Notification, etc.) are too noisy — late hooks
-            // from previous tool calls cause false dismissals.
-            if (event === "PostToolUse" || event === "PostToolUseFailure" || event === "Stop") {
-              for (const perm of [...pendingPermissions]) {
-                if (perm.sessionId === sid) {
-                  resolvePermissionEntry(perm, "deny", "User answered in terminal");
-                }
-              }
-            }
-            if (svg) {
-              // Direct SVG override (test-demo.sh, manual curl) — bypass session logic
-              // Sanitize: strip path separators to prevent directory traversal
-              const safeSvg = path.basename(svg);
-              setState(state, safeSvg);
-            } else {
-              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId);
-            }
-            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
-            res.end("ok");
-          } else {
-            res.writeHead(400);
-            res.end("unknown state");
-          }
-        } catch {
-          res.writeHead(400);
-          res.end("bad json");
-        }
-      });
-    } else if (req.method === "POST" && req.url === "/permission") {
-      // ── Permission HTTP hook — Claude Code sends PermissionRequest here ──
-      permLog(`/permission hit | DND=${doNotDisturb} pending=${pendingPermissions.length}`);
-      let body = "";
-      let bodySize = 0;
-      let tooLarge = false;
-      req.on("data", (chunk) => {
-        if (tooLarge) return;
-        bodySize += chunk.length;
-        if (bodySize > 8192) { tooLarge = true; return; }
-        body += chunk;
-      });
-      req.on("end", () => {
-        if (tooLarge) {
-          permLog("SKIPPED: permission payload too large");
-          sendPermissionResponse(res, "deny", "Permission request too large for Clawd bubble; answer in terminal");
-          return;
-        }
-
-        // DND mode: explicitly deny so Claude Code falls back to terminal prompt
-        if (doNotDisturb) {
-          permLog("SKIPPED: DND mode");
-          sendPermissionResponse(res, "deny", "Clawd is in Do Not Disturb mode");
-          return;
-        }
-
-        try {
-          const data = JSON.parse(body);
-          const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
-          const toolInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
-          const sessionId = data.session_id || "default";
-          const suggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
-
-          if (PASSTHROUGH_TOOLS.has(toolName)) {
-            permLog(`PASSTHROUGH: tool=${toolName} session=${sessionId}`);
-            sendPermissionResponse(res, "allow");
-            return;
-          }
-
-          // Detect client disconnect (e.g. Claude Code timeout or user answered in terminal).
-          const permEntry = { res, abortHandler: null, suggestions, sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now() };
-          const abortHandler = () => {
-            if (res.writableFinished) return;
-            permLog("abortHandler fired");
-            resolvePermissionEntry(permEntry, "deny", "Client disconnected");
-          };
-          permEntry.abortHandler = abortHandler;
-          res.on("close", abortHandler);
-
-          pendingPermissions.push(permEntry);
-
-          permLog(`showing bubble: tool=${toolName} session=${sessionId} suggestions=${suggestions.length} stack=${pendingPermissions.length}`);
-          showPermissionBubble(permEntry);
-        } catch {
-          res.writeHead(400);
-          res.end("bad json");
-        }
-      });
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-
-  const listenPorts = getPortCandidates();
-  let listenIndex = 0;
-  httpServer.on("error", (err) => {
-    if (!activeServerPort && err.code === "EADDRINUSE" && listenIndex < listenPorts.length - 1) {
-      listenIndex++;
-      httpServer.listen(listenPorts[listenIndex], "127.0.0.1");
-      return;
-    }
-    if (!activeServerPort && err.code === "EADDRINUSE") {
-      const firstPort = listenPorts[0];
-      const lastPort = listenPorts[listenPorts.length - 1];
-      console.warn(`Ports ${firstPort}-${lastPort} are occupied — state sync and permission bubbles are disabled`);
-    } else {
-      console.error("HTTP server error:", err.message);
-    }
-  });
-
-  httpServer.on("listening", () => {
-    activeServerPort = listenPorts[listenIndex];
-    writeRuntimeConfig(activeServerPort);
-    console.log(`Clawd state server listening on 127.0.0.1:${activeServerPort}`);
-    syncClawdHooks();
-  });
-
-  httpServer.listen(listenPorts[listenIndex], "127.0.0.1");
-}
+// ── HTTP server — delegated to src/server.js ──
+const _serverCtx = {
+  get autoStartWithClaude() { return autoStartWithClaude; },
+  get doNotDisturb() { return doNotDisturb; },
+  get pendingPermissions() { return pendingPermissions; },
+  get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
+  get STATE_SVGS() { return STATE_SVGS; },
+  setState,
+  updateSession,
+  resolvePermissionEntry,
+  sendPermissionResponse,
+  showPermissionBubble,
+  permLog,
+};
+const _server = require("./server")(_serverCtx);
+const { startHttpServer, getHookServerPort, syncClawdHooks } = _server;
 
 // ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
 // The "always-on-top-changed" event only fires from Electron's own SetAlwaysOnTop
@@ -982,9 +795,8 @@ if (!gotTheLock) {
     stopTopmostWatchdog();
     _focus.cleanup();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
-    clearRuntimeConfig();
+    _server.cleanup();
     _perm.cleanup();
-    if (httpServer) httpServer.close();
   });
 
   app.on("window-all-closed", () => {
