@@ -148,7 +148,7 @@ function savePrefs() {
   const { x, y } = win.getBounds();
   const data = {
     x, y, size: currentSize,
-    miniMode, preMiniX, preMiniY, lang,
+    miniMode: _mini.getMiniMode(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
     showTray, showDock,
     autoStartWithClaude,
   };
@@ -217,23 +217,9 @@ let menuOpen = false;
 let idlePaused = false;
 let forceEyeResend = false;
 
-// ── Mini Mode ──
-const MINI_OFFSET_RATIO = 0.486;
-const PEEK_OFFSET = 25;
-const SNAP_TOLERANCE = 30;
-const JUMP_PEAK_HEIGHT = 40;
-const JUMP_DURATION = 350;
-const CRABWALK_SPEED = 0.12;  // px/ms
-
-let miniMode = false;
-let miniTransitioning = false;
-let miniSleepPeeked = false;
-let preMiniX = 0, preMiniY = 0;
-let currentMiniX = 0;
-let miniSnap = null;  // { y, width, height } — canonical rect to prevent DPI drift
-let miniTransitionTimer = null;
-let peekAnimTimer = null;
-let isAnimating = false;
+// ── Mini Mode — delegated to src/mini.js ──
+// Initialized after state module (needs applyState, resolveDisplayState, etc.)
+// See _mini initialization below
 
 
 // ── Permission bubble — delegated to src/permission.js ──
@@ -256,11 +242,11 @@ const _stateCtx = {
   get hitWin() { return hitWin; },
   get doNotDisturb() { return doNotDisturb; },
   set doNotDisturb(v) { doNotDisturb = v; },
-  get miniMode() { return miniMode; },
-  get miniTransitioning() { return miniTransitioning; },
+  get miniMode() { return _mini.getMiniMode(); },
+  get miniTransitioning() { return _mini.getMiniTransitioning(); },
   get mouseOverPet() { return mouseOverPet; },
-  get miniSleepPeeked() { return miniSleepPeeked; },
-  set miniSleepPeeked(v) { miniSleepPeeked = v; },
+  get miniSleepPeeked() { return _mini.getMiniSleepPeeked(); },
+  set miniSleepPeeked(v) { _mini.setMiniSleepPeeked(v); },
   get idlePaused() { return idlePaused; },
   set idlePaused(v) { idlePaused = v; },
   get forceEyeResend() { return forceEyeResend; },
@@ -307,14 +293,14 @@ const _tickCtx = {
   get win() { return win; },
   get currentState() { return _state.getCurrentState(); },
   get currentSvg() { return _state.getCurrentSvg(); },
-  get miniMode() { return miniMode; },
-  get miniTransitioning() { return miniTransitioning; },
+  get miniMode() { return _mini.getMiniMode(); },
+  get miniTransitioning() { return _mini.getMiniTransitioning(); },
   get dragLocked() { return dragLocked; },
   get menuOpen() { return menuOpen; },
   get idlePaused() { return idlePaused; },
-  get isAnimating() { return isAnimating; },
-  get miniSleepPeeked() { return miniSleepPeeked; },
-  set miniSleepPeeked(v) { miniSleepPeeked = v; },
+  get isAnimating() { return _mini.getIsAnimating(); },
+  get miniSleepPeeked() { return _mini.getMiniSleepPeeked(); },
+  set miniSleepPeeked(v) { _mini.setMiniSleepPeeked(v); },
   get mouseOverPet() { return mouseOverPet; },
   set mouseOverPet(v) { mouseOverPet = v; },
   get forceEyeResend() { return forceEyeResend; },
@@ -729,7 +715,7 @@ function buildTrayMenu() {
 // ── Auto-updater — delegated to src/updater.js ──
 const _updaterCtx = {
   get doNotDisturb() { return doNotDisturb; },
-  get miniMode() { return miniMode; },
+  get miniMode() { return _mini.getMiniMode(); },
   t, rebuildAllMenus, updateLog,
 };
 const _updater = require("./updater")(_updaterCtx);
@@ -833,14 +819,9 @@ function createWindow() {
   let startX, startY;
   if (prefs && prefs.miniMode) {
     // Restore mini mode
-    preMiniX = prefs.preMiniX || 0;
-    preMiniY = prefs.preMiniY || 0;
-    const wa = getNearestWorkArea(prefs.x + size.width / 2, prefs.y + size.height / 2);
-    currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
-    startX = currentMiniX;
-    startY = Math.max(wa.y, Math.min(prefs.y, wa.y + wa.height - size.height));
-    miniSnap = { y: startY, width: size.width, height: size.height };
-    miniMode = true;
+    const miniPos = _mini.restoreFromPrefs(prefs, size);
+    startX = miniPos.x;
+    startY = miniPos.y;
   } else if (prefs) {
     const clamped = clampToScreen(prefs.x, prefs.y, size.width, size.height);
     startX = clamped.x;
@@ -939,7 +920,7 @@ function createWindow() {
     // Send initial state to hitWin once it's ready
     hitWin.webContents.on("did-finish-load", () => {
       sendToHitWin("hit-state-sync", {
-        currentSvg: _state.getCurrentSvg(), miniMode, dndEnabled: doNotDisturb,
+        currentSvg: _state.getCurrentSvg(), miniMode: _mini.getMiniMode(), dndEnabled: doNotDisturb,
       });
     });
 
@@ -953,7 +934,7 @@ function createWindow() {
   ipcMain.on("show-context-menu", showPetContextMenu);
 
   ipcMain.on("move-window-by", (event, dx, dy) => {
-    if (miniMode || miniTransitioning) return;
+    if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return;
     const { x, y } = win.getBounds();
     const size = SIZES[currentSize];
     const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
@@ -981,13 +962,13 @@ function createWindow() {
   });
 
   ipcMain.on("drag-end", () => {
-    if (!miniMode && !miniTransitioning) {
+    if (!_mini.getMiniMode() && !_mini.getMiniTransitioning()) {
       checkMiniModeSnap();
     }
   });
 
   ipcMain.on("exit-mini-mode", () => {
-    if (miniMode) exitMiniMode();
+    if (_mini.getMiniMode()) exitMiniMode();
   });
 
   ipcMain.on("focus-terminal", () => {
@@ -1019,19 +1000,19 @@ function createWindow() {
   // If hooks arrived during startup, respect them instead of forcing idle
   // Also handles crash recovery (render-process-gone → reload)
   win.webContents.on("did-finish-load", () => {
-    if (miniMode) {
+    if (_mini.getMiniMode()) {
       sendToRenderer("mini-mode-change", true);
     sendToHitWin("hit-state-sync", { miniMode: true });
     }
     if (doNotDisturb) {
       sendToRenderer("dnd-change", true);
     sendToHitWin("hit-state-sync", { dndEnabled: true });
-      if (miniMode) {
+      if (_mini.getMiniMode()) {
         applyState("mini-sleep");
       } else {
         applyState("sleeping");
       }
-    } else if (miniMode) {
+    } else if (_mini.getMiniMode()) {
       applyState("mini-idle");
     } else if (sessions.size > 0) {
       const resolved = resolveDisplayState();
@@ -1067,14 +1048,8 @@ function createWindow() {
   // ── Display change: re-clamp window to prevent off-screen ──
   screen.on("display-metrics-changed", () => {
     if (!win || win.isDestroyed()) return;
-    if (miniMode) {
-      const size = SIZES[currentSize];
-      const snapY = miniSnap ? miniSnap.y : win.getBounds().y;
-      const wa = getNearestWorkArea(currentMiniX + size.width / 2, snapY + size.height / 2);
-      currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
-      const clampedY = Math.max(wa.y, Math.min(snapY, wa.y + wa.height - size.height));
-      miniSnap = { y: clampedY, width: size.width, height: size.height };
-      win.setBounds({ x: currentMiniX, y: clampedY, width: size.width, height: size.height });
+    if (_mini.getMiniMode()) {
+      _mini.handleDisplayChange();
       return;
     }
     const { x, y, width, height } = win.getBounds();
@@ -1085,7 +1060,7 @@ function createWindow() {
   });
   screen.on("display-removed", () => {
     if (!win || win.isDestroyed()) return;
-    if (miniMode) {
+    if (_mini.getMiniMode()) {
       exitMiniMode();
       return;
     }
@@ -1121,219 +1096,32 @@ function clampToScreen(x, y, w, h) {
   };
 }
 
-// ── Window animation ──
-function animateWindowX(targetX, durationMs) {
-  if (peekAnimTimer) { clearTimeout(peekAnimTimer); peekAnimTimer = null; }
-  const bounds = win.getBounds();
-  const startX = bounds.x;
-  if (startX === targetX) { isAnimating = false; return; }
-  isAnimating = true;
-  const startTime = Date.now();
-  // Use miniSnap to lock y/width/height and prevent DPI drift accumulation
-  const snapY = miniSnap ? miniSnap.y : bounds.y;
-  const snapW = miniSnap ? miniSnap.width : bounds.width;
-  const snapH = miniSnap ? miniSnap.height : bounds.height;
-  const step = () => {
-    if (!win || win.isDestroyed()) { peekAnimTimer = null; isAnimating = false; return; }
-    const t = Math.min(1, (Date.now() - startTime) / durationMs);
-    const eased = t * (2 - t);
-    const x = Math.round(startX + (targetX - startX) * eased);
-    win.setBounds({ x, y: snapY, width: snapW, height: snapH });
-    syncHitWin();
-    if (t < 1) {
-      peekAnimTimer = setTimeout(step, 16);
-    } else {
-      peekAnimTimer = null;
-      isAnimating = false;
-    }
-  };
-  step();
-}
+// ── Mini Mode — initialized here after state module ──
+const _miniCtx = {
+  get win() { return win; },
+  get currentSize() { return currentSize; },
+  get doNotDisturb() { return doNotDisturb; },
+  set doNotDisturb(v) { doNotDisturb = v; },
+  SIZES,
+  sendToRenderer,
+  sendToHitWin,
+  syncHitWin,
+  applyState,
+  resolveDisplayState,
+  getSvgOverride,
+  stopWakePoll,
+  clampToScreen,
+  getNearestWorkArea,
+  buildContextMenu: () => buildContextMenu(),
+  buildTrayMenu: () => buildTrayMenu(),
+};
+const _mini = require("./mini")(_miniCtx);
+const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
+        checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
 
-function animateWindowParabola(targetX, targetY, durationMs, onDone) {
-  if (peekAnimTimer) { clearTimeout(peekAnimTimer); peekAnimTimer = null; }
-  const bounds = win.getBounds();
-  const startX = bounds.x, startY = bounds.y;
-  const size = SIZES[currentSize];
-  if (startX === targetX && startY === targetY) {
-    isAnimating = false;
-    if (onDone) onDone();
-    return;
-  }
-  isAnimating = true;
-  const startTime = Date.now();
-  const step = () => {
-    if (!win || win.isDestroyed()) { peekAnimTimer = null; isAnimating = false; return; }
-    const t = Math.min(1, (Date.now() - startTime) / durationMs);
-    const eased = t * (2 - t);
-    const x = Math.round(startX + (targetX - startX) * eased);
-    const arc = -4 * JUMP_PEAK_HEIGHT * t * (t - 1);
-    const y = Math.round(startY + (targetY - startY) * eased - arc);
-    win.setPosition(x, y);
-    syncHitWin();
-    if (t < 1) {
-      peekAnimTimer = setTimeout(step, 16);
-    } else {
-      peekAnimTimer = null;
-      isAnimating = false;
-      if (onDone) onDone();
-    }
-  };
-  step();
-}
-
-// ── Mini Mode functions ──
-function miniPeekIn() {
-  animateWindowX(currentMiniX - PEEK_OFFSET, 200);
-}
-
-function miniPeekOut() {
-  animateWindowX(currentMiniX, 200);
-}
-
-function cancelMiniTransition() {
-  miniTransitioning = false;
-  if (miniTransitionTimer) { clearTimeout(miniTransitionTimer); miniTransitionTimer = null; }
-}
-
-function checkMiniModeSnap() {
-  if (miniMode) return;
-  const bounds = win.getBounds();
-  const size = SIZES[currentSize];
-  const mRight = Math.round(size.width * 0.25);
-  // Check against ALL monitors' right edges, but only if window center is on that monitor
-  const centerX = bounds.x + size.width / 2;
-  const displays = screen.getAllDisplays();
-  for (const d of displays) {
-    const wa = d.workArea;
-    const centerY = bounds.y + size.height / 2;
-    if (centerX < wa.x || centerX > wa.x + wa.width) continue;
-    if (centerY < wa.y || centerY > wa.y + wa.height) continue;
-    const rightLimit = wa.x + wa.width - size.width + mRight;
-    if (bounds.x >= rightLimit - SNAP_TOLERANCE) {
-      enterMiniMode(wa);
-      return;
-    }
-  }
-}
-
-function enterMiniMode(wa, viaMenu) {
-  if (miniMode && !viaMenu) return; // Already in mini mode
-  const bounds = win.getBounds();
-  if (!viaMenu) {
-    preMiniX = bounds.x;
-    preMiniY = bounds.y;
-  }
-  miniMode = true;
-  const size = SIZES[currentSize];
-  currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
-  miniSnap = { y: bounds.y, width: size.width, height: size.height };
-
-  if (autoReturnTimer) { clearTimeout(autoReturnTimer); autoReturnTimer = null; }
-  if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
-  stopWakePoll();
-
-  sendToRenderer("mini-mode-change", true);
-    sendToHitWin("hit-state-sync", { miniMode: true });
-  miniTransitioning = true;
-  buildContextMenu();
-  buildTrayMenu();
-
-  const enterSvgState = doNotDisturb ? "mini-enter-sleep" : "mini-enter";
-
-  if (viaMenu) {
-    // Jump past ALL screens, load enter SVG off-screen, then slide to mini position
-    const displays = screen.getAllDisplays();
-    let maxRight = 0;
-    for (const d of displays) maxRight = Math.max(maxRight, d.bounds.x + d.bounds.width);
-    const jumpTarget = maxRight;
-    animateWindowParabola(jumpTarget, bounds.y, JUMP_DURATION, () => {
-      // Window is past all screens — load enter SVG here (invisible)
-      applyState(enterSvgState);
-      miniTransitionTimer = setTimeout(() => {
-        // SVG is loaded, now move to mini position (enter animation already playing)
-        miniSnap = { y: bounds.y, width: size.width, height: size.height };
-        win.setBounds({ x: currentMiniX, y: miniSnap.y, width: miniSnap.width, height: miniSnap.height });
-        miniTransitionTimer = setTimeout(() => {
-          miniTransitioning = false;
-          applyState(doNotDisturb ? "mini-sleep" : "mini-idle");
-        }, 3200);
-      }, 300);
-    });
-  } else {
-    // Drag entry: fast slide + immediate enter animation (no idle hiccup)
-    animateWindowX(currentMiniX, 100);
-    applyState(enterSvgState);
-    miniTransitionTimer = setTimeout(() => {
-      miniTransitioning = false;
-      applyState(doNotDisturb ? "mini-sleep" : "mini-idle");
-    }, 3200);
-  }
-}
-
-function exitMiniMode() {
-  if (!miniMode) return;
-  cancelMiniTransition();
-  miniMode = false;
-  miniSnap = null;
-  miniSleepPeeked = false;
-  sendToRenderer("mini-mode-change", false);
-    sendToHitWin("hit-state-sync", { miniMode: false });
-  buildContextMenu();
-  buildTrayMenu();
-
-  const size = SIZES[currentSize];
-  const clamped = clampToScreen(preMiniX, preMiniY, size.width, size.height);
-  const wa = getNearestWorkArea(clamped.x + size.width / 2, clamped.y + size.height / 2);
-  const mRight = Math.round(size.width * 0.25);
-  if (clamped.x >= wa.x + wa.width - size.width + mRight - SNAP_TOLERANCE) {
-    clamped.x = wa.x + wa.width - size.width + mRight - 100;
-  }
-
-  // Clear any lingering mini state timers
-  if (autoReturnTimer) { clearTimeout(autoReturnTimer); autoReturnTimer = null; }
-  if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
-
-  animateWindowParabola(clamped.x, clamped.y, JUMP_DURATION, () => {
-    // Use applyState directly — bypass MIN_DISPLAY_MS so mini animations don't linger
-    if (doNotDisturb) {
-      doNotDisturb = false;
-      sendToRenderer("dnd-change", false);
-    sendToHitWin("hit-state-sync", { dndEnabled: false });
-      buildContextMenu();
-      buildTrayMenu();
-      applyState("waking");
-    } else {
-      const resolved = resolveDisplayState();
-      applyState(resolved, getSvgOverride(resolved));
-    }
-  });
-}
-
-function enterMiniViaMenu() {
-  const bounds = win.getBounds();
-  const size = SIZES[currentSize];
-  const wa = getNearestWorkArea(bounds.x + size.width / 2, bounds.y + size.height / 2);
-
-  preMiniX = bounds.x;
-  preMiniY = bounds.y;
-  miniTransitioning = true;
-
-  // Tell renderer early so it blocks drag during crabwalk
-  sendToRenderer("mini-mode-change", true);
-    sendToHitWin("hit-state-sync", { miniMode: true });
-
-  applyState("mini-crabwalk");
-
-  const edgeX = wa.x + wa.width - size.width + Math.round(size.width * 0.25);
-  const walkDist = Math.abs(bounds.x - edgeX);
-  const walkDuration = walkDist / CRABWALK_SPEED;
-  animateWindowX(edgeX, walkDuration);
-
-  miniTransitionTimer = setTimeout(() => {
-    enterMiniMode(wa, true);
-  }, walkDuration + 50);
-}
+// Convenience getters for mini state (used throughout main.js)
+Object.defineProperties(this || {}, {}); // no-op placeholder
+// Mini state is accessed via _mini getters in ctx objects below
 
 function buildContextMenu() {
   const template = [
@@ -1347,9 +1135,9 @@ function buildContextMenu() {
     },
     { type: "separator" },
     {
-      label: miniMode ? t("exitMiniMode") : t("miniMode"),
-      enabled: !miniTransitioning && !(doNotDisturb && !miniMode),
-      click: () => miniMode ? exitMiniMode() : enterMiniViaMenu(),
+      label: _mini.getMiniMode() ? t("exitMiniMode") : t("miniMode"),
+      enabled: !_mini.getMiniTransitioning() && !(doNotDisturb && !_mini.getMiniMode()),
+      click: () => _mini.getMiniMode() ? exitMiniMode() : enterMiniViaMenu(),
     },
     { type: "separator" },
     {
@@ -1408,14 +1196,7 @@ function setLanguage(newLang) {
 function resizeWindow(sizeKey) {
   currentSize = sizeKey;
   const size = SIZES[sizeKey];
-  if (miniMode) {
-    const { y } = win.getBounds();
-    const wa = getNearestWorkArea(currentMiniX + size.width / 2, y + size.height / 2);
-    currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
-    const clampedY = Math.max(wa.y, Math.min(y, wa.y + wa.height - size.height));
-    miniSnap = { y: clampedY, width: size.width, height: size.height };
-    win.setBounds({ x: currentMiniX, y: clampedY, width: size.width, height: size.height });
-  } else {
+  if (!_mini.handleResize(sizeKey)) {
     const { x, y } = win.getBounds();
     const clamped = clampToScreen(x, y, size.width, size.height);
     win.setBounds({ ...clamped, width: size.width, height: size.height });
@@ -1525,8 +1306,7 @@ if (!gotTheLock) {
     savePrefs();
     _state.cleanup();
     _tick.cleanup();
-    if (miniTransitionTimer) clearTimeout(miniTransitionTimer);
-    if (peekAnimTimer) clearTimeout(peekAnimTimer);
+    _mini.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
     stopTopmostWatchdog();
     _focus.cleanup();
