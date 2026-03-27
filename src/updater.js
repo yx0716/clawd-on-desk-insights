@@ -338,7 +338,7 @@ async function _checkForUpdatesInner(manual) {
       ctx.rebuildAllMenus();
     } else {
       const info = result.updateInfo || result.versionInfo || {};
-      ctx.updateLog(`Update check result: v${info.version}, files: ${info.files?.map(f => f.url).join(", ")}`);
+      ctx.updateLog(`Update check result: v${info.version}, files: ${info.files?.map(f => f.url)?.join(", ")}`);
     }
   }).catch((err) => {
     ctx.updateLog(`ERROR: checkForUpdates promise rejected: ${err.message}`);
