@@ -19,7 +19,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/latest.yml
 
   build-mac:
     runs-on: macos-latest
@@ -33,7 +35,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mac-installer
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/latest-mac.yml
 
   release:
     needs: [build-windows, build-mac]
