@@ -276,7 +276,7 @@ function guardAlwaysOnTop(w) {
   w.on("always-on-top-changed", (_, isOnTop) => {
     if (!isOnTop && w && !w.isDestroyed()) {
       w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      if (w === win && !dragLocked) {
+      if (w === win && !dragLocked && !_mini.getIsAnimating()) {
         forceEyeResend = true;
         const { x, y } = win.getBounds();
         win.setPosition(x + 1, y);
