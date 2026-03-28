@@ -2,7 +2,9 @@
 // Extracted from main.js L1337-1528
 
 const http = require("http");
+const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
@@ -45,6 +47,44 @@ function sendStateHealthResponse(res) {
     [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
   });
   res.end(body);
+}
+
+// Watch ~/.claude/ directory for settings.json overwrites (e.g. CC-Switch)
+// that wipe our hooks. Re-register when hooks disappear.
+// Watch the directory (not the file) because atomic rename replaces the inode
+// and fs.watch on the old file silently stops firing on Windows.
+let settingsWatcher = null;
+const HOOK_MARKER = "clawd-hook.js";
+const SETTINGS_FILENAME = "settings.json";
+function watchSettingsForHookLoss() {
+  const settingsDir = path.join(os.homedir(), ".claude");
+  const settingsPath = path.join(settingsDir, SETTINGS_FILENAME);
+  let debounceTimer = null;
+  let lastSyncTime = 0;
+  try {
+    settingsWatcher = fs.watch(settingsDir, (_event, filename) => {
+      if (filename && filename !== SETTINGS_FILENAME) return;
+      if (debounceTimer) return;
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        // Rate-limit: don't re-sync within 5s to avoid write wars with CC-Switch
+        if (Date.now() - lastSyncTime < 5000) return;
+        try {
+          const raw = fs.readFileSync(settingsPath, "utf-8");
+          if (!raw.includes(HOOK_MARKER)) {
+            console.log("Clawd: hooks wiped from settings.json — re-registering");
+            lastSyncTime = Date.now();
+            syncClawdHooks();
+          }
+        } catch {}
+      }, 1000);
+    });
+    settingsWatcher.on("error", (err) => {
+      console.warn("Clawd: settings watcher error:", err.message);
+    });
+  } catch (err) {
+    console.warn("Clawd: failed to watch settings directory:", err.message);
+  }
 }
 
 function startHttpServer() {
@@ -223,6 +263,7 @@ function startHttpServer() {
     writeRuntimeConfig(activeServerPort);
     console.log(`Clawd state server listening on 127.0.0.1:${activeServerPort}`);
     syncClawdHooks();
+    watchSettingsForHookLoss();
   });
 
   httpServer.listen(listenPorts[listenIndex], "127.0.0.1");
@@ -230,6 +271,7 @@ function startHttpServer() {
 
 function cleanup() {
   clearRuntimeConfig();
+  if (settingsWatcher) settingsWatcher.close();
   if (httpServer) httpServer.close();
 }
 
