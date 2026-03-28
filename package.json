@@ -17,10 +17,7 @@
     "electron",
     "claude-code"
   ],
-  "author": {
-    "name": "rullerzhou-afk",
-    "email": "geekweilai@gmail.com"
-  },
+  "author": "rullerzhou-afk",
   "license": "MIT",
   "type": "commonjs",
   "build": {
