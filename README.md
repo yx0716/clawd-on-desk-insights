@@ -28,18 +28,12 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Mini mode** — drag to right edge or right-click "Mini Mode"; Clawd hides at screen edge with peek-on-hover, mini alerts/celebrations, and parabolic jump transitions
 
 ### Permission Bubble
-
-<img src="assets/screenshot-permission-bubble.png" width="320" alt="Permission bubble">
-
 - **In-app permission review** — when Claude Code requests tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
 - **Allow / Deny / Suggestions** — one-click approve, reject, or apply permission rules (e.g. "Always allow Read")
 - **Stacking layout** — multiple permission requests stack upward from the bottom-right corner
 - **Auto-dismiss** — if you answer in the terminal first, the bubble disappears automatically
 
 ### Session Intelligence
-
-<img src="assets/screenshot-context-menu.png" width="420" alt="Context menu with Sessions">
-
 - **Multi-session tracking** — sessions across all agents resolve to the highest-priority state
 - **Subagent awareness** — juggling for 1 subagent, conducting for 2+
 - **Terminal focus** — right-click Clawd → Sessions menu to jump to a specific session's terminal window; notification/attention states auto-focus the relevant terminal
