@@ -8,7 +8,7 @@
 
 一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。
 
-> 支持 Windows 11 和 macOS。需要 Node.js。支持 **Claude Code**、**Codex CLI** 和 **Copilot CLI**。
+> 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI** 和 **Copilot CLI**。
 
 ## 功能特性
 

@@ -7,7 +7,8 @@
     "start": "node launch.js",
     "build": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --win --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
     "test": "node --test test/*.test.js"
   },
   "keywords": [
@@ -45,6 +46,24 @@
       "target": [
         {
           "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icons",
+      "category": "Utility",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
           "arch": [
             "x64"
           ]
