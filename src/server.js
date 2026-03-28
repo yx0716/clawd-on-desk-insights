@@ -49,6 +49,20 @@ function sendStateHealthResponse(res) {
   res.end(body);
 }
 
+// Truncate large string values in objects (recursive) — bubble only needs a preview
+const PREVIEW_MAX = 500;
+function truncateDeep(obj, depth) {
+  if ((depth || 0) > 10) return obj;
+  if (Array.isArray(obj)) return obj.map(v => truncateDeep(v, (depth || 0) + 1));
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = truncateDeep(v, (depth || 0) + 1);
+    return out;
+  }
+  return typeof obj === "string" && obj.length > PREVIEW_MAX
+    ? obj.slice(0, PREVIEW_MAX) + "\u2026" : obj;
+}
+
 // Watch ~/.claude/ directory for settings.json overwrites (e.g. CC-Switch)
 // that wipe our hooks. Re-register when hooks disappear.
 // Watch the directory (not the file) because atomic rename replaces the inode
@@ -176,18 +190,6 @@ function startHttpServer() {
           const data = JSON.parse(body);
           const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
           const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
-          // Truncate large string values (recursive) — bubble only needs a preview
-          const PREVIEW_MAX = 500;
-          function truncateDeep(obj) {
-            if (Array.isArray(obj)) return obj.map(truncateDeep);
-            if (obj && typeof obj === "object") {
-              const out = {};
-              for (const [k, v] of Object.entries(obj)) out[k] = truncateDeep(v);
-              return out;
-            }
-            return typeof obj === "string" && obj.length > PREVIEW_MAX
-              ? obj.slice(0, PREVIEW_MAX) + "\u2026" : obj;
-          }
           const toolInput = truncateDeep(rawInput);
           const sessionId = data.session_id || "default";
           const suggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
