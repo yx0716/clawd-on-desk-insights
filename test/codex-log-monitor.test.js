@@ -110,10 +110,11 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
-  it("should map task_complete to attention", (_, done) => {
+  it("should map task_complete to idle when no tools were used", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
       '{"type":"event_msg","payload":{"type":"task_complete"}}',
     ].join("\n") + "\n");
 
@@ -121,8 +122,30 @@ describe("CodexLogMonitor", () => {
     const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
-      if (states.length === 2) {
-        assert.strictEqual(states[1], "attention");
+      if (states.length === 3) {
+        assert.deepStrictEqual(states, ["idle", "thinking", "idle"]);
+        done();
+      }
+    });
+    monitor.start();
+  });
+
+  it("should map task_complete to attention when tools were used", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"ls\\"}"}}',
+      '{"type":"event_msg","payload":{"type":"exec_command_end"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const states = [];
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      states.push(state);
+      if (state === "attention") {
+        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
         done();
       }
     });
@@ -153,6 +176,7 @@ describe("CodexLogMonitor", () => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
       '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
       '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
       '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
@@ -164,9 +188,8 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "attention") {
-        // idle, working (deduped), attention — should be 3 not 5
-        assert.strictEqual(states.length, 3);
-        assert.deepStrictEqual(states, ["idle", "working", "attention"]);
+        // idle, thinking, working (deduped), attention — should be 4 not 6
+        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
         done();
       }
     });
@@ -198,6 +221,7 @@ describe("CodexLogMonitor", () => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
       '{"type":"event_msg","payload":{"type":"token_count"}}',
       '{"type":"response_item","payload":{"type":"reasoning"}}',
       '{"type":"event_msg","payload":{"type":"task_complete"}}',
@@ -207,9 +231,9 @@ describe("CodexLogMonitor", () => {
     const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
-      if (state === "attention") {
-        // token_count and reasoning should be ignored
-        assert.deepStrictEqual(states, ["idle", "attention"]);
+      if (states.length === 3) {
+        // token_count and reasoning should be ignored; no tool use → idle
+        assert.deepStrictEqual(states, ["idle", "thinking", "idle"]);
         done();
       }
     });
@@ -239,16 +263,16 @@ describe("CodexLogMonitor", () => {
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
       'THIS IS NOT JSON',
-      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
     const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
-      if (state === "attention") {
+      if (states.length === 2) {
         // Should skip corrupted line and continue
-        assert.deepStrictEqual(states, ["idle", "attention"]);
+        assert.deepStrictEqual(states, ["idle", "thinking"]);
         done();
       }
     });

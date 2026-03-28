@@ -113,6 +113,7 @@ class CodexLogMonitor {
         lastEventTime: Date.now(),
         lastState: null,
         partial: "", // incomplete line buffer
+        hadToolUse: false,
       };
       this._tracked.set(filePath, tracked);
     }
@@ -180,6 +181,32 @@ class CodexLogMonitor {
     const state = map[key];
     if (state === undefined) return; // unmapped event, skip
     if (state === null) return; // explicitly ignored
+
+    // Track tool use per turn — reset on task_started, set on function_call
+    if (key === "event_msg:task_started") {
+      tracked.hadToolUse = false;
+    }
+    if (key === "response_item:function_call") {
+      tracked.hadToolUse = true;
+    }
+
+    // Turn-end: happy if tools were used this turn, idle otherwise
+    if (state === "codex-turn-end") {
+      if (tracked.approvalTimer) {
+        clearTimeout(tracked.approvalTimer);
+        tracked.approvalTimer = null;
+      }
+      const resolved = tracked.hadToolUse ? "attention" : "idle";
+      tracked.hadToolUse = false;
+      tracked.lastState = resolved;
+      tracked.lastEventTime = Date.now();
+      this._onStateChange(tracked.sessionId, resolved, key, {
+        cwd: tracked.cwd,
+        sourcePid: null,
+        agentPid: null,
+      });
+      return;
+    }
 
     // Approval heuristic: function_call starts a 2s timer — if no exec_command_end arrives,
     // assume Codex is waiting for user approval and emit codex-permission
