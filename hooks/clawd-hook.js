@@ -133,7 +133,9 @@ function getStablePid() {
 }
 
 // Pre-resolve on SessionStart (runs during stdin buffering, not after)
-if (event === "SessionStart") getStablePid();
+// Remote mode: skip PID collection — remote PIDs are meaningless on the local machine
+// and could collide with local PIDs, confusing the process-alive checks in state.js.
+if (event === "SessionStart" && !process.env.CLAWD_REMOTE) getStablePid();
 
 // Read stdin for session_id (Claude Code pipes JSON with session metadata)
 const chunks = [];
@@ -162,15 +164,17 @@ function send(sessionId, cwd) {
   const body = { state, session_id: sessionId, event };
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
-  // Always walk to stable terminal PID — process.ppid is an ephemeral shell
-  // that dies when the hook exits, so it's useless for later focus calls
-  body.source_pid = getStablePid();
-  if (_detectedEditor) body.editor = _detectedEditor;
-  if (_claudePid) {
-    body.agent_pid = _claudePid;
-    body.claude_pid = _claudePid; // backward compat with older Clawd versions
+  if (!process.env.CLAWD_REMOTE) {
+    // Walk to stable terminal PID — process.ppid is an ephemeral shell
+    // that dies when the hook exits, so it's useless for later focus calls
+    body.source_pid = getStablePid();
+    if (_detectedEditor) body.editor = _detectedEditor;
+    if (_claudePid) {
+      body.agent_pid = _claudePid;
+      body.claude_pid = _claudePid; // backward compat with older Clawd versions
+    }
+    if (_pidChain.length) body.pid_chain = _pidChain;
   }
-  if (_pidChain.length) body.pid_chain = _pidChain;
 
   const data = JSON.stringify(body);
   postStateToRunningServer(

@@ -351,7 +351,10 @@ function registerHooks(options = {}) {
     }
 
     // Check if our hook is already registered (search nested hooks arrays too)
-    const desiredCommand = `node "${hookScript}" ${event}`;
+    // Remote mode: prepend CLAWD_REMOTE=1 so the hook skips PID collection
+    const desiredCommand = options.remote
+      ? `CLAWD_REMOTE=1 node "${hookScript}" ${event}`
+      : `node "${hookScript}" ${event}`;
     const commandSync = syncCommandHook(settings.hooks[event], MARKER, desiredCommand);
     if (commandSync.found) {
       if (commandSync.changed) {
@@ -575,10 +578,11 @@ module.exports = {
   },
 };
 
-// CLI: run directly with `node hooks/install.js`
+// CLI: run directly with `node hooks/install.js [--remote]`
 if (require.main === module) {
   try {
-    registerHooks();
+    const remote = process.argv.includes("--remote");
+    registerHooks({ remote });
   } catch (err) {
     console.error(err.message);
     process.exit(1);
