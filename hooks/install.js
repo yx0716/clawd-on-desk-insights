@@ -415,6 +415,22 @@ function registerHooks(options = {}) {
     if (settings.hooks.SessionStart.length < beforeLen) changed = true;
   }
 
+  // Clean up stale command hooks for HTTP-only events (e.g. PermissionRequest).
+  // Old versions or manual edits may have registered a command hook alongside the
+  // HTTP hook, causing Claude Code to fire both and produce duplicate bubbles.
+  for (const event of Object.keys(HTTP_HOOKS)) {
+    if (!Array.isArray(settings.hooks[event])) continue;
+    const result = removeMatchingCommandHooks(
+      settings.hooks[event],
+      (command) => command.includes(MARKER)
+    );
+    if (result.changed) {
+      settings.hooks[event] = result.entries;
+      removed += result.removed;
+      changed = true;
+    }
+  }
+
   // Register HTTP hooks (permission decision collection)
   for (const [event, { matcher, hook }] of Object.entries(HTTP_HOOKS)) {
     if (!Array.isArray(settings.hooks[event])) {
