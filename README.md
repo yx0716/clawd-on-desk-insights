@@ -122,6 +122,39 @@ npm start
 ```
 Replace `/path/to/clawd-on-desk` with your actual install path.
 
+### Remote SSH (Claude Code & Codex CLI)
+
+<img src="assets/screenshot-remote-ssh.png" width="560" alt="Remote SSH — permission bubble from Raspberry Pi">
+
+Clawd can sense AI agent activity on remote servers via SSH reverse port forwarding. Hook events and permission requests travel through the SSH tunnel back to your local Clawd — no code changes needed on the Clawd side.
+
+**One-click deploy:**
+
+```bash
+bash scripts/remote-deploy.sh user@remote-host
+```
+
+This copies hook files to the remote server, registers Claude Code hooks in remote mode, and prints SSH configuration instructions.
+
+**SSH configuration** (add to your local `~/.ssh/config`):
+
+```
+Host my-server
+    HostName remote-host
+    User user
+    RemoteForward 127.0.0.1:23333 127.0.0.1:23333
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+```
+
+**How it works:**
+- **Claude Code** — command hooks on the remote server POST state changes to `localhost:23333`, which the SSH tunnel forwards back to your local Clawd. Permission bubbles work too — the HTTP round-trip goes through the tunnel.
+- **Codex CLI** — a standalone log monitor (`codex-remote-monitor.js`) polls JSONL files on the remote server and POSTs state changes through the same tunnel. Start it on the remote: `node ~/.claude/hooks/codex-remote-monitor.js --port 23333`
+
+Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs are meaningless locally). Terminal focus is not available for remote sessions.
+
+> Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
+
 ### macOS Notes
 
 - **From source** (`npm start`): works out of the box on Intel and Apple Silicon.
@@ -189,6 +222,10 @@ hooks/
   copilot-hook.js    # Copilot CLI command hook (camelCase events, same architecture)
   install.js         # Safe hook registration into ~/.claude/settings.json (append, never overwrite)
   auto-start.js      # SessionStart hook: launches Clawd if not running (<500ms)
+  codex-remote-monitor.js  # Standalone Codex JSONL poller for remote servers (HTTP POST via SSH tunnel)
+  server-config.js   # Shared port discovery + HTTP helpers (used by all hooks)
+scripts/
+  remote-deploy.sh   # One-click remote hook deployment via SSH
 extensions/
   vscode/            # VS Code extension for terminal tab focus via URI protocol
 assets/

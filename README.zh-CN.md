@@ -102,6 +102,39 @@ node hooks/install.js
 npm start
 ```
 
+### 远程 SSH 模式（Claude Code & Codex CLI）
+
+<img src="assets/screenshot-remote-ssh.png" width="560" alt="远程 SSH — 来自树莓派的权限气泡">
+
+Clawd 支持通过 SSH 反向端口转发感知远程服务器上的 AI Agent 状态。Hook 事件和权限请求通过 SSH 隧道传回本地 Clawd，无需修改 Clawd 本体代码。
+
+**一键部署：**
+
+```bash
+bash scripts/remote-deploy.sh user@远程主机
+```
+
+脚本会将 hook 文件复制到远程服务器，以远程模式注册 Claude Code hooks，并打印 SSH 配置指引。
+
+**SSH 配置**（添加到本地 `~/.ssh/config`）：
+
+```
+Host my-server
+    HostName 远程主机
+    User user
+    RemoteForward 127.0.0.1:23333 127.0.0.1:23333
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+```
+
+**工作原理：**
+- **Claude Code** — 远程 hook 将状态 POST 到 `localhost:23333`，SSH 隧道转发回本地 Clawd。权限气泡也能正常弹出——HTTP 往返通过隧道完成。
+- **Codex CLI** — 独立的日志监控脚本（`codex-remote-monitor.js`）在远程轮询 JSONL 文件，通过同一隧道 POST 状态变化。在远程启动：`node ~/.claude/hooks/codex-remote-monitor.js --port 23333`
+
+远程 hook 以 `CLAWD_REMOTE` 模式运行，跳过 PID 采集（远程 PID 在本地无意义）。远程会话不支持终端聚焦。
+
+> 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
+
 ### macOS 说明
 
 - **源码运行**（`npm start`）：Intel 和 Apple Silicon 均可直接使用。
@@ -157,6 +190,10 @@ hooks/
   clawd-hook.js      # Claude Code command hook（零依赖，<1s，事件 → 状态 → HTTP POST）
   install.js         # 安全注册 hook 到 ~/.claude/settings.json（追加不覆盖）
   auto-start.js      # SessionStart hook：Clawd 未运行时自动拉起（<500ms）
+  codex-remote-monitor.js  # 远程 Codex JSONL 轮询器（通过 SSH 隧道 HTTP POST）
+  server-config.js   # 共享端口发现 + HTTP 工具（所有 hook 共用）
+scripts/
+  remote-deploy.sh   # 一键远程 hook 部署脚本
 extensions/
   vscode/            # VS Code 扩展，通过 URI 协议聚焦终端 tab
 assets/

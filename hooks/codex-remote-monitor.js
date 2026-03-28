@@ -25,6 +25,7 @@ const SESSION_DIR = path.join(os.homedir(), ".codex", "sessions");
 const POLL_INTERVAL_MS = 1500;
 
 // JSONL record type[:subtype] → pet state
+// ⚠️ Duplicated from agents/codex.js logEventMap (zero-dep requirement) — keep in sync
 const LOG_EVENT_MAP = {
   "session_meta": "idle",
   "event_msg:task_started": "thinking",
