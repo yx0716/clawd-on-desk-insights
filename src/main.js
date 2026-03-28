@@ -150,24 +150,16 @@ function reapplyMacVisibility() {
   if (!isMac) return;
   const opts = { visibleOnFullScreen: true };
   if (!showDock) opts.skipTransformProcessType = true;
-  if (win && !win.isDestroyed()) {
-    win.setVisibleOnAllWorkspaces(true, opts);
-    win.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
-  }
-  if (hitWin && !hitWin.isDestroyed()) {
-    hitWin.setVisibleOnAllWorkspaces(true, opts);
-    hitWin.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
-  }
-  for (const perm of pendingPermissions) {
-    if (perm.bubble && !perm.bubble.isDestroyed()) {
-      perm.bubble.setVisibleOnAllWorkspaces(true, opts);
-      perm.bubble.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
+  const apply = (w) => {
+    if (w && !w.isDestroyed()) {
+      w.setVisibleOnAllWorkspaces(true, opts);
+      w.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
     }
-  }
-  if (contextMenuOwner && !contextMenuOwner.isDestroyed()) {
-    contextMenuOwner.setVisibleOnAllWorkspaces(true, opts);
-    contextMenuOwner.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
-  }
+  };
+  apply(win);
+  apply(hitWin);
+  for (const perm of pendingPermissions) apply(perm.bubble);
+  apply(contextMenuOwner);
 }
 
 // ── State machine — delegated to src/state.js ──

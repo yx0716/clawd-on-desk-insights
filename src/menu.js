@@ -5,7 +5,6 @@ const path = require("path");
 
 const isMac = process.platform === "darwin";
 const WIN_TOPMOST_LEVEL = "pop-up-menu"; // above taskbar-level UI
-const MAC_TOPMOST_LEVEL = "screen-saver"; // above fullscreen apps on macOS
 
 // ── Window size presets (mirrored from main.js for resizeWindow) ──
 const SIZES = {
@@ -284,14 +283,8 @@ module.exports = function initMenu(ctx) {
       hasShadow: false,
     });
 
-    // macOS: ensure owner can appear on fullscreen Spaces (child window may not
-    // inherit parent's NSWindowCollectionBehavior in all cases)
-    if (isMac) {
-      const opts = { visibleOnFullScreen: true };
-      if (!ctx.showDock) opts.skipTransformProcessType = true;
-      ctx.contextMenuOwner.setVisibleOnAllWorkspaces(true, opts);
-      ctx.contextMenuOwner.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
-    }
+    // macOS: ensure owner can appear on fullscreen Spaces
+    ctx.reapplyMacVisibility();
 
     ctx.contextMenuOwner.on("close", (event) => {
       if (!ctx.isQuitting) {
