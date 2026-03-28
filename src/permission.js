@@ -140,6 +140,7 @@ function showPermissionBubble(permEntry) {
       toolInput: permEntry.toolInput,
       suggestions: permEntry.suggestions || [],
       lang: ctx.lang,
+      isElicitation: permEntry.isElicitation || false,
     });
     // Don't call bub.focus() — it steals focus from terminal and can trigger
     // false "User answered in terminal" denials in Claude Code, wasting tokens.
@@ -183,6 +184,12 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   // Guard: client may have disconnected
   if (res.writableEnded || res.destroyed) return;
 
+  if (permEntry.isElicitation) {
+    sendPermissionResponse(res, "deny", null, "Elicitation");
+    ctx.focusTerminalForSession(permEntry.sessionId);
+    return;
+  }
+
   const decision = { behavior: behavior === "deny" ? "deny" : "allow" };
   if (behavior === "deny" && message) decision.message = message;
   if (permEntry.resolvedSuggestion) {
@@ -197,7 +204,7 @@ function permLog(msg) {
   fs.appendFileSync(ctx.permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
-function sendPermissionResponse(res, decisionOrBehavior, message) {
+function sendPermissionResponse(res, decisionOrBehavior, message, hookEventName = "PermissionRequest") {
   let decision;
   if (typeof decisionOrBehavior === "string") {
     decision = { behavior: decisionOrBehavior };
@@ -206,7 +213,7 @@ function sendPermissionResponse(res, decisionOrBehavior, message) {
     decision = decisionOrBehavior;
   }
   const responseBody = JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PermissionRequest", decision },
+    hookSpecificOutput: { hookEventName, decision },
   });
   permLog(`response: ${responseBody}`);
   res.writeHead(200, {

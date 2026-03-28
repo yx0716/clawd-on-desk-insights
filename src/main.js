@@ -136,6 +136,10 @@ const _permCtx = {
   getHitRectScreen,
   guardAlwaysOnTop,
   reapplyMacVisibility,
+  focusTerminalForSession: (sessionId) => {
+    const s = sessions.get(sessionId);
+    if (s && s.sourcePid) focusTerminalWindow(s.sourcePid, s.cwd, s.editor, s.pidChain);
+  },
 };
 const _perm = require("./permission")(_permCtx);
 const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS } = _perm;

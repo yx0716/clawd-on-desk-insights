@@ -145,6 +145,25 @@ function startHttpServer() {
             return;
           }
 
+          // Elicitation (AskUserQuestion) — show notification bubble, not permission bubble.
+          // User clicks "Go to Terminal" → deny → Claude Code falls back to terminal.
+          if (toolName === "AskUserQuestion") {
+            ctx.permLog(`ELICITATION: tool=${toolName} session=${sessionId}`);
+            ctx.updateSession(sessionId, "notification", "Elicitation", null, "", null, null, null, "claude-code");
+
+            const permEntry = { res, abortHandler: null, suggestions: [], sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now(), isElicitation: true };
+            const abortHandler = () => {
+              if (res.writableFinished) return;
+              ctx.permLog("abortHandler fired (elicitation)");
+              ctx.resolvePermissionEntry(permEntry, "deny", "Client disconnected");
+            };
+            permEntry.abortHandler = abortHandler;
+            res.on("close", abortHandler);
+            ctx.pendingPermissions.push(permEntry);
+            ctx.showPermissionBubble(permEntry);
+            return;
+          }
+
           const permEntry = { res, abortHandler: null, suggestions, sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now() };
           const abortHandler = () => {
             if (res.writableFinished) return;

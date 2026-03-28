@@ -263,13 +263,14 @@ body { padding: 6px; }
 </div>
 
 <script>
-// ⚠️ 以下 JS 完全没有修改，这是原版完整的功能逻辑
 const card = document.getElementById("card");
 const toolPill = document.getElementById("toolPill");
 const commandBlock = document.getElementById("commandBlock");
 const btnAllow = document.getElementById("btnAllow");
 const btnDeny = document.getElementById("btnDeny");
 const suggestionsContainer = document.getElementById("suggestions");
+const headerTitle = document.querySelector(".header-title");
+let elicitationMode = false;
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
@@ -318,7 +319,43 @@ function disableAll() {
   for (const btn of suggestionsContainer.children) btn.disabled = true;
 }
 
+function revealCard() {
+  card.classList.remove("hiding");
+  card.classList.add("visible");
+  // 12 = 6px padding top + 6px padding bottom
+  requestAnimationFrame(() => {
+    window.bubbleAPI.reportHeight(card.offsetHeight + 12);
+  });
+}
+
 function show(data) {
+  elicitationMode = data.isElicitation || false;
+
+  if (elicitationMode) {
+    // Elicitation mode — show question with "Go to Terminal" button
+    headerTitle.textContent = data.lang === "zh" ? "\u9700\u8981\u8F93\u5165" : "Needs Input";
+    toolPill.style.display = "none";
+
+    // Extract question text from toolInput.questions
+    let questionText = "";
+    if (data.toolInput && Array.isArray(data.toolInput.questions)) {
+      questionText = data.toolInput.questions.map(q => q.question || "").filter(Boolean).join("\n");
+    }
+    commandBlock.textContent = questionText || JSON.stringify(data.toolInput);
+
+    btnAllow.textContent = data.lang === "zh" ? "\u524D\u5F80\u7EC8\u7AEF" : "Go to Terminal";
+    btnAllow.disabled = false;
+    btnDeny.style.display = "none";
+    suggestionsContainer.innerHTML = "";
+    revealCard();
+    return;
+  }
+
+  // Permission mode
+  headerTitle.textContent = "Permission Request";
+  toolPill.style.display = "";
+  btnDeny.style.display = "";
+
   // Tool pill
   toolPill.textContent = data.toolName || "Unknown";
   toolPill.setAttribute("data-tool", data.toolName || "");
@@ -349,14 +386,7 @@ function show(data) {
   btnAllow.disabled = false;
   btnDeny.disabled = false;
 
-  card.classList.remove("hiding");
-  card.classList.add("visible");
-
-  // Measure actual rendered height and report to main process for precise stacking
-  requestAnimationFrame(() => {
-    const h = card.offsetHeight + 12; // 12 = 6px padding top + 6px padding bottom
-    window.bubbleAPI.reportHeight(h);
-  });
+  revealCard();
 }
 
 function hide() {
@@ -367,7 +397,8 @@ function hide() {
 btnAllow.addEventListener("click", () => {
   btnAllow.textContent = "...";
   disableAll();
-  window.bubbleAPI.decide("allow");
+  // Elicitation: "deny" tells Claude Code to fall back to terminal
+  window.bubbleAPI.decide(elicitationMode ? "deny" : "allow");
 });
 
 btnDeny.addEventListener("click", () => {
