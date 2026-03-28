@@ -116,7 +116,7 @@ function startHttpServer() {
       req.on("data", (chunk) => {
         if (tooLarge) return;
         bodySize += chunk.length;
-        if (bodySize > 65536) { tooLarge = true; return; }
+        if (bodySize > 524288) { tooLarge = true; return; }
         body += chunk;
       });
       req.on("end", () => {
@@ -135,7 +135,20 @@ function startHttpServer() {
         try {
           const data = JSON.parse(body);
           const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
-          const toolInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+          const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+          // Truncate large string values (recursive) — bubble only needs a preview
+          const PREVIEW_MAX = 500;
+          function truncateDeep(obj) {
+            if (Array.isArray(obj)) return obj.map(truncateDeep);
+            if (obj && typeof obj === "object") {
+              const out = {};
+              for (const [k, v] of Object.entries(obj)) out[k] = truncateDeep(v);
+              return out;
+            }
+            return typeof obj === "string" && obj.length > PREVIEW_MAX
+              ? obj.slice(0, PREVIEW_MAX) + "\u2026" : obj;
+          }
+          const toolInput = truncateDeep(rawInput);
           const sessionId = data.session_id || "default";
           const suggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
 
