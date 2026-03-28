@@ -358,7 +358,7 @@ function show(data) {
     ? (data.lang === "zh" ? "\u8BA1\u5212\u5BA1\u6279" : "Plan Review")
     : "Permission Request";
   toolPill.style.display = isPlanReview ? "none" : "";
-  btnDeny.style.display = "";
+  btnDeny.style.display = isPlanReview ? "none" : "";
 
   // Tool pill
   toolPill.textContent = data.toolName || "Unknown";
