@@ -136,6 +136,12 @@ const _permCtx = {
   getHitRectScreen,
   guardAlwaysOnTop,
   reapplyMacVisibility,
+  // Lazy — sessions/focusTerminalWindow are declared after _permCtx but
+  // this closure only runs at bubble-dismiss time, when both are initialized.
+  focusTerminalForSession: (sessionId) => {
+    const s = sessions.get(sessionId);
+    if (s && s.sourcePid) focusTerminalWindow(s.sourcePid, s.cwd, s.editor, s.pidChain);
+  },
 };
 const _perm = require("./permission")(_permCtx);
 const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS } = _perm;

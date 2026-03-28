@@ -270,6 +270,8 @@ const commandBlock = document.getElementById("commandBlock");
 const btnAllow = document.getElementById("btnAllow");
 const btnDeny = document.getElementById("btnDeny");
 const suggestionsContainer = document.getElementById("suggestions");
+const headerTitle = document.querySelector(".header-title");
+let elicitationMode = false;
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
@@ -319,6 +321,39 @@ function disableAll() {
 }
 
 function show(data) {
+  elicitationMode = data.isElicitation || false;
+
+  if (elicitationMode) {
+    // Elicitation mode — show question with "Go to Terminal" button
+    headerTitle.textContent = data.lang === "zh" ? "\u9700\u8981\u8F93\u5165" : "Needs Input";
+    toolPill.style.display = "none";
+
+    // Extract question text from toolInput.questions
+    let questionText = "";
+    if (data.toolInput && Array.isArray(data.toolInput.questions)) {
+      questionText = data.toolInput.questions.map(q => q.question || "").filter(Boolean).join("\n");
+    }
+    commandBlock.textContent = questionText || JSON.stringify(data.toolInput);
+
+    btnAllow.textContent = data.lang === "zh" ? "\u524D\u5F80\u7EC8\u7AEF" : "Go to Terminal";
+    btnAllow.disabled = false;
+    btnDeny.style.display = "none";
+    suggestionsContainer.innerHTML = "";
+
+    card.classList.remove("hiding");
+    card.classList.add("visible");
+    requestAnimationFrame(() => {
+      const h = card.offsetHeight + 12;
+      window.bubbleAPI.reportHeight(h);
+    });
+    return;
+  }
+
+  // Permission mode
+  headerTitle.textContent = "Permission Request";
+  toolPill.style.display = "";
+  btnDeny.style.display = "";
+
   // Tool pill
   toolPill.textContent = data.toolName || "Unknown";
   toolPill.setAttribute("data-tool", data.toolName || "");
@@ -367,7 +402,8 @@ function hide() {
 btnAllow.addEventListener("click", () => {
   btnAllow.textContent = "...";
   disableAll();
-  window.bubbleAPI.decide("allow");
+  // Elicitation: "deny" tells Claude Code to fall back to terminal
+  window.bubbleAPI.decide(elicitationMode ? "deny" : "allow");
 });
 
 btnDeny.addEventListener("click", () => {
