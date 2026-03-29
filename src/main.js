@@ -511,6 +511,7 @@ function createWindow() {
       resizable: false,
       skipTaskbar: true,
       hasShadow: false,
+      enableLargerThanScreen: true,
       focusable: process.platform !== "linux",  // KEY EXPERIMENT: allow activation to avoid WS_EX_NOACTIVATE input routing bugs (Windows-only issue)
       webPreferences: {
         preload: path.join(__dirname, "preload-hit.js"),
@@ -521,6 +522,7 @@ function createWindow() {
     // hitWin has no visual content — clipping is irrelevant.
     hitWin.setShape([{ x: 0, y: 0, width: hw, height: hh }]);
     hitWin.setIgnoreMouseEvents(false);  // PERMANENT — never toggle
+    if (isMac) hitWin.setFocusable(false);
     hitWin.showInactive();
     // Linux WMs may reset skipTaskbar after showInactive — re-apply explicitly
     if (process.platform === "linux") hitWin.setSkipTaskbar(true);
