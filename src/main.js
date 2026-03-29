@@ -54,7 +54,7 @@ function savePrefs() {
     x, y, size: currentSize,
     miniMode: _mini.getMiniMode(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
     showTray, showDock,
-    autoStartWithClaude, bubbleFollowPet,
+    autoStartWithClaude, bubbleFollowPet, showSessionId,
   };
   try { fs.writeFileSync(PREFS_PATH, JSON.stringify(data)); } catch {}
 }
@@ -88,6 +88,7 @@ let showTray = true;
 let showDock = true;
 let autoStartWithClaude = false;
 let bubbleFollowPet = false;
+let showSessionId = false;
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -185,6 +186,7 @@ const _stateCtx = {
   set forceEyeResend(v) { forceEyeResend = v; },
   get mouseStillSince() { return _tick ? _tick._mouseStillSince : Date.now(); },
   get pendingPermissions() { return pendingPermissions; },
+  get showSessionId() { return showSessionId; },
   sendToRenderer,
   sendToHitWin,
   syncHitWin,
@@ -357,6 +359,8 @@ const _menuCtx = {
   set autoStartWithClaude(v) { autoStartWithClaude = v; },
   get bubbleFollowPet() { return bubbleFollowPet; },
   set bubbleFollowPet(v) { bubbleFollowPet = v; },
+  get showSessionId() { return showSessionId; },
+  set showSessionId(v) { showSessionId = v; },
   get pendingPermissions() { return pendingPermissions; },
   repositionBubbles: () => repositionBubbles(),
   get isQuitting() { return isQuitting; },
@@ -411,6 +415,7 @@ function createWindow() {
   }
   if (prefs && typeof prefs.autoStartWithClaude === "boolean") autoStartWithClaude = prefs.autoStartWithClaude;
   if (prefs && typeof prefs.bubbleFollowPet === "boolean") bubbleFollowPet = prefs.bubbleFollowPet;
+  if (prefs && typeof prefs.showSessionId === "boolean") showSessionId = prefs.showSessionId;
   // macOS: apply dock visibility (default hidden)
   if (isMac) {
     applyDockVisibility();

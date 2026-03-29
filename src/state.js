@@ -497,7 +497,8 @@ function buildSessionSubmenu() {
   return entries.map((e) => {
     const emoji = STATE_EMOJI[e.state] || "";
     const stateText = ctx.t(STATE_LABEL_KEY[e.state] || "sessionIdle");
-    const name = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
+    const folder = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
+    const name = ctx.showSessionId ? `${folder} #${e.id.slice(0, 3)}` : folder;
     const elapsed = formatElapsed(now - e.updatedAt);
     const hasPid = !!e.sourcePid;
     return {
