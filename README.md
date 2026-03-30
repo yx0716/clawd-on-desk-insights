@@ -16,7 +16,8 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Claude Code** — full integration via command hooks + HTTP permission hooks
 - **Codex CLI** — automatic JSONL log polling (`~/.codex/sessions/`), no configuration needed
 - **Copilot CLI** — command hooks via `~/.copilot/hooks/hooks.json`
-- **Multi-agent coexistence** — run all three simultaneously; Clawd tracks each session independently
+- **Gemini CLI** — command hooks via `~/.gemini/settings.json` (registered automatically when Clawd starts, or run `npm run install:gemini-hooks`)
+- **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
 
 ### Animations & Interaction
 - **Real-time state awareness** — agent hooks and log polling drive Clawd's animations automatically
