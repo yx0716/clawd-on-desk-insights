@@ -5,6 +5,7 @@ const fs = require("fs");
 const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
 const isWin = process.platform === "win32";
+const LINUX_WINDOW_TYPE = "toolbar";
 
 
 // ── Windows: AllowSetForegroundWindow via FFI ──
@@ -453,6 +454,7 @@ function createWindow() {
     skipTaskbar: true,
     hasShadow: false,
     enableLargerThanScreen: true,
+    ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       backgroundThrottling: false,
@@ -521,6 +523,7 @@ function createWindow() {
       skipTaskbar: true,
       hasShadow: false,
       enableLargerThanScreen: true,
+      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
       focusable: !isLinux,  // KEY EXPERIMENT: allow activation to avoid WS_EX_NOACTIVATE input routing bugs (Windows-only issue)
       webPreferences: {
         preload: path.join(__dirname, "preload-hit.js"),
