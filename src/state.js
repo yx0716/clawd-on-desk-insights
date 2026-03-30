@@ -318,16 +318,15 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     const endingSession = sessions.get(sessionId);
     sessions.delete(sessionId);
     cleanStaleSessions();
-    if (endingSession && endingSession.headless) {
-      // headless session 悄悄离开，不触发睡眠序列
-      const displayState = resolveDisplayState();
-      setState(displayState, getSvgOverride(displayState));
-      return;
-    }
-    const hasLiveInteractive = [...sessions.values()].some(s => !s.headless);
-    if (!hasLiveInteractive) {
-      setState("sleeping");
-      return;
+    if (!endingSession || !endingSession.headless) {
+      let hasLiveInteractive = false;
+      for (const s of sessions.values()) {
+        if (!s.headless) { hasLiveInteractive = true; break; }
+      }
+      if (!hasLiveInteractive) {
+        setState("sleeping");
+        return;
+      }
     }
     const displayState = resolveDisplayState();
     setState(displayState, getSvgOverride(displayState));

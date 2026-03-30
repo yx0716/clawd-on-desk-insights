@@ -196,7 +196,7 @@ function startHttpServer() {
           const sessionId = data.session_id || "default";
           const suggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
 
-          const existingSession = ctx.sessions && ctx.sessions.get(sessionId);
+          const existingSession = ctx.sessions.get(sessionId);
           if (existingSession && existingSession.headless) {
             ctx.permLog(`SKIPPED: headless session=${sessionId}`);
             ctx.sendPermissionResponse(res, "deny", "Non-interactive session; auto-denied");
