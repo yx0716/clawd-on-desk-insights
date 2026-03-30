@@ -3,7 +3,6 @@
 
 const { BrowserWindow } = require("electron");
 const path = require("path");
-const fs = require("fs");
 const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
@@ -219,7 +218,8 @@ function resolvePermissionEntry(permEntry, behavior, message) {
 
 function permLog(msg) {
   if (!ctx.permDebugLog) return;
-  fs.appendFileSync(ctx.permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+  const { rotatedAppend } = require("./log-rotate");
+  rotatedAppend(ctx.permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 function sendPermissionResponse(res, decisionOrBehavior, message, hookEventName = "PermissionRequest") {

@@ -339,7 +339,8 @@ function stopTopmostWatchdog() {
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
-  fs.appendFileSync(updateDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+  const { rotatedAppend } = require("./log-rotate");
+  rotatedAppend(updateDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 // ── Menu — delegated to src/menu.js ──
