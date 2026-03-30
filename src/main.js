@@ -94,6 +94,7 @@ const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+Alt+C";
 
 function togglePetVisibility() {
   if (!win || win.isDestroyed()) return;
+  if (_mini.getMiniTransitioning()) return;
   if (petHidden) {
     win.showInactive();
     if (hitWin && !hitWin.isDestroyed()) hitWin.showInactive();
