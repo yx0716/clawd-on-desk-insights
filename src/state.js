@@ -495,7 +495,6 @@ function buildSessionSubmenu() {
   });
 
   const now = Date.now();
-  const hasRemote = entries.some(e => e.host);
 
   function buildItem(e) {
     const emoji = STATE_EMOJI[e.state] || "";
@@ -511,20 +510,28 @@ function buildSessionSubmenu() {
     };
   }
 
-  if (!hasRemote) return entries.map(buildItem);
+  // Single-pass grouping by host
+  const groups = new Map(); // key: host || "" for local
+  for (const e of entries) {
+    const key = e.host || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  }
 
-  // Group by host: local first, then each remote host
-  const local = entries.filter(e => !e.host);
-  const remoteHosts = [...new Set(entries.filter(e => e.host).map(e => e.host))];
+  if (groups.size === 1 && groups.has("")) return entries.map(buildItem);
+
+  // Build grouped menu: local first, then each remote host
   const items = [];
-  if (local.length) {
+  const local = groups.get("");
+  if (local) {
     items.push({ label: `📍 ${ctx.t("sessionLocal")}`, enabled: false });
     items.push(...local.map(buildItem));
   }
-  for (const h of remoteHosts) {
+  for (const [h, group] of groups) {
+    if (!h) continue;
     if (items.length) items.push({ type: "separator" });
     items.push({ label: `🖥 ${h}`, enabled: false });
-    items.push(...entries.filter(e => e.host === h).map(buildItem));
+    items.push(...group.map(buildItem));
   }
   return items;
 }

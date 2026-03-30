@@ -4,7 +4,7 @@
 // Usage: node clawd-hook.js <event_name>
 // Reads stdin JSON from Claude Code for session_id
 
-const { postStateToRunningServer } = require("./server-config");
+const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -172,10 +172,7 @@ function send(sessionId, cwd) {
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
   if (process.env.CLAWD_REMOTE) {
-    // Send host identifier so Sessions menu can group by machine
-    const prefixFile = require("path").join(require("os").homedir(), ".claude", "hooks", "clawd-host-prefix");
-    try { body.host = require("fs").readFileSync(prefixFile, "utf8").trim(); } catch {}
-    if (!body.host) body.host = require("os").hostname().split(".")[0];
+    body.host = readHostPrefix();
   } else {
     // Walk to stable terminal PID — process.ppid is an ephemeral shell
     // that dies when the hook exits, so it's useless for later focus calls

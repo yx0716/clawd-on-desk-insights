@@ -17,7 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { postStateToRunningServer } = require("./server-config");
+const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 
 // ── Inline config from agents/codex.js (zero-dependency requirement) ──
 
@@ -46,13 +46,7 @@ const onceMode = args.includes("--once");
 const portIndex = args.indexOf("--port");
 const preferredPort = portIndex >= 0 ? parseInt(args[portIndex + 1], 10) : undefined;
 
-// ── Host prefix (for Sessions menu grouping) ──
-
-let hostPrefix = null;
-try {
-  hostPrefix = fs.readFileSync(path.join(os.homedir(), ".claude", "hooks", "clawd-host-prefix"), "utf8").trim();
-} catch {}
-if (!hostPrefix) hostPrefix = os.hostname().split(".")[0];
+const hostPrefix = readHostPrefix();
 
 // ── State tracking ──
 
