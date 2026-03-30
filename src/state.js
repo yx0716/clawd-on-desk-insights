@@ -288,7 +288,7 @@ function wakeFromDoze() {
 }
 
 // ── Session management ──
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host) {
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless) {
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
@@ -307,14 +307,30 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
   const srcAgentId = agentId || (existing && existing.agentId) || null;
   const srcHost = host || (existing && existing.host) || null;
+  const srcHeadless = headless || (existing && existing.headless) || false;
 
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, pidReachable };
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, pidReachable };
 
   if (event === "SessionEnd") {
+    const endingSession = sessions.get(sessionId);
     sessions.delete(sessionId);
+    cleanStaleSessions();
+    if (!endingSession || !endingSession.headless) {
+      let hasLiveInteractive = false;
+      for (const s of sessions.values()) {
+        if (!s.headless) { hasLiveInteractive = true; break; }
+      }
+      if (!hasLiveInteractive) {
+        setState("sleeping");
+        return;
+      }
+    }
+    const displayState = resolveDisplayState();
+    setState(displayState, getSvgOverride(displayState));
+    return;
   } else if (state === "attention" || state === "notification" || SLEEP_SEQUENCE.has(state)) {
     sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), ...base });
   } else if (ONESHOT_STATES.has(state)) {
@@ -337,11 +353,6 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   }
   cleanStaleSessions();
 
-  if (sessions.size === 0 && event === "SessionEnd") {
-    setState("sleeping");
-    return;
-  }
-
   if (ONESHOT_STATES.has(state)) {
     setState(state);
     return;
@@ -358,10 +369,12 @@ function isProcessAlive(pid) {
 function cleanStaleSessions() {
   const now = Date.now();
   let changed = false;
+  let removedNonHeadless = false;
   for (const [id, s] of sessions) {
     const age = now - s.updatedAt;
 
     if (s.pidReachable && s.agentPid && !isProcessAlive(s.agentPid)) {
+      if (!s.headless) removedNonHeadless = true;
       sessions.delete(id); changed = true;
       continue;
     }
@@ -369,17 +382,21 @@ function cleanStaleSessions() {
     if (age > SESSION_STALE_MS) {
       if (s.pidReachable && s.sourcePid) {
         if (!isProcessAlive(s.sourcePid)) {
+          if (!s.headless) removedNonHeadless = true;
           sessions.delete(id); changed = true;
         } else if (s.state !== "idle") {
           s.state = "idle"; changed = true;
         }
       } else if (!s.pidReachable) {
+        if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;
       } else {
+        if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;
       }
     } else if (age > WORKING_STALE_MS) {
       if (s.pidReachable && s.sourcePid && !isProcessAlive(s.sourcePid)) {
+        if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;
       } else if (s.state === "working" || s.state === "juggling" || s.state === "thinking") {
         s.state = "idle"; s.updatedAt = now; changed = true;
@@ -387,7 +404,11 @@ function cleanStaleSessions() {
     }
   }
   if (changed && sessions.size === 0) {
-    setState("yawning");
+    if (removedNonHeadless) {
+      setState("yawning");
+    } else {
+      setState("idle", SVG_IDLE_FOLLOW);
+    }
   } else if (changed) {
     const resolved = resolveDisplayState();
     setState(resolved, getSvgOverride(resolved));
@@ -433,16 +454,20 @@ function stopStaleCleanup() {
 function resolveDisplayState() {
   if (sessions.size === 0) return "idle";
   let best = "sleeping";
+  let hasNonHeadless = false;
   for (const [, s] of sessions) {
+    if (s.headless) continue;
+    hasNonHeadless = true;
     if ((STATE_PRIORITY[s.state] || 0) > (STATE_PRIORITY[best] || 0)) best = s.state;
   }
+  if (!hasNonHeadless) return "idle";
   return best;
 }
 
 function getActiveWorkingCount() {
   let n = 0;
   for (const [, s] of sessions) {
-    if (s.state === "working" || s.state === "thinking" || s.state === "juggling") n++;
+    if (!s.headless && (s.state === "working" || s.state === "thinking" || s.state === "juggling")) n++;
   }
   return n;
 }
@@ -464,7 +489,7 @@ function getSvgOverride(state) {
 function getJugglingSvg() {
   let n = 0;
   for (const [, s] of sessions) {
-    if (s.state === "juggling") n++;
+    if (!s.headless && s.state === "juggling") n++;
   }
   return n >= 2 ? "clawd-working-conducting.svg" : "clawd-working-juggling.svg";
 }
@@ -482,7 +507,7 @@ function formatElapsed(ms) {
 function buildSessionSubmenu() {
   const entries = [];
   for (const [id, s] of sessions) {
-    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host });
+    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host, headless: s.headless });
   }
   if (entries.length === 0) {
     return [{ label: ctx.t("noSessions"), enabled: false }];
@@ -504,7 +529,7 @@ function buildSessionSubmenu() {
     const elapsed = formatElapsed(now - e.updatedAt);
     const hasPid = !!e.sourcePid;
     return {
-      label: `${emoji} ${name}  ${stateText}  ${elapsed}`,
+      label: `${e.headless ? "🤖 " : ""}${emoji} ${name}  ${stateText}  ${elapsed}`,
       enabled: hasPid,
       click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };

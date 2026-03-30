@@ -400,10 +400,14 @@ function show(data) {
     });
     suggestionsContainer.appendChild(btn);
   } else if (Array.isArray(data.suggestions)) {
+    const seenLabels = new Set();
     data.suggestions.forEach((s, i) => {
+      const label = getSuggestionLabel(s, data.lang);
+      if (seenLabels.has(label)) return;
+      seenLabels.add(label);
       const btn = document.createElement("button");
       btn.className = "btn-suggestion";
-      btn.textContent = getSuggestionLabel(s, data.lang);
+      btn.textContent = label;
       btn.addEventListener("click", () => {
         disableAll();
         window.bubbleAPI.decide("suggestion:" + i);
