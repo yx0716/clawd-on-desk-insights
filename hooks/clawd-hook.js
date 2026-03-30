@@ -171,7 +171,12 @@ function send(sessionId, cwd) {
   const body = { state, session_id: sessionId, event };
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
-  if (!process.env.CLAWD_REMOTE) {
+  if (process.env.CLAWD_REMOTE) {
+    // Send host identifier so Sessions menu can group by machine
+    const prefixFile = require("path").join(require("os").homedir(), ".claude", "hooks", "clawd-host-prefix");
+    try { body.host = require("fs").readFileSync(prefixFile, "utf8").trim(); } catch {}
+    if (!body.host) body.host = require("os").hostname().split(".")[0];
+  } else {
     // Walk to stable terminal PID — process.ppid is an ephemeral shell
     // that dies when the hook exits, so it's useless for later focus calls
     body.source_pid = getStablePid();

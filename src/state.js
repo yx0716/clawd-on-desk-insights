@@ -288,7 +288,7 @@ function wakeFromDoze() {
 }
 
 // ── Session management ──
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId) {
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host) {
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
@@ -306,11 +306,12 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const srcPidChain = (pidChain && pidChain.length) ? pidChain : (existing && existing.pidChain) || null;
   const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
   const srcAgentId = agentId || (existing && existing.agentId) || null;
+  const srcHost = host || (existing && existing.host) || null;
 
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, pidReachable };
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, pidReachable };
 
   if (event === "SessionEnd") {
     sessions.delete(sessionId);
@@ -481,7 +482,7 @@ function formatElapsed(ms) {
 function buildSessionSubmenu() {
   const entries = [];
   for (const [id, s] of sessions) {
-    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain });
+    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host });
   }
   if (entries.length === 0) {
     return [{ label: ctx.t("noSessions"), enabled: false }];
@@ -494,7 +495,9 @@ function buildSessionSubmenu() {
   });
 
   const now = Date.now();
-  return entries.map((e) => {
+  const hasRemote = entries.some(e => e.host);
+
+  function buildItem(e) {
     const emoji = STATE_EMOJI[e.state] || "";
     const stateText = ctx.t(STATE_LABEL_KEY[e.state] || "sessionIdle");
     const folder = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
@@ -506,7 +509,24 @@ function buildSessionSubmenu() {
       enabled: hasPid,
       click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };
-  });
+  }
+
+  if (!hasRemote) return entries.map(buildItem);
+
+  // Group by host: local first, then each remote host
+  const local = entries.filter(e => !e.host);
+  const remoteHosts = [...new Set(entries.filter(e => e.host).map(e => e.host))];
+  const items = [];
+  if (local.length) {
+    items.push({ label: `📍 ${ctx.t("sessionLocal")}`, enabled: false });
+    items.push(...local.map(buildItem));
+  }
+  for (const h of remoteHosts) {
+    if (items.length) items.push({ type: "separator" });
+    items.push({ label: `🖥 ${h}`, enabled: false });
+    items.push(...entries.filter(e => e.host === h).map(buildItem));
+  }
+  return items;
 }
 
 // ── Do Not Disturb ──

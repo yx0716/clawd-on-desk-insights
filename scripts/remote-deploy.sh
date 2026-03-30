@@ -15,15 +15,27 @@ set -euo pipefail
 # ── Args ──
 
 if [ $# -lt 1 ]; then
-  echo "Usage: bash scripts/remote-deploy.sh user@host"
+  echo "Usage: bash scripts/remote-deploy.sh user@host [--prefix NAME]"
   echo ""
   echo "Deploys Clawd hook files to a remote server so that"
   echo "Claude Code and Codex CLI states are synced back to your"
   echo "local Clawd via SSH reverse port forwarding."
+  echo ""
+  echo "Options:"
+  echo "  --prefix NAME   Short name for this machine (shown in Sessions menu)."
+  echo "                  If omitted, hostname is used automatically."
   exit 1
 fi
 
 SSH_TARGET="$1"
+HOST_PREFIX=""
+shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --prefix) HOST_PREFIX="$2"; shift 2 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/../hooks" && pwd)"
 REMOTE_HOOKS_DIR='~/.claude/hooks'
@@ -92,6 +104,14 @@ scp -q "${FILES[@]}" "$SSH_TARGET:~/.claude/hooks/" || {
   exit 1
 }
 echo "  [OK] Files copied to ~/.claude/hooks/"
+
+# ── Write host prefix ──
+
+if [ -n "$HOST_PREFIX" ]; then
+  echo "Writing host prefix: $HOST_PREFIX"
+  ssh "$SSH_TARGET" "echo '$HOST_PREFIX' > ~/.claude/hooks/clawd-host-prefix"
+  echo "  [OK] Prefix written to ~/.claude/hooks/clawd-host-prefix"
+fi
 
 # ── Register hooks ──
 
