@@ -132,6 +132,7 @@ function startHttpServer() {
           const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
           const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
           const host = typeof data.host === "string" ? data.host : null;
+          const headless = data.headless === true;
           if (ctx.STATE_SVGS[state]) {
             const sid = session_id || "default";
             if (state.startsWith("mini-") && !svg) {
@@ -150,7 +151,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               ctx.setState(state, safeSvg);
             } else {
-              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host);
+              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless);
             }
             res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
             res.end("ok");
@@ -194,6 +195,13 @@ function startHttpServer() {
           const toolInput = truncateDeep(rawInput);
           const sessionId = data.session_id || "default";
           const suggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
+
+          const existingSession = ctx.sessions && ctx.sessions.get(sessionId);
+          if (existingSession && existingSession.headless) {
+            ctx.permLog(`SKIPPED: headless session=${sessionId}`);
+            ctx.sendPermissionResponse(res, "deny", "Non-interactive session; auto-denied");
+            return;
+          }
 
           if (ctx.PASSTHROUGH_TOOLS.has(toolName)) {
             ctx.permLog(`PASSTHROUGH: tool=${toolName} session=${sessionId}`);

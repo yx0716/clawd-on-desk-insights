@@ -70,6 +70,7 @@ let _stablePid = null;
 let _detectedEditor = null; // "code" or "cursor" — for URI scheme terminal tab focus
 let _claudePid = null;       // Claude Code process PID — for crash/orphan detection
 let _pidChain = [];          // all PIDs visited during tree walk
+let _isHeadless = false;     // true if claude process has -p/--print flag
 
 function getStablePid() {
   if (_stablePid) return _stablePid;
@@ -134,6 +135,18 @@ function getStablePid() {
     if (!parentPid || parentPid === pid || parentPid <= 1) break;
     pid = parentPid;
   }
+  // Check if claude process is running in non-interactive (-p/--print) mode
+  if (_claudePid && !_isHeadless) {
+    try {
+      const cmdOut = isWin
+        ? execSync(
+            `wmic process where "ProcessId=${_claudePid}" get CommandLine /format:csv`,
+            { encoding: "utf8", timeout: 500, windowsHide: true }
+          )
+        : execSync(`ps -o command= -p ${_claudePid}`, { encoding: "utf8", timeout: 500 });
+      if (/\s(-p|--print)(\s|$)/.test(cmdOut)) _isHeadless = true;
+    } catch {}
+  }
   // Prefer outermost known terminal; fall back to highest non-system PID
   _stablePid = terminalPid || lastGoodPid;
   return _stablePid;
@@ -183,6 +196,7 @@ function send(sessionId, cwd) {
       body.claude_pid = _claudePid; // backward compat with older Clawd versions
     }
     if (_pidChain.length) body.pid_chain = _pidChain;
+    if (_isHeadless) body.headless = true;
   }
 
   const data = JSON.stringify(body);
