@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -89,6 +89,46 @@ let showDock = true;
 let autoStartWithClaude = false;
 let bubbleFollowPet = false;
 let showSessionId = false;
+let petHidden = false;
+const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+Alt+C";
+
+function togglePetVisibility() {
+  if (!win || win.isDestroyed()) return;
+  if (petHidden) {
+    win.showInactive();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.showInactive();
+    // Restore any permission bubbles that were hidden
+    for (const perm of pendingPermissions) {
+      if (perm.bubble && !perm.bubble.isDestroyed()) perm.bubble.showInactive();
+    }
+    reapplyMacVisibility();
+    petHidden = false;
+  } else {
+    win.hide();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.hide();
+    // Also hide any permission bubbles
+    for (const perm of pendingPermissions) {
+      if (perm.bubble && !perm.bubble.isDestroyed()) perm.bubble.hide();
+    }
+    petHidden = true;
+  }
+  buildTrayMenu();
+  buildContextMenu();
+}
+
+function registerToggleShortcut() {
+  try {
+    globalShortcut.register(DEFAULT_TOGGLE_SHORTCUT, togglePetVisibility);
+  } catch (err) {
+    console.warn("Clawd: failed to register global shortcut:", err.message);
+  }
+}
+
+function unregisterToggleShortcut() {
+  try {
+    globalShortcut.unregister(DEFAULT_TOGGLE_SHORTCUT);
+  } catch {}
+}
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -364,6 +404,8 @@ const _menuCtx = {
   set showSessionId(v) { showSessionId = v; },
   get pendingPermissions() { return pendingPermissions; },
   repositionBubbles: () => repositionBubbles(),
+  get petHidden() { return petHidden; },
+  togglePetVisibility: () => togglePetVisibility(),
   get isQuitting() { return isQuitting; },
   set isQuitting(v) { isQuitting = v; },
   get menuOpen() { return menuOpen; },
@@ -832,6 +874,9 @@ if (!gotTheLock) {
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     createWindow();
 
+    // Register global shortcut for toggling pet visibility
+    registerToggleShortcut();
+
     // Auto-register Claude Code hooks on every launch (dedup-safe)
     syncClawdHooks();
 
@@ -870,6 +915,8 @@ if (!gotTheLock) {
   app.on("before-quit", () => {
     isQuitting = true;
     savePrefs();
+    unregisterToggleShortcut();
+    globalShortcut.unregisterAll();
     _perm.cleanup();
     _server.cleanup();
     _state.cleanup();
