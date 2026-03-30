@@ -199,10 +199,10 @@ function startHttpServer() {
           const addRulesItems = rawSuggestions.filter(s => s && s.type === "addRules");
           const suggestions = addRulesItems.length > 1
             ? [
-                ...rawSuggestions.filter(s => !s || s.type !== "addRules"),
+                ...rawSuggestions.filter(s => s && s.type !== "addRules"),
                 {
                   type: "addRules",
-                  destination: addRulesItems[0].destination || "localSettings",
+                  destination: addRulesItems[0].destination || "localSettings", // CC sends uniform destination per request
                   behavior: addRulesItems[0].behavior || "allow",
                   rules: addRulesItems.flatMap(s =>
                     Array.isArray(s.rules) ? s.rules : [{ toolName: s.toolName, ruleContent: s.ruleContent }]
