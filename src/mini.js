@@ -41,7 +41,9 @@ function animateWindowX(targetX, durationMs) {
     const eased = t * (2 - t);
     const x = Math.round(startX + (targetX - startX) * eased);
     if (!Number.isFinite(x) || !Number.isFinite(snapY)) { peekAnimTimer = null; isAnimating = false; return; }
-    ctx.win.setBounds({ x, y: snapY, width: snapW, height: snapH });
+    try {
+      ctx.win.setBounds({ x, y: snapY, width: snapW, height: snapH });
+    } catch { peekAnimTimer = null; isAnimating = false; return; }
     ctx.syncHitWin();
     // Throttle bubble reposition to every 3rd frame (~20fps) — visually identical, less overhead
     if (ctx.bubbleFollowPet && ctx.pendingPermissions.length && (++frameCount % 3 === 0 || t >= 1)) ctx.repositionBubbles();
@@ -75,7 +77,9 @@ function animateWindowParabola(targetX, targetY, durationMs, onDone) {
     const arc = -4 * JUMP_PEAK_HEIGHT * t * (t - 1);
     const y = Math.round(startY + (targetY - startY) * eased - arc);
     if (!Number.isFinite(x) || !Number.isFinite(y)) { peekAnimTimer = null; isAnimating = false; if (onDone) onDone(); return; }
-    ctx.win.setPosition(x, y);
+    try {
+      ctx.win.setPosition(x, y);
+    } catch { peekAnimTimer = null; isAnimating = false; if (onDone) onDone(); return; }
     ctx.syncHitWin();
     // Throttle bubble reposition to every 3rd frame (~20fps) — visually identical, less overhead
     if (ctx.bubbleFollowPet && ctx.pendingPermissions.length && (++frameCount % 3 === 0 || t >= 1)) ctx.repositionBubbles();
