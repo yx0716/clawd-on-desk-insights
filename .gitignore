@@ -21,8 +21,6 @@ docs/
 .tmp_*
 *.tmp
 
-# Third-party reference repo
-clawd-tank/
 
 # Debug logs
 logs/
