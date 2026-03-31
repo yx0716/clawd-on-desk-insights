@@ -3,14 +3,15 @@ const assert = require("node:assert");
 const registry = require("../agents/registry");
 
 describe("Agent Registry", () => {
-  it("should return all four agents", () => {
+  it("should return all five agents", () => {
     const agents = registry.getAllAgents();
-    assert.strictEqual(agents.length, 4);
+    assert.strictEqual(agents.length, 5);
     const ids = agents.map((a) => a.id);
     assert.ok(ids.includes("claude-code"));
     assert.ok(ids.includes("codex"));
     assert.ok(ids.includes("copilot-cli"));
     assert.ok(ids.includes("gemini-cli"));
+    assert.ok(ids.includes("cursor-agent"));
   });
 
   it("should look up agents by ID", () => {
@@ -18,6 +19,7 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("codex").name, "Codex CLI");
     assert.strictEqual(registry.getAgent("copilot-cli").name, "Copilot CLI");
     assert.strictEqual(registry.getAgent("gemini-cli").name, "Gemini CLI");
+    assert.strictEqual(registry.getAgent("cursor-agent").name, "Cursor Agent");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 
@@ -35,6 +37,9 @@ describe("Agent Registry", () => {
 
     const gemini = registry.getAgent("gemini-cli");
     assert.deepStrictEqual(gemini.processNames.win, ["gemini.exe"]);
+
+    const cursor = registry.getAgent("cursor-agent");
+    assert.deepStrictEqual(cursor.processNames.win, ["Cursor.exe"]);
   });
 
   it("should include explicit Linux process names", () => {
@@ -49,11 +54,14 @@ describe("Agent Registry", () => {
 
     const gemini = registry.getAgent("gemini-cli");
     assert.deepStrictEqual(gemini.processNames.linux, ["gemini"]);
+
+    const cursor = registry.getAgent("cursor-agent");
+    assert.deepStrictEqual(cursor.processNames.linux, ["cursor", "Cursor"]);
   });
 
   it("should aggregate all process names", () => {
     const all = registry.getAllProcessNames();
-    assert.ok(all.length >= 4);
+    assert.ok(all.length >= 5);
     const names = all.map((p) => p.name);
     // Should contain at least one entry per agent (platform-dependent)
     const agentIds = [...new Set(all.map((p) => p.agentId))];
@@ -61,6 +69,7 @@ describe("Agent Registry", () => {
     assert.ok(agentIds.includes("codex"));
     assert.ok(agentIds.includes("copilot-cli"));
     assert.ok(agentIds.includes("gemini-cli"));
+    assert.ok(agentIds.includes("cursor-agent"));
   });
 
   it("should have correct capabilities", () => {
@@ -87,6 +96,12 @@ describe("Agent Registry", () => {
     assert.strictEqual(gemini.capabilities.permissionApproval, false);
     assert.strictEqual(gemini.capabilities.sessionEnd, true);
     assert.strictEqual(gemini.capabilities.subagent, false);
+
+    const cursor = registry.getAgent("cursor-agent");
+    assert.strictEqual(cursor.capabilities.httpHook, false);
+    assert.strictEqual(cursor.capabilities.permissionApproval, false);
+    assert.strictEqual(cursor.capabilities.sessionEnd, true);
+    assert.strictEqual(cursor.capabilities.subagent, true);
   });
 
   it("should have eventMap for hook-based agents", () => {
@@ -104,6 +119,12 @@ describe("Agent Registry", () => {
     assert.strictEqual(gemini.eventMap.SessionStart, "idle");
     assert.strictEqual(gemini.eventMap.BeforeTool, "working");
     assert.strictEqual(gemini.eventMap.AfterAgent, "attention");
+
+    const cursor = registry.getAgent("cursor-agent");
+    assert.strictEqual(cursor.eventMap.sessionStart, "idle");
+    assert.strictEqual(cursor.eventMap.preToolUse, "working");
+    assert.strictEqual(cursor.eventMap.afterAgentThought, "thinking");
+    assert.strictEqual(cursor.eventMap.stop, "attention");
   });
 
   it("should have logEventMap for poll-based agents", () => {

@@ -52,6 +52,18 @@ function syncGeminiHooks() {
   }
 }
 
+function syncCursorHooks() {
+  try {
+    const { registerCursorHooks } = require("../hooks/cursor-install.js");
+    const { added, updated } = registerCursorHooks({ silent: true });
+    if (added > 0 || updated > 0) {
+      console.log(`Clawd: synced Cursor hooks (added ${added}, updated ${updated})`);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to sync Cursor hooks:", err.message);
+  }
+}
+
 function sendStateHealthResponse(res) {
   const body = JSON.stringify({ ok: true, app: CLAWD_SERVER_ID, port: getHookServerPort() });
   res.writeHead(200, {
@@ -136,11 +148,15 @@ function startHttpServer() {
         try {
           const data = JSON.parse(body);
           const { state, svg, session_id, event } = data;
+          let display_svg;
+          if (data.display_svg === null) display_svg = null;
+          else if (typeof data.display_svg === "string") display_svg = path.basename(data.display_svg);
+          else display_svg = undefined;
           const source_pid = Number.isFinite(data.source_pid) && data.source_pid > 0 ? Math.floor(data.source_pid) : null;
           const cwd = typeof data.cwd === "string" ? data.cwd : "";
           const editor = (data.editor === "code" || data.editor === "cursor") ? data.editor : null;
           const pidChain = Array.isArray(data.pid_chain) ? data.pid_chain.filter(n => Number.isFinite(n) && n > 0) : null;
-          const rawAgentPid = data.agent_pid ?? data.claude_pid;
+          const rawAgentPid = data.agent_pid ?? data.claude_pid ?? data.cursor_pid;
           const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
           const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
           const host = typeof data.host === "string" ? data.host : null;
@@ -163,7 +179,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               ctx.setState(state, safeSvg);
             } else {
-              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless);
+              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless, display_svg);
             }
             res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
             res.end("ok");
@@ -302,6 +318,7 @@ function startHttpServer() {
     console.log(`Clawd state server listening on 127.0.0.1:${activeServerPort}`);
     syncClawdHooks();
     syncGeminiHooks();
+    syncCursorHooks();
     watchSettingsForHookLoss();
   });
 
@@ -314,6 +331,6 @@ function cleanup() {
   if (httpServer) httpServer.close();
 }
 
-return { startHttpServer, getHookServerPort, syncClawdHooks, cleanup };
+return { startHttpServer, getHookServerPort, syncClawdHooks, syncGeminiHooks, syncCursorHooks, cleanup };
 
 };
