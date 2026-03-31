@@ -265,9 +265,9 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 - **hitWin 点击会抢焦点**：输入窗口 `focusable: true` 是修复拖拽 bug 的关键（去掉 WS_EX_NOACTIVATE），但副作用是点击桌宠会短暂抢走编辑器焦点。目前认为可接受，暂不处理。
 - **启动恢复**：桌宠在 agent 会话中途启动时，`detectRunningClaudeProcesses()` 会检测已运行的 Claude 进程并激活 `startupRecoverActive` 标志，抑制 idle→sleep 序列，保持 idle-follow 等待 hook 到来；若未检测到进程则保持 idle 直到下一个 hook 事件触发
-- **Windows 前台窗口锁**：Windows 11 不允许后台进程对已可见（非最小化）窗口调用 `SetForegroundWindow`，终端聚焦只能可靠地激活最小化窗口。这是 OS 层面限制，无法绕过
+- **Windows 前台窗口锁**：已通过 ALT key trick + koffi FFI `AllowSetForegroundWindow` 委托前台权限给 PowerShell helper 进程来绕过。菜单点击时 Electron 持有前台权限，通过 `AllowSetForegroundWindow(psProc.pid)` 委托给 PS 进程，PS 进程再用 ALT keybd_event + `SetForegroundWindow` 激活目标窗口。大多数场景有效，但仍有边缘情况可能失败（PID 不匹配终端窗口、PS helper 未初始化、koffi 加载失败等）
 - hook 脚本依赖 Node.js 可用
-- Windows 终端聚焦依赖 `koffi`（FFI 调用 `user32.dll AllowSetForegroundWindow`），macOS 用 `osascript`
+- Windows 终端聚焦依赖 `koffi`（FFI 调用 `user32.dll AllowSetForegroundWindow`），koffi 加载失败时降级为纯 ALT trick；macOS 用 `osascript`
 - Codex CLI：JSONL 轮询有 ~1.5s 延迟；无终端聚焦（日志不含终端 PID）；Windows 下 hooks 被 Codex 硬编码禁用
 - Copilot CLI：需手动创建 `~/.copilot/hooks/hooks.json`；无权限气泡（仅支持 deny）
 - 进程存活检测：main.js 定期检查 agent 进程是否存活，清理孤儿会话；但依赖进程名匹配，非标准进程名可能漏检
