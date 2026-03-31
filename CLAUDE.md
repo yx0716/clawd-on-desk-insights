@@ -119,6 +119,10 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 | `src/preload-bubble.js` | bubble 窗口的 contextBridge（permission-show、permission-decide、bubble-height） |
 | `hooks/clawd-hook.js` | Claude Code command hook：事件名 → 状态映射 → HTTP POST，零依赖 |
 | `hooks/copilot-hook.js` | Copilot CLI command hook：camelCase 事件名，与 clawd-hook.js 相同架构 |
+| `hooks/gemini-hook.js` | Gemini CLI command hook：事件名 → 状态映射 → HTTP POST，与 clawd-hook.js 相同架构 |
+| `hooks/gemini-install.js` | 安全注册 Gemini hooks 到 ~/.gemini/settings.json，导出 `registerGeminiHooks()` |
+| `hooks/cursor-hook.js` | Cursor Agent hook：stdin JSON 读取 → 状态映射 → HTTP POST，stdout 返回 JSON；支持 display_svg 工具提示 |
+| `hooks/cursor-install.js` | 安全注册 Cursor hooks 到 ~/.cursor/hooks.json（append-only，幂等），导出 `registerCursorHooks()` |
 | `hooks/install.js` | 安全注册 hooks 到 settings.json（command + HTTP），逐事件追加不覆盖，导出 `registerHooks()` 供 main.js 启动时自动注册 |
 | `hooks/auto-start.js` | SessionStart hook：检测 Electron 是否在运行，未运行则 detached 启动，<500ms 退出 |
 | `hooks/server-config.js` | 共享工具：端口常量、运行时配置读写、HTTP helper、服务发现 |
@@ -277,6 +281,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - Windows 终端聚焦依赖 `koffi`（FFI 调用 `user32.dll AllowSetForegroundWindow`），koffi 加载失败时降级为纯 ALT trick；macOS 用 `osascript`
 - Codex CLI：JSONL 轮询有 ~1.5s 延迟；无终端聚焦（日志不含终端 PID）；Windows 下 hooks 被 Codex 硬编码禁用
 - Copilot CLI：需手动创建 `~/.copilot/hooks/hooks.json`；无权限气泡（仅支持 deny）
+- Gemini CLI：需 Gemini CLI 支持 hooks；无权限气泡；无 subagent 检测
+- Cursor Agent：无权限气泡（Cursor 权限在 stdout 处理，非 HTTP 阻塞式）；启动恢复检测匹配编辑器本体会误触发，已移除进程检测，靠 hook 事件激活
 - 进程存活检测：main.js 定期检查 agent 进程是否存活，清理孤儿会话；但依赖进程名匹配，非标准进程名可能漏检
 
 ## ⚠️ 不要再修 Language 子菜单截断 bug
