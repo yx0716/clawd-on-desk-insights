@@ -37,6 +37,8 @@ function loadPrefs() {
   try {
     const raw = JSON.parse(fs.readFileSync(PREFS_PATH, "utf8"));
     if (!raw || typeof raw !== "object") return null;
+    // Validate miniEdge allowlist
+    if (raw.miniEdge !== "left" && raw.miniEdge !== "right") raw.miniEdge = "right";
     // Sanitize numeric fields — corrupted JSON can feed NaN into window positioning
     for (const key of ["x", "y", "preMiniX", "preMiniY"]) {
       if (key in raw && (typeof raw[key] !== "number" || !isFinite(raw[key]))) {
@@ -54,7 +56,7 @@ function savePrefs() {
   const { x, y } = win.getBounds();
   const data = {
     x, y, size: currentSize,
-    miniMode: _mini.getMiniMode(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
+    miniMode: _mini.getMiniMode(), miniEdge: _mini.getMiniEdge(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
     showTray, showDock,
     autoStartWithClaude, bubbleFollowPet, showSessionId,
   };
@@ -692,7 +694,7 @@ function createWindow() {
   // Also handles crash recovery (render-process-gone → reload)
   win.webContents.on("did-finish-load", () => {
     if (_mini.getMiniMode()) {
-      sendToRenderer("mini-mode-change", true);
+      sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
     sendToHitWin("hit-state-sync", { miniMode: true });
     }
     if (doNotDisturb) {

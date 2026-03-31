@@ -37,3 +37,7 @@ html, body {
   top: -25%;
   pointer-events: none;
 }
+
+#pet-container.mini-left {
+  transform: scaleX(-1);
+}

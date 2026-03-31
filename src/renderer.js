@@ -11,8 +11,14 @@ let isDragReacting = false;
 let reactTimer = null;
 let currentIdleSvg = null;    // tracks which SVG is currently showing
 let dndEnabled = false;
+let miniLeftFlip = false;
 
 window.electronAPI.onDndChange((enabled) => { dndEnabled = enabled; });
+
+window.electronAPI.onMiniModeChange((enabled, edge) => {
+  miniLeftFlip = enabled && edge === "left";
+  container.classList.toggle("mini-left", miniLeftFlip);
+});
 
 function getObjectSvgName(objectEl) {
   if (!objectEl) return null;
@@ -275,7 +281,8 @@ function detachEyeTracking() {
 }
 
 window.electronAPI.onEyeMove((dx, dy) => {
-  lastEyeDx = dx;
+  const effectiveDx = miniLeftFlip ? -dx : dx;
+  lastEyeDx = effectiveDx;
   lastEyeDy = dy;
   // Detect stale eye targets (e.g. after DWM z-order recovery invalidates contentDocument)
   if (eyeTarget && !eyeTarget.ownerDocument?.defaultView) {
@@ -285,7 +292,7 @@ window.electronAPI.onEyeMove((dx, dy) => {
     if (clawdEl && clawdEl.isConnected) attachEyeTracking(clawdEl);
     return;
   }
-  applyEyeMove(dx, dy);
+  applyEyeMove(effectiveDx, dy);
 });
 
 // --- Wake from doze (smooth eye opening) ---

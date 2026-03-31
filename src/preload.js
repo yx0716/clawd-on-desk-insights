@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onEyeMove: (callback) => ipcRenderer.on("eye-move", (_, dx, dy) => callback(dx, dy)),
   onWakeFromDoze: (callback) => ipcRenderer.on("wake-from-doze", () => callback()),
   onDndChange: (callback) => ipcRenderer.on("dnd-change", (_, enabled) => callback(enabled)),
-  onMiniModeChange: (cb) => ipcRenderer.on("mini-mode-change", (_, enabled) => cb(enabled)),
+  onMiniModeChange: (cb) => ipcRenderer.on("mini-mode-change", (_, enabled, edge) => cb(enabled, edge)),
   // Reaction control (from main, relayed from hit window)
   onStartDragReaction: (cb) => ipcRenderer.on("start-drag-reaction", () => cb()),
   onEndDragReaction: (cb) => ipcRenderer.on("end-drag-reaction", () => cb()),

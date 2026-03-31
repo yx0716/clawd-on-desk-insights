@@ -13,6 +13,7 @@ const JUMP_DURATION = 350;
 const CRABWALK_SPEED = 0.12;  // px/ms
 
 let miniMode = false;
+let miniEdge = "right";  // "left" | "right"
 let miniTransitioning = false;
 let miniSleepPeeked = false;
 let preMiniX = 0, preMiniY = 0;
@@ -89,8 +90,15 @@ function animateWindowParabola(targetX, targetY, durationMs, onDone) {
   step();
 }
 
+// Shared X-position formula for mini mode (eliminates duplication across 4+ call sites)
+function calcMiniX(wa, size) {
+  if (miniEdge === "left") return wa.x - Math.round(size.width * MINI_OFFSET_RATIO);
+  return wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
+}
+
 function miniPeekIn() {
-  animateWindowX(currentMiniX - PEEK_OFFSET, 200);
+  const offset = miniEdge === "left" ? PEEK_OFFSET : -PEEK_OFFSET;
+  animateWindowX(currentMiniX + offset, 200);
 }
 
 function miniPeekOut() {
@@ -108,7 +116,7 @@ function checkMiniModeSnap() {
   if (miniMode) return;
   const bounds = ctx.win.getBounds();
   const size = ctx.SIZES[ctx.currentSize];
-  const mRight = Math.round(size.width * 0.25);
+  const mEdge = Math.round(size.width * 0.25);
   const centerX = bounds.x + size.width / 2;
   const displays = screen.getAllDisplays();
   for (const d of displays) {
@@ -116,15 +124,22 @@ function checkMiniModeSnap() {
     const centerY = bounds.y + size.height / 2;
     if (centerX < wa.x || centerX > wa.x + wa.width) continue;
     if (centerY < wa.y || centerY > wa.y + wa.height) continue;
-    const rightLimit = wa.x + wa.width - size.width + mRight;
+    // Right edge snap
+    const rightLimit = wa.x + wa.width - size.width + mEdge;
     if (bounds.x >= rightLimit - SNAP_TOLERANCE) {
-      enterMiniMode(wa);
+      enterMiniMode(wa, false, "right");
+      return;
+    }
+    // Left edge snap
+    const leftLimit = wa.x - mEdge;
+    if (bounds.x <= leftLimit + SNAP_TOLERANCE) {
+      enterMiniMode(wa, false, "left");
       return;
     }
   }
 }
 
-function enterMiniMode(wa, viaMenu) {
+function enterMiniMode(wa, viaMenu, edge) {
   if (miniMode && !viaMenu) return;
   const bounds = ctx.win.getBounds();
   if (!viaMenu) {
@@ -132,13 +147,14 @@ function enterMiniMode(wa, viaMenu) {
     preMiniY = bounds.y;
   }
   miniMode = true;
+  if (edge) miniEdge = edge;
   const size = ctx.SIZES[ctx.currentSize];
-  currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
+  currentMiniX = calcMiniX(wa, size);
   miniSnap = { y: bounds.y, width: size.width, height: size.height };
 
   ctx.stopWakePoll();
 
-  ctx.sendToRenderer("mini-mode-change", true);
+  ctx.sendToRenderer("mini-mode-change", true, miniEdge);
   ctx.sendToHitWin("hit-state-sync", { miniMode: true });
   miniTransitioning = true;
   ctx.buildContextMenu();
@@ -148,9 +164,16 @@ function enterMiniMode(wa, viaMenu) {
 
   if (viaMenu) {
     const displays = screen.getAllDisplays();
-    let maxRight = 0;
-    for (const d of displays) maxRight = Math.max(maxRight, d.bounds.x + d.bounds.width);
-    const jumpTarget = maxRight;
+    let jumpTarget;
+    if (miniEdge === "right") {
+      let maxRight = 0;
+      for (const d of displays) maxRight = Math.max(maxRight, d.bounds.x + d.bounds.width);
+      jumpTarget = maxRight;
+    } else {
+      let minLeft = Infinity;
+      for (const d of displays) minLeft = Math.min(minLeft, d.bounds.x);
+      jumpTarget = minLeft - size.width;
+    }
     animateWindowParabola(jumpTarget, bounds.y, JUMP_DURATION, () => {
       ctx.applyState(enterSvgState);
       miniTransitionTimer = setTimeout(() => {
@@ -186,9 +209,14 @@ function exitMiniMode() {
   const size = ctx.SIZES[ctx.currentSize];
   const clamped = ctx.clampToScreen(preMiniX, preMiniY, size.width, size.height);
   const wa = ctx.getNearestWorkArea(clamped.x + size.width / 2, clamped.y + size.height / 2);
-  const mRight = Math.round(size.width * 0.25);
-  if (clamped.x >= wa.x + wa.width - size.width + mRight - SNAP_TOLERANCE) {
-    clamped.x = wa.x + wa.width - size.width + mRight - 100;
+  const mEdge = Math.round(size.width * 0.25);
+  // Prevent right-edge re-snap
+  if (clamped.x >= wa.x + wa.width - size.width + mEdge - SNAP_TOLERANCE) {
+    clamped.x = wa.x + wa.width - size.width + mEdge - 100;
+  }
+  // Prevent left-edge re-snap
+  if (clamped.x <= wa.x - mEdge + SNAP_TOLERANCE) {
+    clamped.x = wa.x - mEdge + SNAP_TOLERANCE + 100;
   }
 
   animateWindowParabola(clamped.x, clamped.y, JUMP_DURATION, () => {
@@ -217,22 +245,34 @@ function enterMiniViaMenu() {
   const size = ctx.SIZES[ctx.currentSize];
   const wa = ctx.getNearestWorkArea(bounds.x + size.width / 2, bounds.y + size.height / 2);
 
+  // Auto-detect nearest edge
+  const centerX = bounds.x + size.width / 2;
+  const waMid = wa.x + wa.width / 2;
+  const edge = centerX <= waMid ? "left" : "right";
+  miniEdge = edge;
+
   preMiniX = bounds.x;
   preMiniY = bounds.y;
   miniTransitioning = true;
 
-  ctx.sendToRenderer("mini-mode-change", true);
+  // Send edge before crabwalk so CSS flip applies before animation starts
+  ctx.sendToRenderer("mini-mode-change", true, edge);
   ctx.sendToHitWin("hit-state-sync", { miniMode: true });
 
   ctx.applyState("mini-crabwalk");
 
-  const edgeX = wa.x + wa.width - size.width + Math.round(size.width * 0.25);
+  let edgeX;
+  if (edge === "right") {
+    edgeX = wa.x + wa.width - size.width + Math.round(size.width * 0.25);
+  } else {
+    edgeX = wa.x - Math.round(size.width * 0.25);
+  }
   const walkDist = Math.abs(bounds.x - edgeX);
   const walkDuration = walkDist / CRABWALK_SPEED;
   animateWindowX(edgeX, walkDuration);
 
   miniTransitionTimer = setTimeout(() => {
-    enterMiniMode(wa, true);
+    enterMiniMode(wa, true, edge);
   }, walkDuration + 50);
 }
 
@@ -242,7 +282,7 @@ function handleDisplayChange() {
   const size = ctx.SIZES[ctx.currentSize];
   const snapY = miniSnap ? miniSnap.y : ctx.win.getBounds().y;
   const wa = ctx.getNearestWorkArea(currentMiniX + size.width / 2, snapY + size.height / 2);
-  currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
+  currentMiniX = calcMiniX(wa, size);
   const clampedY = Math.max(wa.y, Math.min(snapY, wa.y + wa.height - size.height));
   miniSnap = { y: clampedY, width: size.width, height: size.height };
   ctx.win.setBounds({ x: currentMiniX, y: clampedY, width: size.width, height: size.height });
@@ -253,7 +293,7 @@ function handleResize(sizeKey) {
   if (!miniMode) return false;
   const { y } = ctx.win.getBounds();
   const wa = ctx.getNearestWorkArea(currentMiniX + size.width / 2, y + size.height / 2);
-  currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
+  currentMiniX = calcMiniX(wa, size);
   const clampedY = Math.max(wa.y, Math.min(y, wa.y + wa.height - size.height));
   miniSnap = { y: clampedY, width: size.width, height: size.height };
   ctx.win.setBounds({ x: currentMiniX, y: clampedY, width: size.width, height: size.height });
@@ -263,8 +303,9 @@ function handleResize(sizeKey) {
 function restoreFromPrefs(prefs, size) {
   preMiniX = prefs.preMiniX || 0;
   preMiniY = prefs.preMiniY || 0;
+  miniEdge = prefs.miniEdge || "right";
   const wa = ctx.getNearestWorkArea(prefs.x + size.width / 2, prefs.y + size.height / 2);
-  currentMiniX = wa.x + wa.width - Math.round(size.width * (1 - MINI_OFFSET_RATIO));
+  currentMiniX = calcMiniX(wa, size);
   const startY = Math.max(wa.y, Math.min(prefs.y, wa.y + wa.height - size.height));
   miniSnap = { y: startY, width: size.width, height: size.height };
   miniMode = true;
@@ -272,6 +313,7 @@ function restoreFromPrefs(prefs, size) {
 }
 
 function getMiniMode() { return miniMode; }
+function getMiniEdge() { return miniEdge; }
 function getMiniTransitioning() { return miniTransitioning; }
 function getMiniSleepPeeked() { return miniSleepPeeked; }
 function setMiniSleepPeeked(v) { miniSleepPeeked = v; }
@@ -291,7 +333,7 @@ return {
   miniPeekIn, miniPeekOut, checkMiniModeSnap, cancelMiniTransition,
   animateWindowX, animateWindowParabola,
   handleDisplayChange, handleResize, restoreFromPrefs,
-  getMiniMode, getMiniTransitioning, getMiniSleepPeeked, setMiniSleepPeeked,
+  getMiniMode, getMiniEdge, getMiniTransitioning, getMiniSleepPeeked, setMiniSleepPeeked,
   getIsAnimating, getPreMiniX, getPreMiniY, getCurrentMiniX, getMiniSnap,
   MINI_OFFSET_RATIO,
   cleanup,
