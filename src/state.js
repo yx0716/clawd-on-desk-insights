@@ -42,7 +42,7 @@ STATE_SVGS["mini-sleep"] = ["clawd-mini-sleep.svg"];
 const MIN_DISPLAY_MS = {
   attention: 4000,
   error: 5000,
-  sweeping: 2000,
+  sweeping: 5500,
   notification: 2500,
   carrying: 3000,
   working: 1000,
@@ -103,6 +103,7 @@ let currentHitBox = HIT_BOXES.default;
 
 // ── State machine internal ──
 let currentState = "idle";
+let previousState = "idle";
 let currentSvg = null;
 let stateChangedAt = Date.now();
 let pendingTimer = null;
@@ -187,6 +188,7 @@ function applyState(state, svgOverride) {
     return;
   }
 
+  previousState = currentState;
   currentState = state;
   stateChangedAt = Date.now();
   ctx.idlePaused = false;
@@ -196,9 +198,13 @@ function applyState(state, svgOverride) {
   currentSvg = svg;
 
   // Force eye resend after SVG load completes (~300ms)
+  // After sweeping → idle, pause eye tracking briefly so eyes stay centered before resuming
   if (eyeResendTimer) { clearTimeout(eyeResendTimer); eyeResendTimer = null; }
   if (state === "idle" || state === "mini-idle") {
-    eyeResendTimer = setTimeout(() => { eyeResendTimer = null; ctx.forceEyeResend = true; }, 300);
+    const afterSweep = previousState === "sweeping";
+    const delay = afterSweep ? 800 : 300;
+    if (afterSweep) ctx.eyePauseUntil = Date.now() + delay;
+    eyeResendTimer = setTimeout(() => { eyeResendTimer = null; ctx.forceEyeResend = true; }, delay);
   }
 
   // Update hit box based on SVG
@@ -345,6 +351,12 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
       let hasLiveInteractive = false;
       for (const s of sessions.values()) {
         if (!s.headless) { hasLiveInteractive = true; break; }
+      }
+      // /clear sends sweeping — play it even if other sessions are active
+      // (sweeping is ONESHOT and auto-returns, so it won't interfere)
+      if (state === "sweeping") {
+        setState("sweeping");
+        return;
       }
       if (!hasLiveInteractive) {
         setState("sleeping");

@@ -164,6 +164,7 @@ function startMainTick() {
 
     const trackEyesNow = (idleNow && ctx.currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
     if (!trackEyesNow) return;
+    if (ctx.eyePauseUntil && Date.now() < ctx.eyePauseUntil) return;
     if (!moved && !ctx.forceEyeResend) return;
 
     // ── Eye position calculation (shared by idle and mini-idle) ──

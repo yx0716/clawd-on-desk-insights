@@ -165,23 +165,29 @@ process.stdin.on("data", (c) => chunks.push(c));
 process.stdin.on("end", () => {
   let sessionId = "default";
   let cwd = "";
+  let source = "";
   try {
     const payload = JSON.parse(Buffer.concat(chunks).toString());
     sessionId = payload.session_id || "default";
     cwd = payload.cwd || "";
+    source = payload.source || payload.reason || "";
   } catch {}
-  send(sessionId, cwd);
+  send(sessionId, cwd, source);
 });
 
 // Safety: if stdin doesn't end in 400ms, send with default session
 // (200ms was too aggressive on slow machines / AV scanning)
 setTimeout(() => send("default", ""), 400);
 
-function send(sessionId, cwd) {
+function send(sessionId, cwd, source) {
   if (sent) return;
   sent = true;
 
-  const body = { state, session_id: sessionId, event };
+  // /clear triggers SessionEnd → SessionStart in quick succession;
+  // show sweeping (clearing context) instead of sleeping
+  const resolvedState = (event === "SessionEnd" && source === "clear") ? "sweeping" : state;
+
+  const body = { state: resolvedState, session_id: sessionId, event };
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
   if (process.env.CLAWD_REMOTE) {
