@@ -268,7 +268,7 @@ function startHttpServer() {
             permEntry.abortHandler = abortHandler;
             res.on("close", abortHandler);
             ctx.pendingPermissions.push(permEntry);
-            ctx.showPermissionBubble(permEntry);
+            if (!ctx.hideBubbles) ctx.showPermissionBubble(permEntry);
             return;
           }
 
@@ -283,8 +283,12 @@ function startHttpServer() {
 
           ctx.pendingPermissions.push(permEntry);
 
-          ctx.permLog(`showing bubble: tool=${toolName} session=${sessionId} suggestions=${suggestions.length} stack=${ctx.pendingPermissions.length}`);
-          ctx.showPermissionBubble(permEntry);
+          if (ctx.hideBubbles) {
+            ctx.permLog(`bubble hidden: tool=${toolName} session=${sessionId} — terminal only`);
+          } else {
+            ctx.permLog(`showing bubble: tool=${toolName} session=${sessionId} suggestions=${suggestions.length} stack=${ctx.pendingPermissions.length}`);
+            ctx.showPermissionBubble(permEntry);
+          }
         } catch {
           res.writeHead(400);
           res.end("bad json");

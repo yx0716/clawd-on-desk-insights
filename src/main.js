@@ -58,7 +58,7 @@ function savePrefs() {
     x, y, size: currentSize,
     miniMode: _mini.getMiniMode(), miniEdge: _mini.getMiniEdge(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
     showTray, showDock,
-    autoStartWithClaude, bubbleFollowPet, showSessionId,
+    autoStartWithClaude, bubbleFollowPet, hideBubbles, showSessionId,
   };
   try { fs.writeFileSync(PREFS_PATH, JSON.stringify(data)); } catch {}
 }
@@ -92,6 +92,7 @@ let showTray = true;
 let showDock = true;
 let autoStartWithClaude = false;
 let bubbleFollowPet = false;
+let hideBubbles = false;
 let showSessionId = false;
 let petHidden = false;
 const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+Alt+C";
@@ -312,6 +313,7 @@ const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCool
 const _serverCtx = {
   get autoStartWithClaude() { return autoStartWithClaude; },
   get doNotDisturb() { return doNotDisturb; },
+  get hideBubbles() { return hideBubbles; },
   get pendingPermissions() { return pendingPermissions; },
   get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
   get STATE_SVGS() { return STATE_SVGS; },
@@ -414,6 +416,8 @@ const _menuCtx = {
   set autoStartWithClaude(v) { autoStartWithClaude = v; },
   get bubbleFollowPet() { return bubbleFollowPet; },
   set bubbleFollowPet(v) { bubbleFollowPet = v; },
+  get hideBubbles() { return hideBubbles; },
+  set hideBubbles(v) { hideBubbles = v; },
   get showSessionId() { return showSessionId; },
   set showSessionId(v) { showSessionId = v; },
   get pendingPermissions() { return pendingPermissions; },
@@ -472,6 +476,7 @@ function createWindow() {
   }
   if (prefs && typeof prefs.autoStartWithClaude === "boolean") autoStartWithClaude = prefs.autoStartWithClaude;
   if (prefs && typeof prefs.bubbleFollowPet === "boolean") bubbleFollowPet = prefs.bubbleFollowPet;
+  if (prefs && typeof prefs.hideBubbles === "boolean") hideBubbles = prefs.hideBubbles;
   if (prefs && typeof prefs.showSessionId === "boolean") showSessionId = prefs.showSessionId;
   // macOS: apply dock visibility (default hidden)
   if (isMac) {

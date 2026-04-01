@@ -84,6 +84,7 @@ const i18n = {
     restartLater: "Later",
     download: "Download",
     bubbleFollow: "Bubble Follow Pet",
+    hideBubbles: "Hide Bubbles",
     showSessionId: "Show Session ID",
     sessions: "Sessions",
     noSessions: "No active sessions",
@@ -131,6 +132,7 @@ const i18n = {
     restartLater: "稍后",
     download: "下载",
     bubbleFollow: "气泡跟随宠物",
+    hideBubbles: "隐藏气泡",
     showSessionId: "显示会话编号",
     sessions: "会话",
     noSessions: "无活跃会话",
@@ -228,6 +230,17 @@ module.exports = function initMenu(ctx) {
         click: (menuItem) => {
           ctx.bubbleFollowPet = menuItem.checked;
           if (ctx.pendingPermissions.length) ctx.repositionBubbles();
+          buildContextMenu();
+          buildTrayMenu();
+          ctx.savePrefs();
+        },
+      },
+      {
+        label: t("hideBubbles"),
+        type: "checkbox",
+        checked: ctx.hideBubbles,
+        click: (menuItem) => {
+          ctx.hideBubbles = menuItem.checked;
           buildContextMenu();
           buildTrayMenu();
           ctx.savePrefs();
@@ -425,6 +438,17 @@ module.exports = function initMenu(ctx) {
       {
         label: ctx.doNotDisturb ? t("wake") : t("sleep"),
         click: () => ctx.doNotDisturb ? ctx.disableDoNotDisturb() : ctx.enableDoNotDisturb(),
+      },
+      {
+        label: t("hideBubbles"),
+        type: "checkbox",
+        checked: ctx.hideBubbles,
+        click: (menuItem) => {
+          ctx.hideBubbles = menuItem.checked;
+          buildContextMenu();
+          buildTrayMenu();
+          ctx.savePrefs();
+        },
       },
       { type: "separator" },
       {
