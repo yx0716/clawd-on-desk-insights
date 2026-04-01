@@ -188,6 +188,7 @@ const _permCtx = {
   get bubbleFollowPet() { return bubbleFollowPet; },
   get permDebugLog() { return permDebugLog; },
   get doNotDisturb() { return doNotDisturb; },
+  get hideBubbles() { return hideBubbles; },
   getNearestWorkArea,
   getHitRectScreen,
   guardAlwaysOnTop,
