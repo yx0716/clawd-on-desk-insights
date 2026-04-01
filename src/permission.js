@@ -180,7 +180,7 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   const MIN_BUBBLE_DISPLAY_MS = 2000;
   const age = Date.now() - (permEntry.createdAt || 0);
   const isAutoResolve = message === "Client disconnected";
-  if (isAutoResolve && age < MIN_BUBBLE_DISPLAY_MS && !permEntry._delayedResolve) {
+  if (isAutoResolve && permEntry.bubble && age < MIN_BUBBLE_DISPLAY_MS && !permEntry._delayedResolve) {
     permEntry._delayedResolve = true;
     permEntry._delayTimer = setTimeout(() => resolvePermissionEntry(permEntry, behavior, message), MIN_BUBBLE_DISPLAY_MS - age);
     return;
