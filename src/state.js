@@ -598,7 +598,7 @@ function buildSessionSubmenu() {
     return {
       label: `${e.headless ? "🤖 " : ""}${emoji} ${name}  ${stateText}  ${elapsed}`,
       enabled: hasPid,
-      click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain, e.terminalApp) : undefined,
+      click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };
   }
 
