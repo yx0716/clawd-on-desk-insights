@@ -193,6 +193,13 @@ function applyState(state, svgOverride) {
   stateChangedAt = Date.now();
   ctx.idlePaused = false;
 
+  // Sound triggers
+  if (state === "attention" || state === "mini-happy") {
+    ctx.playSound("complete");
+  } else if (state === "notification" || state === "mini-alert") {
+    ctx.playSound("confirm");
+  }
+
   const svgs = STATE_SVGS[state] || STATE_SVGS.idle;
   const svg = svgOverride || svgs[Math.floor(Math.random() * svgs.length)];
   currentSvg = svg;

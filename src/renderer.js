@@ -330,6 +330,12 @@ window.electronAPI.onEyeMove((dx, dy) => {
   applyEyeMove(effectiveDx, dy);
 });
 
+// --- Sound playback (IPC from main) ---
+window.electronAPI.onPlaySound((name) => {
+  const audio = new Audio(`../assets/sounds/${name}.mp3`);
+  audio.play().catch(() => {});
+});
+
 // --- Wake from doze (smooth eye opening) ---
 window.electronAPI.onWakeFromDoze(() => {
   if (clawdEl && clawdEl.contentDocument) {

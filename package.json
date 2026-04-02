@@ -83,6 +83,7 @@
     "files": [
       "src/**/*",
       "assets/svg/**/*",
+      "assets/sounds/**/*",
       "assets/tray-icon*.png",
       "hooks/**/*",
       "extensions/**/*",

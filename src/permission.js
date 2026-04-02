@@ -1,7 +1,7 @@
 // src/permission.js — Permission bubble management (stacking, show/hide, responses)
 // Extracted from main.js L349-357, L1594-1746
 
-const { BrowserWindow } = require("electron");
+const { BrowserWindow, globalShortcut } = require("electron");
 const path = require("path");
 const {
   CLAWD_SERVER_HEADER,
@@ -22,6 +22,48 @@ const pendingPermissions = [];
 const PASSTHROUGH_TOOLS = new Set([
   "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TaskOutput",
 ]);
+
+// ── Permission hotkeys (Ctrl+Shift+Y = Allow, Ctrl+Shift+N = Deny) ──
+const HOTKEY_ALLOW = "CommandOrControl+Shift+Y";
+const HOTKEY_DENY  = "CommandOrControl+Shift+N";
+let hotkeysRegistered = false;
+
+function getActionablePermissions() {
+  return pendingPermissions.filter(
+    p => !p.isElicitation && !p.isCodexNotify && p.toolName !== "ExitPlanMode"
+  );
+}
+
+function syncPermissionShortcuts() {
+  const shouldRegister = !ctx.hideBubbles && !ctx.petHidden
+    && getActionablePermissions().length > 0;
+
+  if (shouldRegister && !hotkeysRegistered) {
+    try {
+      const okAllow = globalShortcut.register(HOTKEY_ALLOW, hotkeyAllow);
+      const okDeny  = globalShortcut.register(HOTKEY_DENY,  hotkeyDeny);
+      hotkeysRegistered = okAllow || okDeny;
+    } catch {}
+  } else if (!shouldRegister && hotkeysRegistered) {
+    try { globalShortcut.unregister(HOTKEY_ALLOW); } catch {}
+    try { globalShortcut.unregister(HOTKEY_DENY);  } catch {}
+    hotkeysRegistered = false;
+  }
+}
+
+function hotkeyAllow() {
+  const targets = getActionablePermissions();
+  if (!targets.length) return;
+  const perm = targets[targets.length - 1]; // newest
+  resolvePermissionEntry(perm, "allow");
+}
+
+function hotkeyDeny() {
+  const targets = getActionablePermissions();
+  if (!targets.length) return;
+  const perm = targets[targets.length - 1]; // newest
+  resolvePermissionEntry(perm, "deny", "Denied via hotkey");
+}
 
 // Fallback height before renderer reports actual measurement
 function estimateBubbleHeight(sugCount) {
@@ -164,6 +206,7 @@ function showPermissionBubble(permEntry) {
   });
 
   ctx.guardAlwaysOnTop(bub);
+  syncPermissionShortcuts();
 }
 
 function resolvePermissionEntry(permEntry, behavior, message) {
@@ -202,6 +245,7 @@ function resolvePermissionEntry(permEntry, behavior, message) {
 
   // Reposition remaining bubbles to fill the gap
   repositionBubbles();
+  syncPermissionShortcuts();
 
   // Guard: client may have disconnected
   if (res.writableEnded || res.destroyed) return;
@@ -300,6 +344,7 @@ function handleDecide(event, behavior) {
       perm.hideTimer = setTimeout(() => { if (!bub.isDestroyed()) bub.destroy(); }, 250);
     }
     repositionBubbles();
+    syncPermissionShortcuts();
     ctx.focusTerminalForSession(perm.sessionId);
   } else {
     resolvePermissionEntry(perm, behavior === "allow" ? "allow" : "deny");
@@ -342,6 +387,7 @@ function dismissCodexNotify(permEntry) {
     setTimeout(() => { if (!bub.isDestroyed()) bub.destroy(); }, 250);
   }
   repositionBubbles();
+  syncPermissionShortcuts();
 }
 
 function clearCodexNotifyBubbles(sessionId) {
@@ -353,6 +399,12 @@ function clearCodexNotifyBubbles(sessionId) {
 }
 
 function cleanup() {
+  // Unregister hotkeys
+  if (hotkeysRegistered) {
+    try { globalShortcut.unregister(HOTKEY_ALLOW); } catch {}
+    try { globalShortcut.unregister(HOTKEY_DENY);  } catch {}
+    hotkeysRegistered = false;
+  }
   // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
   for (const perm of [...pendingPermissions]) {
     if (perm._delayTimer) clearTimeout(perm._delayTimer);
@@ -366,6 +418,7 @@ return {
   pendingPermissions, PASSTHROUGH_TOOLS,
   handleBubbleHeight, handleDecide, cleanup,
   showCodexNotifyBubble, clearCodexNotifyBubbles,
+  syncPermissionShortcuts,
 };
 
 };

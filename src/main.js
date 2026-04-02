@@ -2,6 +2,10 @@ const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut } = require("e
 const path = require("path");
 const fs = require("fs");
 
+// ── Autoplay policy: allow sound playback without user gesture ──
+// MUST be set before any BrowserWindow is created (before app.whenReady)
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
 const isWin = process.platform === "win32";
@@ -58,7 +62,7 @@ function savePrefs() {
     x, y, size: currentSize,
     miniMode: _mini.getMiniMode(), miniEdge: _mini.getMiniEdge(), preMiniX: _mini.getPreMiniX(), preMiniY: _mini.getPreMiniY(), lang,
     showTray, showDock,
-    autoStartWithClaude, bubbleFollowPet, hideBubbles, showSessionId,
+    autoStartWithClaude, bubbleFollowPet, hideBubbles, showSessionId, soundMuted,
   };
   try { fs.writeFileSync(PREFS_PATH, JSON.stringify(data)); } catch {}
 }
@@ -94,6 +98,7 @@ let autoStartWithClaude = false;
 let bubbleFollowPet = false;
 let hideBubbles = false;
 let showSessionId = false;
+let soundMuted = false;
 let petHidden = false;
 const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+Alt+C";
 
@@ -125,6 +130,7 @@ function togglePetVisibility() {
     }
     petHidden = true;
   }
+  syncPermissionShortcuts();
   buildTrayMenu();
   buildContextMenu();
 }
@@ -148,6 +154,18 @@ function sendToRenderer(channel, ...args) {
 }
 function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
+}
+
+// ── Sound playback ──
+let lastSoundTime = 0;
+const SOUND_COOLDOWN_MS = 10000;
+
+function playSound(name) {
+  if (soundMuted || doNotDisturb) return;
+  const now = Date.now();
+  if (now - lastSoundTime < SOUND_COOLDOWN_MS) return;
+  lastSoundTime = now;
+  sendToRenderer("play-sound", name);
 }
 
 // Sync input window position to match render window's hitbox.
@@ -189,6 +207,7 @@ const _permCtx = {
   get permDebugLog() { return permDebugLog; },
   get doNotDisturb() { return doNotDisturb; },
   get hideBubbles() { return hideBubbles; },
+  get petHidden() { return petHidden; },
   getNearestWorkArea,
   getHitRectScreen,
   guardAlwaysOnTop,
@@ -199,7 +218,7 @@ const _permCtx = {
   },
 };
 const _perm = require("./permission")(_permCtx);
-const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles } = _perm;
+const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles, syncPermissionShortcuts } = _perm;
 const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
 let updateDebugLog = null; // set after app.whenReady()
@@ -244,6 +263,7 @@ const _stateCtx = {
   sendToRenderer,
   sendToHitWin,
   syncHitWin,
+  playSound,
   t: (key) => t(key),
   focusTerminalWindow: (...args) => focusTerminalWindow(...args),
   resolvePermissionEntry: (...args) => resolvePermissionEntry(...args),
@@ -418,9 +438,11 @@ const _menuCtx = {
   get bubbleFollowPet() { return bubbleFollowPet; },
   set bubbleFollowPet(v) { bubbleFollowPet = v; },
   get hideBubbles() { return hideBubbles; },
-  set hideBubbles(v) { hideBubbles = v; },
+  set hideBubbles(v) { hideBubbles = v; syncPermissionShortcuts(); },
   get showSessionId() { return showSessionId; },
   set showSessionId(v) { showSessionId = v; },
+  get soundMuted() { return soundMuted; },
+  set soundMuted(v) { soundMuted = v; },
   get pendingPermissions() { return pendingPermissions; },
   repositionBubbles: () => repositionBubbles(),
   get petHidden() { return petHidden; },
@@ -479,6 +501,7 @@ function createWindow() {
   if (prefs && typeof prefs.bubbleFollowPet === "boolean") bubbleFollowPet = prefs.bubbleFollowPet;
   if (prefs && typeof prefs.hideBubbles === "boolean") hideBubbles = prefs.hideBubbles;
   if (prefs && typeof prefs.showSessionId === "boolean") showSessionId = prefs.showSessionId;
+  if (prefs && typeof prefs.soundMuted === "boolean") soundMuted = prefs.soundMuted;
   // macOS: apply dock visibility (default hidden)
   if (isMac) {
     applyDockVisibility();

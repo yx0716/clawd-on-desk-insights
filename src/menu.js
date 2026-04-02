@@ -97,6 +97,7 @@ const i18n = {
     sessionJustNow: "just now",
     sessionMinAgo: "{n}m ago",
     sessionHrAgo: "{n}h ago",
+    soundEffects: "Sound Effects",
     showPet: "Show Clawd",
     hidePet: "Hide Clawd",
     toggleShortcut: "Toggle Shortcut: {shortcut}",
@@ -145,6 +146,7 @@ const i18n = {
     sessionJustNow: "刚刚",
     sessionMinAgo: "{n}分钟前",
     sessionHrAgo: "{n}小时前",
+    soundEffects: "音效",
     showPet: "显示 Clawd",
     hidePet: "隐藏 Clawd",
     toggleShortcut: "切换快捷键: {shortcut}",
@@ -241,6 +243,17 @@ module.exports = function initMenu(ctx) {
         checked: ctx.hideBubbles,
         click: (menuItem) => {
           ctx.hideBubbles = menuItem.checked;
+          buildContextMenu();
+          buildTrayMenu();
+          ctx.savePrefs();
+        },
+      },
+      {
+        label: t("soundEffects"),
+        type: "checkbox",
+        checked: !ctx.soundMuted,
+        click: (menuItem) => {
+          ctx.soundMuted = !menuItem.checked;
           buildContextMenu();
           buildTrayMenu();
           ctx.savePrefs();
@@ -445,6 +458,17 @@ module.exports = function initMenu(ctx) {
         checked: ctx.hideBubbles,
         click: (menuItem) => {
           ctx.hideBubbles = menuItem.checked;
+          buildContextMenu();
+          buildTrayMenu();
+          ctx.savePrefs();
+        },
+      },
+      {
+        label: t("soundEffects"),
+        type: "checkbox",
+        checked: !ctx.soundMuted,
+        click: (menuItem) => {
+          ctx.soundMuted = !menuItem.checked;
           buildContextMenu();
           buildTrayMenu();
           ctx.savePrefs();
