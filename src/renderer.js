@@ -331,8 +331,14 @@ window.electronAPI.onEyeMove((dx, dy) => {
 });
 
 // --- Sound playback (IPC from main) ---
+const _audioCache = {};
 window.electronAPI.onPlaySound((name) => {
-  const audio = new Audio(`../assets/sounds/${name}.mp3`);
+  let audio = _audioCache[name];
+  if (!audio) {
+    audio = new Audio(`../assets/sounds/${name}.mp3`);
+    _audioCache[name] = audio;
+  }
+  audio.currentTime = 0;
   audio.play().catch(() => {});
 });
 

@@ -149,6 +149,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - **堆叠布局**：多个权限请求从屏幕右下角向上堆叠，`repositionBubbles()` 管理位置
 - **动态高度**：bubble 通过 IPC `bubble-height` 上报实际渲染高度，主进程据此精确堆叠
 - **决策选项**：Allow（允许）、Deny（拒绝）、suggestion 按钮（如"始终允许"、"自动接受编辑"）
+- **全局快捷键**：`Ctrl+Shift+Y`（Allow）/ `Ctrl+Shift+N`（Deny）操作最新的可操作气泡（排除 elicitation/codex notify/ExitPlanMode），仅在气泡可见时注册，hideBubbles/petHidden 时注销
 - **客户端断连**：`res.on("close")` 检测 Claude Code 超时或用户在终端回答，自动清理气泡
 - **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
 - **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
@@ -171,6 +172,15 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 - 使用 `electron-updater`，Windows 下载安装 NSIS 更新包，macOS 打开 GitHub release 页面
 - 托盘菜单"Check for Updates"手动触发，`autoInstallOnAppQuit = true`
+
+### 提示音系统（main.js playSound → IPC → renderer.js Audio）
+
+- `app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")` 在任何窗口创建之前设置，解决 Chromium autoplay 限制
+- `playSound(name)` 在 main.js 中定义，检查 `soundMuted`、`doNotDisturb`、10 秒 cooldown 后通过 IPC `play-sound` 发送到渲染窗口
+- renderer.js 用 `_audioCache` 缓存 Audio 对象，避免重复创建
+- state.js `applyState()` 中触发：attention/mini-happy → complete 音效，notification/mini-alert → confirm 音效
+- 菜单"音效"checkbox 控制 `soundMuted`，持久化到 `clawd-prefs.json`
+- 音效素材：`assets/sounds/complete.mp3`、`assets/sounds/confirm.mp3`（≤50KB）
 
 ### 眼球追踪系统（tick.js 计算 → renderer.js 渲染）
 

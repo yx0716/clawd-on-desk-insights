@@ -32,6 +32,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 ### Permission Bubble
 - **In-app permission review** — when Claude Code requests tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
 - **Allow / Deny / Suggestions** — one-click approve, reject, or apply permission rules (e.g. "Always allow Read")
+- **Global hotkeys** — `Ctrl+Shift+Y` to Allow, `Ctrl+Shift+N` to Deny the latest permission bubble (only registered while bubbles are visible)
 - **Stacking layout** — multiple permission requests stack upward from the bottom-right corner
 - **Auto-dismiss** — if you answer in the terminal first, the bubble disappears automatically
 
@@ -48,6 +49,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Single instance lock** — prevents duplicate Clawd windows
 - **Auto-start** — Claude Code's SessionStart hook can launch Clawd automatically if it's not running
 - **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Clawd
+- **Sound effects** — short audio cues on task completion and permission requests (toggle via right-click menu; 10s cooldown, auto-muted during DND)
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
 - **i18n** — English and Chinese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS opens the release page, Linux requires manual download
@@ -175,7 +177,6 @@ Some things we'd like to explore in the future:
 
 - Codex terminal focus via process tree lookup from `codex.exe` PID
 - Auto-registration of Copilot CLI hooks (like we do for Claude Code)
-- Sound effects for state transitions (blocked by Electron autoplay policy)
 - Custom character skins / animations
 - Hook uninstall script for clean app removal
 
