@@ -330,12 +330,18 @@ function resolveNodeBin(options = {}) {
   const shells = ["/bin/zsh", "/bin/bash"];
   for (const shell of shells) {
     try {
-      const result = execFileSync(shell, ["-lic", "which node"], {
+      const raw = execFileSync(shell, ["-lic", "which node"], {
         encoding: "utf8",
         timeout: 5000,
         windowsHide: true,
-      }).trim();
-      if (result && result.startsWith("/")) return result;
+      });
+      // Interactive shells may produce extra output (Oh My Zsh, Powerlevel10k, etc.)
+      // before `which node`. Take the last line that looks like an absolute path.
+      const lines = raw.split("\n");
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith("/")) return line;
+      }
     } catch {}
   }
 

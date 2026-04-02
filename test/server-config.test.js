@@ -113,6 +113,25 @@ describe("server-config helpers", () => {
     assert.strictEqual(result, "/Users/tester/.nvm/versions/node/v20.11.0/bin/node");
   });
 
+  it("resolveNodeBin extracts node path from noisy interactive shell output", () => {
+    const result = serverConfig.resolveNodeBin({
+      platform: "darwin",
+      isElectron: true,
+      homeDir: "/Users/tester",
+      accessSync() { throw new Error("ENOENT"); },
+      execFileSync(shell, args) {
+        if (shell === "/bin/zsh") {
+          // Simulates Oh My Zsh / Powerlevel10k / neofetch output before `which node`
+          return "[oh-my-zsh] Would you like to check for updates? [Y/n]\n" +
+                 "\n" +
+                 "/Users/tester/.nvm/versions/node/v22.0.0/bin/node\n";
+        }
+        throw new Error("not found");
+      },
+    });
+    assert.strictEqual(result, "/Users/tester/.nvm/versions/node/v22.0.0/bin/node");
+  });
+
   it("resolveNodeBin finds node on Linux via well-known paths in Electron", () => {
     const result = serverConfig.resolveNodeBin({
       platform: "linux",
