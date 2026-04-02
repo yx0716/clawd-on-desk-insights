@@ -324,12 +324,13 @@ function resolveNodeBin(options = {}) {
     } catch {}
   }
 
-  // Strategy 2: Login shell (sources .zprofile/.bash_profile → picks up nvm/fnm/etc.)
+  // Strategy 2: Login + interactive shell (sources both .zprofile AND .zshrc/.bashrc,
+  // needed because nvm/fnm initialize in rc files, not profile files)
   const execFileSync = options.execFileSync || require("child_process").execFileSync;
   const shells = ["/bin/zsh", "/bin/bash"];
   for (const shell of shells) {
     try {
-      const result = execFileSync(shell, ["-l", "-c", "which node"], {
+      const result = execFileSync(shell, ["-lic", "which node"], {
         encoding: "utf8",
         timeout: 5000,
         windowsHide: true,
