@@ -452,28 +452,6 @@ module.exports = function initMenu(ctx) {
         label: ctx.doNotDisturb ? t("wake") : t("sleep"),
         click: () => ctx.doNotDisturb ? ctx.disableDoNotDisturb() : ctx.enableDoNotDisturb(),
       },
-      {
-        label: t("hideBubbles"),
-        type: "checkbox",
-        checked: ctx.hideBubbles,
-        click: (menuItem) => {
-          ctx.hideBubbles = menuItem.checked;
-          buildContextMenu();
-          buildTrayMenu();
-          ctx.savePrefs();
-        },
-      },
-      {
-        label: t("soundEffects"),
-        type: "checkbox",
-        checked: !ctx.soundMuted,
-        click: (menuItem) => {
-          ctx.soundMuted = !menuItem.checked;
-          buildContextMenu();
-          buildTrayMenu();
-          ctx.savePrefs();
-        },
-      },
       { type: "separator" },
       {
         label: `${t("sessions")} (${ctx.sessions.size})`,
