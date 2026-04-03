@@ -132,9 +132,9 @@ async function _gitCheckForUpdates(repoRoot, manual) {
     if (diff.includes("package.json") || diff.includes("package-lock.json")) {
       ctx.updateLog("Dependencies changed, running npm install...");
       await new Promise((resolve, reject) => {
-        execFile("npm", ["install", "--no-fund", "--no-audit"], { cwd: repoRoot, timeout: 120000 }, (err) => {
-          if (err) reject(err); else resolve();
-        });
+        execFile("npm", ["install", "--no-fund", "--no-audit"],
+          { cwd: repoRoot, timeout: 120000, shell: process.platform === "win32" },
+          (err) => { if (err) reject(err); else resolve(); });
       });
       ctx.updateLog("npm install complete");
     }
