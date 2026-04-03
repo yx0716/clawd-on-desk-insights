@@ -5,8 +5,9 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { resolveNodeBin } = require("./server-config");
+const { resolveNodeBin, buildPermissionUrl, DEFAULT_SERVER_PORT, readRuntimePort } = require("./server-config");
 const MARKER = "codebuddy-hook.js";
+const HTTP_MARKER = "/permission";
 
 /** Extract the existing absolute node path from hook commands containing marker. */
 function extractExistingNodeBin(settings, marker) {
@@ -165,6 +166,42 @@ function registerCodeBuddyHooks(options = {}) {
     arr.push({
       matcher: "",
       hooks: [{ type: "command", command: desiredCommand }],
+    });
+    added++;
+    changed = true;
+  }
+
+  // Register PermissionRequest HTTP hook (blocking, for permission bubble)
+  const hookPort = readRuntimePort() || DEFAULT_SERVER_PORT;
+  const permissionUrl = buildPermissionUrl(hookPort);
+  const permEvent = "PermissionRequest";
+  if (!Array.isArray(settings.hooks[permEvent])) {
+    settings.hooks[permEvent] = [];
+    changed = true;
+  }
+  let permFound = false;
+  for (const entry of settings.hooks[permEvent]) {
+    if (!entry || typeof entry !== "object") continue;
+    const innerHooks = entry.hooks;
+    if (Array.isArray(innerHooks)) {
+      for (const h of innerHooks) {
+        if (!h || h.type !== "http" || typeof h.url !== "string") continue;
+        if (!h.url.includes(HTTP_MARKER)) continue;
+        permFound = true;
+        if (h.url !== permissionUrl) { h.url = permissionUrl; updated++; changed = true; }
+        break;
+      }
+    }
+    if (!permFound && entry.type === "http" && typeof entry.url === "string" && entry.url.includes(HTTP_MARKER)) {
+      permFound = true;
+      if (entry.url !== permissionUrl) { entry.url = permissionUrl; updated++; changed = true; }
+    }
+    if (permFound) break;
+  }
+  if (!permFound) {
+    settings.hooks[permEvent].push({
+      matcher: "",
+      hooks: [{ type: "http", url: permissionUrl, timeout: 600 }],
     });
     added++;
     changed = true;

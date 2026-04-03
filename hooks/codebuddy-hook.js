@@ -13,6 +13,7 @@ const HOOK_MAP = {
   PreToolUse:       { state: "working",      event: "PreToolUse" },
   PostToolUse:      { state: "working",      event: "PostToolUse" },
   Stop:             { state: "attention",    event: "Stop" },
+  // PermissionRequest: handled by HTTP hook (blocking), not this command hook
   Notification:     { state: "notification", event: "Notification" },
   PreCompact:       { state: "sweeping",     event: "PreCompact" },
 };
