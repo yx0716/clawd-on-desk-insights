@@ -198,7 +198,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 ## 致谢
 
 - Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- Clawd 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为社区作品，与 Anthropic 无官方关联。
+- Clawd 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。本仓库中的角色美术素材不得用于商业用途。
 
 ## 许可证
 

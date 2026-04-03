@@ -206,7 +206,7 @@ Thanks to everyone who has helped make Clawd better:
 ## Acknowledgments
 
 - Clawd pixel art reference from [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- The Clawd character is the property of [Anthropic](https://www.anthropic.com). This is a community project, not officially affiliated with or endorsed by Anthropic.
+- The Clawd character is the property of [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic. The character artwork in this repository may not be used for commercial purposes.
 
 ## License
 
