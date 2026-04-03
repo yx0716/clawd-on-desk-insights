@@ -100,6 +100,42 @@ const AUTO_START_MARKER = "auto-start.js";
 const LEGACY_AUTO_START_MARKER = "auto-start.sh";
 const HTTP_MARKER = PERMISSION_PATH;
 
+/**
+ * Extract the node binary path from existing hook commands in settings.
+ * Looks for the first quoted absolute path before `marker` in any hook command.
+ * Returns the path (e.g. "/opt/homebrew/bin/node") or null.
+ */
+function extractNodeBinFromSettings(settings, marker) {
+  if (!settings || !settings.hooks) return null;
+  for (const entries of Object.values(settings.hooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const cmds = [];
+      if (typeof entry.command === "string") cmds.push(entry.command);
+      if (Array.isArray(entry.hooks)) {
+        for (const h of entry.hooks) {
+          if (h && typeof h.command === "string") cmds.push(h.command);
+        }
+      }
+      for (const cmd of cmds) {
+        if (!cmd.includes(marker)) continue;
+        // Find first quoted token: "something"
+        const qi = cmd.indexOf('"');
+        if (qi === -1) continue;
+        const qe = cmd.indexOf('"', qi + 1);
+        if (qe === -1) continue;
+        const firstQuoted = cmd.substring(qi + 1, qe);
+        // If first quoted token IS the hook script (old format), node was bare — nothing to preserve
+        if (firstQuoted.includes(marker)) continue;
+        // Only preserve absolute paths
+        if (firstQuoted.startsWith("/")) return firstQuoted;
+      }
+    }
+  }
+  return null;
+}
+
 function forEachCommandHook(entries, visitor) {
   if (!Array.isArray(entries)) return;
   for (const entry of entries) {
@@ -306,10 +342,6 @@ function registerHooks(options = {}) {
   // unpacked file lives under app.asar.unpacked (see package.json asarUnpack).
   hookScript = hookScript.replace("app.asar/", "app.asar.unpacked/");
 
-  // Resolve absolute node path — on macOS/Linux, Claude Code runs hooks with
-  // a minimal PATH that excludes Homebrew, nvm, volta, etc.
-  const nodeBin = options.nodeBin || resolveNodeBin();
-
   // Read existing settings
   let settings = {};
   try {
@@ -321,6 +353,15 @@ function registerHooks(options = {}) {
   }
 
   if (!settings.hooks) settings.hooks = {};
+
+  // Resolve absolute node path — on macOS/Linux, Claude Code runs hooks with
+  // a minimal PATH that excludes Homebrew, nvm, volta, etc.
+  // If detection fails (null), preserve the existing absolute path from settings
+  // to avoid destructively overwriting a working config with bare "node".
+  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const nodeBin = resolved
+    || extractNodeBinFromSettings(settings, MARKER)
+    || "node";
 
   let added = 0;
   let skipped = 0;

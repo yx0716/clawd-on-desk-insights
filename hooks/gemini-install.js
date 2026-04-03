@@ -7,6 +7,25 @@ const os = require("os");
 const { resolveNodeBin } = require("./server-config");
 const MARKER = "gemini-hook.js";
 
+/** Extract the existing absolute node path from hook commands containing marker. */
+function extractExistingNodeBin(settings, marker) {
+  if (!settings || !settings.hooks) return null;
+  for (const entries of Object.values(settings.hooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object" || typeof entry.command !== "string") continue;
+      if (!entry.command.includes(marker)) continue;
+      const qi = entry.command.indexOf('"');
+      if (qi === -1) continue;
+      const qe = entry.command.indexOf('"', qi + 1);
+      if (qe === -1) continue;
+      const first = entry.command.substring(qi + 1, qe);
+      if (!first.includes(marker) && first.startsWith("/")) return first;
+    }
+  }
+  return null;
+}
+
 const GEMINI_HOOK_EVENTS = [
   "SessionStart",
   "SessionEnd",
@@ -51,8 +70,6 @@ function registerGeminiHooks(options = {}) {
 
   let hookScript = path.resolve(__dirname, "gemini-hook.js").replace(/\\/g, "/");
   hookScript = hookScript.replace("app.asar/", "app.asar.unpacked/");
-  const nodeBin = options.nodeBin || resolveNodeBin();
-  const desiredCommand = `"${nodeBin}" "${hookScript}"`;
 
   let settings = {};
   try {
@@ -62,6 +79,13 @@ function registerGeminiHooks(options = {}) {
       throw new Error(`Failed to read settings.json: ${err.message}`);
     }
   }
+
+  // Resolve node path; if detection fails, preserve existing absolute path
+  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const nodeBin = resolved
+    || extractExistingNodeBin(settings, MARKER)
+    || "node";
+  const desiredCommand = `"${nodeBin}" "${hookScript}"`;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
 

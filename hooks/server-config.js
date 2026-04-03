@@ -287,7 +287,7 @@ function postStateToRunningServer(body, options, callback) {
  * @param {Function} [options.accessSync]
  * @param {string} [options.execPath]
  * @param {boolean} [options.isElectron]
- * @returns {string} absolute path or bare "node"
+ * @returns {string|null} absolute path, "node" (Windows), or null (detection failed)
  */
 function resolveNodeBin(options = {}) {
   const platform = options.platform || process.platform;
@@ -345,8 +345,9 @@ function resolveNodeBin(options = {}) {
     } catch {}
   }
 
-  // Fallback: bare `node`
-  return "node";
+  // Detection failed — return null so callers can preserve existing config
+  // instead of destructively overwriting an absolute path with bare "node"
+  return null;
 }
 
 module.exports = {

@@ -190,6 +190,35 @@ describe("Hook installer version compatibility", () => {
     assert.strictEqual(result.updated, 0);
   });
 
+  it("preserves existing absolute node path when detection fails", () => {
+    const existingAbsPath = "/Users/tester/.nvm/versions/node/v20.11.0/bin/node";
+    const settingsPath = makeTempSettings({
+      hooks: {
+        Stop: [
+          {
+            matcher: "",
+            hooks: [{ type: "command", command: `"${existingAbsPath}" "/app/hooks/clawd-hook.js" Stop` }],
+          },
+        ],
+      },
+    });
+
+    // nodeBin: null simulates resolveNodeBin() failing in Electron
+    const result = registerHooks({
+      silent: true,
+      settingsPath,
+      nodeBin: null,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+
+    const settings = readSettings(settingsPath);
+    const commands = getClawdCommands(settings, "Stop");
+    assert.strictEqual(commands.length, 1);
+    // Must still contain the original absolute nvm path, NOT bare "node"
+    assert.ok(commands[0].includes(existingAbsPath), `expected ${existingAbsPath} in: ${commands[0]}`);
+    assert.ok(!commands[0].startsWith('"node"'), "should not downgrade to bare node");
+  });
+
   it("checks macOS absolute Claude paths before PATH fallback", () => {
     const attempted = [];
     const expectedPath = path.join("/Users/tester", ".claude", "local", "claude");

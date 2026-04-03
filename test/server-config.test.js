@@ -145,7 +145,7 @@ describe("server-config helpers", () => {
     assert.strictEqual(result, "/usr/bin/node");
   });
 
-  it("resolveNodeBin returns bare node when nothing is found", () => {
+  it("resolveNodeBin returns null when nothing is found on macOS/Linux", () => {
     const result = serverConfig.resolveNodeBin({
       platform: "darwin",
       isElectron: true,
@@ -153,7 +153,7 @@ describe("server-config helpers", () => {
       accessSync() { throw new Error("ENOENT"); },
       execFileSync() { throw new Error("not found"); },
     });
-    assert.strictEqual(result, "node");
+    assert.strictEqual(result, null);
   });
 
   it("postStateToRunningServer probes fallback ports before posting", async () => {
