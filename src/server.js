@@ -52,6 +52,18 @@ function syncGeminiHooks() {
   }
 }
 
+function syncCodeBuddyHooks() {
+  try {
+    const { registerCodeBuddyHooks } = require("../hooks/codebuddy-install.js");
+    const { added, updated } = registerCodeBuddyHooks({ silent: true });
+    if (added > 0 || updated > 0) {
+      console.log(`Clawd: synced CodeBuddy hooks (added ${added}, updated ${updated})`);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to sync CodeBuddy hooks:", err.message);
+  }
+}
+
 function syncCursorHooks() {
   try {
     const { registerCursorHooks } = require("../hooks/cursor-install.js");
@@ -323,6 +335,7 @@ function startHttpServer() {
     syncClawdHooks();
     syncGeminiHooks();
     syncCursorHooks();
+    syncCodeBuddyHooks();
     watchSettingsForHookLoss();
   });
 
@@ -335,6 +348,6 @@ function cleanup() {
   if (httpServer) httpServer.close();
 }
 
-return { startHttpServer, getHookServerPort, syncClawdHooks, syncGeminiHooks, syncCursorHooks, cleanup };
+return { startHttpServer, getHookServerPort, syncClawdHooks, syncGeminiHooks, syncCursorHooks, syncCodeBuddyHooks, cleanup };
 
 };
