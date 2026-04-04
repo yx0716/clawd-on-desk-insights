@@ -373,7 +373,7 @@ describe("GeminiLogMonitor", () => {
         `should have 2+ thinking events (turnHasTools reset), got: ${states}`);
       assert.ok(states.includes("attention"), `should have attention: ${states}`);
       // Verify a pending deferred exists (from step 4 gemini-no-tools)
-      assert.strictEqual(monitor._pendingIdle.size, 1,
+      assert.strictEqual(monitor._pendingCompletions.size, 1,
         "should have a pending deferred completion");
       done();
     }, 1500);

@@ -1,6 +1,5 @@
 // Gemini CLI session JSON monitor
 // Polls ~/.gemini/tmp/*/chats/session-*.json for state changes
-// Zero dependencies (node built-ins only)
 
 const fs = require("fs");
 const path = require("path");
@@ -13,6 +12,8 @@ const os = require("os");
 // Pure text completions (no tools all turn) get feedback after this delay.
 const DEFER_COMPLETION_MS = 4000;
 
+const DEBUG = !!(process.env.CLAWD_DEBUG || process.env.CLAWD_DEBUG_GEMINI);
+
 class GeminiLogMonitor {
   /**
    * @param {object} agentConfig - gemini-cli.js config (logConfig)
@@ -22,13 +23,11 @@ class GeminiLogMonitor {
     this._config = agentConfig;
     this._onStateChange = onStateChange;
     this._interval = null;
-    // Map<filePath, { mtime, sessionId, lastState, lastEventTime, msgCount, hasTools, cwd }>
     this._tracked = new Map();
-    // Map<filePath, timerId> — deferred idle timers for gemini-no-tools
-    this._pendingIdle = new Map();
+    this._pendingCompletions = new Map();
     this._baseDir = this._resolveBaseDir();
-    this._cwdMap = null; // projectDir → cwd reverse mapping
-    this._projectsMtime = 0; // mtime of projects.json for cache invalidation
+    this._cwdMap = null;
+    this._projectsMtime = 0;
   }
 
   _resolveBaseDir() {
@@ -53,8 +52,8 @@ class GeminiLogMonitor {
       clearInterval(this._interval);
       this._interval = null;
     }
-    for (const timer of this._pendingIdle.values()) clearTimeout(timer);
-    this._pendingIdle.clear();
+    for (const timer of this._pendingCompletions.values()) clearTimeout(timer);
+    this._pendingCompletions.clear();
     this._tracked.clear();
   }
 
@@ -64,15 +63,13 @@ class GeminiLogMonitor {
     try {
       mtime = fs.statSync(projectsPath).mtimeMs;
     } catch {
-      return; // projects.json doesn't exist
+      return;
     }
-    // Only reload if changed
     if (this._cwdMap && mtime === this._projectsMtime) return;
     this._projectsMtime = mtime;
     try {
       const data = JSON.parse(fs.readFileSync(projectsPath, "utf8"));
       if (data && data.projects) {
-        // Invert: { physicalPath: dirName } → { dirName: physicalPath }
         this._cwdMap = {};
         for (const [physPath, dirName] of Object.entries(data.projects)) {
           this._cwdMap[dirName] = physPath;
@@ -86,12 +83,11 @@ class GeminiLogMonitor {
   _poll() {
     this._loadCwdMap();
 
-    // List project directories under baseDir
     let projectDirs;
     try {
       projectDirs = fs.readdirSync(this._baseDir, { withFileTypes: true });
     } catch {
-      return; // ~/.gemini/tmp doesn't exist yet
+      return;
     }
 
     const now = Date.now();
@@ -104,18 +100,17 @@ class GeminiLogMonitor {
       try {
         files = fs.readdirSync(chatsDir);
       } catch {
-        continue; // no chats dir
+        continue;
       }
 
       for (const file of files) {
         if (!file.startsWith("session-") || !file.endsWith(".json")) continue;
         const filePath = path.join(chatsDir, file);
 
-        // Skip files we're not already tracking if they're old
         if (!this._tracked.has(filePath)) {
           try {
             const mtime = fs.statSync(filePath).mtimeMs;
-            if (now - mtime > 120000) continue; // older than 2 min — skip
+            if (now - mtime > 120000) continue;
           } catch {
             continue;
           }
@@ -137,15 +132,13 @@ class GeminiLogMonitor {
     }
 
     const tracked = this._tracked.get(filePath);
-    // mtime unchanged → skip
     if (tracked && stat.mtimeMs === tracked.mtime) return;
 
-    // Read and parse session JSON
     let data;
     try {
       data = JSON.parse(fs.readFileSync(filePath, "utf8"));
     } catch {
-      return; // half-written or corrupted, retry next poll
+      return;
     }
 
     this._processSession(filePath, data, projectDir, stat.mtimeMs);
@@ -156,48 +149,40 @@ class GeminiLogMonitor {
     if (!msgs || !msgs.length) return;
     const last = msgs[msgs.length - 1];
 
-    // Debug log
-    this._debugLog(msgs.length, last);
+    if (DEBUG) this._debugLog(msgs.length, last);
 
     const tools = last.type === "gemini" ? last.toolCalls : undefined;
     const hasTools = !!(tools && tools.length);
     const tracked = this._tracked.get(filePath);
 
     if (last.type === "user") {
-      // User sent a new message — cancel pending, reset turn, emit thinking
       this._cancelPending(filePath);
       if (tracked) tracked.turnHasTools = false;
       this._emitState(filePath, data, projectDir, mtime, msgs.length, false,
         "thinking", "UserPromptSubmit");
     } else if (last.type === "gemini") {
       if (hasTools) {
-        // ToolCalls present — definitive signal, emit attention/error
         this._cancelPending(filePath);
         const lastTool = tools[tools.length - 1];
         const state = lastTool.status === "error" ? "error" : "attention";
         const event = lastTool.status === "error" ? "PostToolUseFailure" : "Stop";
         this._emitState(filePath, data, projectDir, mtime, msgs.length, true,
           state, event);
-        // Mark this turn as having tools — follow-up text will be skipped
         const t = this._tracked.get(filePath);
         if (t) t.turnHasTools = true;
       } else if (tracked && tracked.turnHasTools) {
-        // Tools already triggered attention this turn — skip follow-up text
+        // Tools already triggered attention this turn — skip redundant follow-up
         tracked.mtime = mtime;
         tracked.msgCount = msgs.length;
         tracked.hasTools = false;
         tracked.lastEventTime = Date.now();
       } else {
-        // No toolCalls, no tools yet this turn — defer completion
-        // (tools may arrive for auto-approved, or this IS the pure text completion)
         this._deferCompletion(filePath, data, projectDir, mtime, msgs.length);
       }
     }
-    // unknown type → ignore
   }
 
   _emitState(filePath, data, projectDir, mtime, msgCount, hasTools, state, event) {
-    // Dedup: same state + same msgCount + same hasTools → skip
     const tracked = this._tracked.get(filePath);
     if (tracked && tracked.lastState === state
         && tracked.msgCount === msgCount && tracked.hasTools === hasTools) {
@@ -226,7 +211,6 @@ class GeminiLogMonitor {
     const sessionId = "gemini:" + (data.sessionId || path.basename(filePath, ".json"));
     const cwd = (this._cwdMap && this._cwdMap[projectDir]) || "";
 
-    // Dedup: already emitted deferred attention for this exact snapshot
     const existing = this._tracked.get(filePath);
     if (existing && existing.lastState === "attention"
         && existing.msgCount === msgCount && !existing.hasTools) {
@@ -235,7 +219,6 @@ class GeminiLogMonitor {
       return;
     }
 
-    // Ensure tracking entry exists so mtime comparison works on next poll
     if (existing) {
       existing.mtime = mtime;
       existing.lastEventTime = Date.now();
@@ -247,7 +230,7 @@ class GeminiLogMonitor {
     }
 
     const timer = setTimeout(() => {
-      this._pendingIdle.delete(filePath);
+      this._pendingCompletions.delete(filePath);
       this._tracked.set(filePath, {
         mtime, sessionId, lastState: "attention", lastEventTime: Date.now(),
         msgCount, hasTools: false, cwd, turnHasTools: false,
@@ -257,14 +240,14 @@ class GeminiLogMonitor {
       });
     }, DEFER_COMPLETION_MS);
 
-    this._pendingIdle.set(filePath, timer);
+    this._pendingCompletions.set(filePath, timer);
   }
 
   _cancelPending(filePath) {
-    const timer = this._pendingIdle.get(filePath);
+    const timer = this._pendingCompletions.get(filePath);
     if (timer) {
       clearTimeout(timer);
-      this._pendingIdle.delete(filePath);
+      this._pendingCompletions.delete(filePath);
     }
   }
 
@@ -274,17 +257,20 @@ class GeminiLogMonitor {
       try { fs.mkdirSync(dir, { recursive: true }); } catch {}
       this._debugLogPath = path.join(dir, "gemini-debug.log");
     }
-    const ts = new Date().toISOString();
     const tools = lastMsg.toolCalls;
     const toolInfo = tools
       ? tools.map(t => `${t.name}(status=${JSON.stringify(t.status)})`).join(", ")
       : "none";
-    const hasTokens = lastMsg.tokens ? "YES" : "NO";
     const contentPreview = typeof lastMsg.content === "string"
       ? lastMsg.content.slice(0, 80).replace(/\n/g, "\\n")
       : JSON.stringify(lastMsg.content || "").slice(0, 80);
-    const line = `[${ts}] msgs=${msgCount} type=${lastMsg.type} tokens=${hasTokens} tools=[${toolInfo}] | ${contentPreview}\n`;
-    try { fs.appendFileSync(this._debugLogPath, line); } catch {}
+    const line = `[${new Date().toISOString()}] msgs=${msgCount} type=${lastMsg.type} tools=[${toolInfo}] | ${contentPreview}\n`;
+    try {
+      const { rotatedAppend } = require("../src/log-rotate");
+      rotatedAppend(this._debugLogPath, line);
+    } catch {
+      try { fs.appendFileSync(this._debugLogPath, line); } catch {}
+    }
   }
 
   _cleanStale() {
