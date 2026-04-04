@@ -68,6 +68,7 @@ function savePrefs() {
 }
 
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
+let _geminiMonitor = null;         // Gemini CLI session JSON polling instance
 
 // ── CSS <object> sizing (mirrors styles.css #clawd) ──
 const OBJ_SCALE_W = 1.9;   // width: 190%
@@ -959,6 +960,18 @@ if (!gotTheLock) {
       console.warn("Clawd: Codex log monitor not started:", err.message);
     }
 
+    // Start Gemini CLI session JSON monitor
+    try {
+      const GeminiLogMonitor = require("../agents/gemini-log-monitor");
+      const geminiAgent = require("../agents/gemini-cli");
+      _geminiMonitor = new GeminiLogMonitor(geminiAgent, (sid, state, event, extra) => {
+        updateSession(sid, state, event, null, extra.cwd, null, null, null, "gemini-cli");
+      });
+      _geminiMonitor.start();
+    } catch (err) {
+      console.warn("Clawd: Gemini log monitor not started:", err.message);
+    }
+
     // Auto-install VS Code/Cursor terminal-focus extension
     try { installTerminalFocusExtension(); } catch (err) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
@@ -980,6 +993,7 @@ if (!gotTheLock) {
     _tick.cleanup();
     _mini.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
+    if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();
     if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();
