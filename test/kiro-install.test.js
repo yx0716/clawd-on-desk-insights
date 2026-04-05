@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { registerKiroHooks, KIRO_HOOK_EVENTS, KIRO_PERMISSION_MATCHERS } = require("../hooks/kiro-install");
+const { registerKiroHooks, KIRO_HOOK_EVENTS } = require("../hooks/kiro-install");
 
 const tempDirs = [];
 
@@ -78,15 +78,9 @@ describe("Kiro hook installer", () => {
     assert.strictEqual(clawdAgent.model, null);
     for (const event of KIRO_HOOK_EVENTS) {
       assert.ok(Array.isArray(clawdAgent.hooks[event]), `missing hooks for ${event}`);
-      const expectedCount = event === "preToolUse" ? 1 + KIRO_PERMISSION_MATCHERS.length : 1;
-      assert.strictEqual(clawdAgent.hooks[event].length, expectedCount);
+      assert.strictEqual(clawdAgent.hooks[event].length, 1);
       assert.ok(clawdAgent.hooks[event][0].command.includes("kiro-hook.js"));
       assert.ok(clawdAgent.hooks[event][0].command.includes("/usr/local/bin/node"));
-    }
-    for (const matcher of KIRO_PERMISSION_MATCHERS) {
-      const entry = clawdAgent.hooks.preToolUse.find((item) => item.matcher === matcher);
-      assert.ok(entry, `missing permission matcher ${matcher}`);
-      assert.ok(entry.command.includes("kiro-permission-hook.js"));
     }
 
     assert.strictEqual(fs.existsSync(settingsPath), false);
@@ -118,8 +112,7 @@ describe("Kiro hook installer", () => {
 
     const teamAgent = readJson(path.join(agentsDir, "team-agent.json"));
     for (const event of KIRO_HOOK_EVENTS) {
-      const expectedCount = event === "preToolUse" ? 1 + KIRO_PERMISSION_MATCHERS.length : 1;
-      assert.strictEqual(teamAgent.hooks[event].length, expectedCount);
+      assert.strictEqual(teamAgent.hooks[event].length, 1);
       assert.ok(teamAgent.hooks[event][0].command.includes("kiro-hook.js"));
     }
   });
@@ -169,11 +162,6 @@ describe("Kiro hook installer", () => {
     assert.strictEqual(clawdAgent.hooks.stop.length, 1);
     assert.ok(clawdAgent.hooks.stop[0].command.includes("kiro-hook.js"));
     assert.ok(!clawdAgent.hooks.stop[0].command.includes("/old/path/"));
-    for (const matcher of KIRO_PERMISSION_MATCHERS) {
-      const entry = clawdAgent.hooks.preToolUse.find((item) => item.matcher === matcher);
-      assert.ok(entry, `missing permission matcher ${matcher}`);
-      assert.ok(entry.command.includes("kiro-permission-hook.js"));
-    }
   });
 
   it("updates stale hook paths without duplicating entries", () => {
@@ -188,7 +176,6 @@ describe("Kiro hook installer", () => {
           stop: [{ command: "\"/old/node\" \"/old/path/kiro-hook.js\"" }],
           preToolUse: [
             { command: "\"/old/node\" \"/old/path/kiro-hook.js\"" },
-            { matcher: "fs_write", command: "\"/old/node\" \"/old/path/kiro-permission-hook.js\"" },
           ],
         },
       }, null, 2),
@@ -203,19 +190,11 @@ describe("Kiro hook installer", () => {
     });
 
     const clawdAgent = readJson(clawdPath);
-    assert.strictEqual(result.updated, 4);
+    assert.strictEqual(result.updated, 3);
     assert.strictEqual(clawdAgent.hooks.stop.length, 1);
     assert.ok(clawdAgent.hooks.stop[0].command.includes("/usr/local/bin/node"));
     assert.ok(clawdAgent.hooks.stop[0].command.includes("hooks/kiro-hook.js"));
     assert.ok(!clawdAgent.hooks.stop[0].command.includes("/old/path/"));
-    const permissionEntries = clawdAgent.hooks.preToolUse.filter((item) => item.command.includes("kiro-permission-hook.js"));
-    assert.strictEqual(permissionEntries.length, KIRO_PERMISSION_MATCHERS.length);
-    for (const matcher of KIRO_PERMISSION_MATCHERS) {
-      const entry = permissionEntries.find((item) => item.matcher === matcher);
-      assert.ok(entry, `missing permission matcher ${matcher}`);
-      assert.ok(entry.command.includes("/usr/local/bin/node"));
-      assert.ok(!entry.command.includes("/old/path/"));
-    }
   });
 
   it("re-syncs clawd.json from the latest kiro_default template on every run", () => {

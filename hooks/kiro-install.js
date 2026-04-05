@@ -14,7 +14,6 @@ const os = require("os");
 const { execFileSync } = require("child_process");
 const { resolveNodeBin } = require("./server-config");
 const MARKER = "kiro-hook.js";
-const PERMISSION_MARKER = "kiro-permission-hook.js";
 const CLAWD_AGENT_NAME = "clawd";
 const BUILTIN_DEFAULT_AGENT = "kiro_default";
 
@@ -25,8 +24,6 @@ const KIRO_HOOK_EVENTS = [
   "postToolUse",
   "stop",
 ];
-
-const KIRO_PERMISSION_MATCHERS = ["fs_write", "execute_bash", "use_aws"];
 
 function writeJsonAtomic(filePath, data) {
   const dir = path.dirname(filePath);
@@ -80,7 +77,6 @@ function injectHooksIntoFile(filePath, options = {}) {
     || extractExistingNodeBin(settings, MARKER)
     || "node";
   const desiredCommand = `"${nodeBin}" "${getHookScriptPath()}"`;
-  const desiredPermissionCommand = `"${nodeBin}" "${getPermissionHookScriptPath()}"`;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
 
@@ -123,37 +119,6 @@ function injectHooksIntoFile(filePath, options = {}) {
     changed = true;
   }
 
-  const preToolEntries = settings.hooks.preToolUse;
-  for (const matcher of KIRO_PERMISSION_MATCHERS) {
-    let found = false;
-    let stalePath = false;
-    for (const entry of preToolEntries) {
-      if (!entry || typeof entry !== "object" || typeof entry.command !== "string") continue;
-      if (entry.matcher !== matcher) continue;
-      if (!entry.command.includes(PERMISSION_MARKER)) continue;
-      found = true;
-      if (entry.command !== desiredPermissionCommand) {
-        entry.command = desiredPermissionCommand;
-        stalePath = true;
-      }
-      break;
-    }
-
-    if (found) {
-      if (stalePath) {
-        updated++;
-        changed = true;
-      } else {
-        skipped++;
-      }
-      continue;
-    }
-
-    preToolEntries.push({ matcher, command: desiredPermissionCommand });
-    added++;
-    changed = true;
-  }
-
   if (changed) {
     writeJsonAtomic(filePath, settings);
   }
@@ -163,12 +128,6 @@ function injectHooksIntoFile(filePath, options = {}) {
 
 function getHookScriptPath() {
   let hookScript = path.resolve(__dirname, "kiro-hook.js").replace(/\\/g, "/");
-  hookScript = hookScript.replace("app.asar/", "app.asar.unpacked/");
-  return hookScript;
-}
-
-function getPermissionHookScriptPath() {
-  let hookScript = path.resolve(__dirname, "kiro-permission-hook.js").replace(/\\/g, "/");
   hookScript = hookScript.replace("app.asar/", "app.asar.unpacked/");
   return hookScript;
 }
@@ -384,11 +343,9 @@ function extractExistingNodeBin(settings, marker) {
 module.exports = {
   registerKiroHooks,
   KIRO_HOOK_EVENTS,
-  KIRO_PERMISSION_MATCHERS,
   __test: {
     extractExistingNodeBin,
     generateClawdTemplateFromBuiltin,
-    getPermissionHookScriptPath,
     getKiroCliCandidates,
     injectHooksIntoFile,
     seedClawdAgentFromBuiltin,

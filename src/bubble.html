@@ -276,7 +276,6 @@ let elicitationMode = false;
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
-  if ((name === "Shell" || name === "Bash") && input.command) return truncate(input.command, 120);
   if (name === "Bash" && input.command) return truncate(input.command, 120);
   if ((name === "Edit" || name === "Write" || name === "Read") && input.file_path)
     return truncate(input.file_path, 120);

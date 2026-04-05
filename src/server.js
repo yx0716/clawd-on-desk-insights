@@ -229,27 +229,24 @@ function startHttpServer() {
       });
       req.on("end", () => {
         let parsedData = null;
-        let isKiroPermission = false;
         try {
           parsedData = JSON.parse(body);
-          isKiroPermission = parsedData.agent_id === "kiro-cli" || parsedData.permission_protocol === "kiro-cli";
         } catch {}
 
         if (tooLarge) {
           ctx.permLog("SKIPPED: permission payload too large");
-          ctx.sendPermissionResponse(res, isKiroPermission ? "fallback" : "deny", "Permission request too large for Clawd bubble; answer in terminal");
+          ctx.sendPermissionResponse(res, "deny", "Permission request too large for Clawd bubble");
           return;
         }
 
         if (ctx.doNotDisturb) {
           ctx.permLog("SKIPPED: DND mode");
-          ctx.sendPermissionResponse(res, isKiroPermission ? "fallback" : "deny", "Clawd is in Do Not Disturb mode");
+          ctx.sendPermissionResponse(res, "deny", "Clawd is in Do Not Disturb mode");
           return;
         }
 
         try {
           const data = parsedData || JSON.parse(body);
-          isKiroPermission = data.agent_id === "kiro-cli" || data.permission_protocol === "kiro-cli";
           const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
           const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
           const toolInput = truncateDeep(rawInput);
@@ -274,7 +271,7 @@ function startHttpServer() {
           const existingSession = ctx.sessions.get(sessionId);
           if (existingSession && existingSession.headless) {
             ctx.permLog(`SKIPPED: headless session=${sessionId}`);
-            ctx.sendPermissionResponse(res, isKiroPermission ? "fallback" : "deny", "Non-interactive session; auto-denied");
+            ctx.sendPermissionResponse(res, "deny", "Non-interactive session; auto-denied");
             return;
           }
 
@@ -303,11 +300,11 @@ function startHttpServer() {
             return;
           }
 
-          const permEntry = { res, abortHandler: null, suggestions, sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now(), fallbackToTerminal: isKiroPermission };
+          const permEntry = { res, abortHandler: null, suggestions, sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now() };
           const abortHandler = () => {
             if (res.writableFinished) return;
             ctx.permLog("abortHandler fired");
-            ctx.resolvePermissionEntry(permEntry, isKiroPermission ? "fallback" : "deny", "Client disconnected");
+            ctx.resolvePermissionEntry(permEntry, "deny", "Client disconnected");
           };
           permEntry.abortHandler = abortHandler;
           res.on("close", abortHandler);
@@ -316,9 +313,6 @@ function startHttpServer() {
 
           if (ctx.hideBubbles) {
             ctx.permLog(`bubble hidden: tool=${toolName} session=${sessionId} — terminal only`);
-            if (isKiroPermission) {
-              ctx.resolvePermissionEntry(permEntry, "fallback", "Bubble hidden; answer in terminal");
-            }
           } else {
             ctx.permLog(`showing bubble: tool=${toolName} session=${sessionId} suggestions=${suggestions.length} stack=${ctx.pendingPermissions.length}`);
             ctx.showPermissionBubble(permEntry);
