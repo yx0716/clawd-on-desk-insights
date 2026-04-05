@@ -79,6 +79,14 @@ let _cachedPort = null;
 let _lastState = null;
 let _lastSessionId = null;
 let _reqCounter = 0;
+// Phase 3: opencode subtasks are full child sessions (not subtask parts). The
+// parent session's `task` tool spawns a `session.created` with a new sessionID
+// and agent="explore"/other. Clawd's multi-session fanout already handles this
+// visually (1→typing, 2→juggling, 3+→building). The only fix needed is to
+// prevent subtask `session.idle` from firing the happy animation — only the
+// ROOT session (first seen) should do that. _rootSessionId captures the first
+// sessionID in the plugin's lifetime; all others are treated as subtasks.
+let _rootSessionId = null;
 // Process tree walk results — populated once by getStablePid() at init, then
 // read by every POST to /state and /permission. null until first resolution.
 let _stablePid = null;
@@ -358,6 +366,14 @@ function translateEvent(event) {
       return { state: "sweeping", event: "PreCompact" };
 
     case "session.idle":
+      // Phase 3 (plan A): only the root session's idle fires the happy
+      // animation. Subtask sessions (spawned by the `task` tool) end with
+      // SessionEnd so Clawd removes them from its tracking map — no happy
+      // flash, no menu pollution. If _rootSessionId is null (no session
+      // seen yet, should never happen), fall through to old behavior.
+      if (_rootSessionId && props.sessionID && props.sessionID !== _rootSessionId) {
+        return { state: "sleeping", event: "SessionEnd" };
+      }
       return { state: "attention", event: "Stop" };
 
     case "session.error":
@@ -529,6 +545,15 @@ export default async (ctx) => {
     event: async ({ event }) => {
       try {
         if (!event || typeof event.type !== "string") return;
+
+        // Phase 3: capture the root session on first sighting. Any later
+        // sessionID is a subtask spawned by the parent's `task` tool, and
+        // its session.idle will be downgraded to SessionEnd in translateEvent.
+        const sid = event.properties && event.properties.sessionID;
+        if (sid && !_rootSessionId) {
+          _rootSessionId = sid;
+          debugLog(`ROOT session captured id=${sid}`);
+        }
 
         // Phase 2: permission.asked rides a parallel channel — forward to Clawd
         // and skip state translation. Clawd replies directly to opencode's own
