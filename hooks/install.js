@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { buildPermissionUrl, DEFAULT_SERVER_PORT, PERMISSION_PATH, readRuntimePort, resolveNodeBin } = require("./server-config");
+const { writeJsonAtomic } = require("./json-utils");
 
 // Hooks supported by all Claude Code versions
 const CORE_HOOKS = [
@@ -211,20 +212,6 @@ function removeMatchingCommandHooks(entries, predicate) {
   }
 
   return { entries: nextEntries, removed, changed };
-}
-
-function writeJsonAtomic(filePath, data) {
-  const dir = path.dirname(filePath);
-  const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
-  fs.mkdirSync(dir, { recursive: true });
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tmpPath, filePath);
-  } catch (err) {
-    try { fs.unlinkSync(tmpPath); } catch {}
-    throw err;
-  }
 }
 
 function syncHttpHook(entries, expectedUrl) {

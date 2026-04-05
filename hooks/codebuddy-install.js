@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { resolveNodeBin, buildPermissionUrl, DEFAULT_SERVER_PORT, readRuntimePort } = require("./server-config");
+const { writeJsonAtomic } = require("./json-utils");
 const MARKER = "codebuddy-hook.js";
 const HTTP_MARKER = "/permission";
 
@@ -56,20 +57,6 @@ const CODEBUDDY_HOOK_EVENTS = [
   "Notification",
   "PreCompact",
 ];
-
-function writeJsonAtomic(filePath, data) {
-  const dir = path.dirname(filePath);
-  const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
-  fs.mkdirSync(dir, { recursive: true });
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tmpPath, filePath);
-  } catch (err) {
-    try { fs.unlinkSync(tmpPath); } catch {}
-    throw err;
-  }
-}
 
 /**
  * Register Clawd hooks into ~/.codebuddy/settings.json

@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { writeJsonAtomic } = require("./json-utils");
 
 const PLUGIN_DIR_NAME = "opencode-plugin";
 const PLUGIN_MARKER = "clawd-opencode-plugin"; // for idempotency check by substring match
@@ -33,20 +34,6 @@ function resolvePluginDir(baseDir) {
   // When running from an asar package, redirect to the unpacked copy
   dir = dir.replace("app.asar/", "app.asar.unpacked/");
   return dir;
-}
-
-function writeJsonAtomic(filePath, data) {
-  const dir = path.dirname(filePath);
-  const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
-  fs.mkdirSync(dir, { recursive: true });
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
-    fs.renameSync(tmpPath, filePath);
-  } catch (err) {
-    try { fs.unlinkSync(tmpPath); } catch {}
-    throw err;
-  }
 }
 
 /**
