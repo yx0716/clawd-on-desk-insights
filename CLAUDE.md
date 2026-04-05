@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮询实时感知 AI coding agent 的工作状态并播放对应的像素风 SVG 动画。支持 **Claude Code**（command + HTTP hook）、**Codex CLI**（JSONL 日志轮询）、**Copilot CLI**（command hook）、**Cursor Agent**（`~/.cursor/hooks.json`，stdin JSON + stdout JSON）并行运行。支持 Windows、macOS 和 Linux。
+Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮询实时感知 AI coding agent 的工作状态并播放对应的像素风 SVG 动画。支持 **Claude Code**（command + HTTP hook）、**Codex CLI**（JSONL 日志轮询）、**Copilot CLI**（command hook）、**Cursor Agent**（`~/.cursor/hooks.json`，stdin JSON + stdout JSON）、**opencode**（in-process plugin + 反向 HTTP bridge）并行运行。支持 Windows、macOS 和 Linux。
 
 ## 常用命令
 
@@ -64,6 +64,20 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
     → agents/codex-log-monitor.js（增量读取，事件类型 → agents/codex.js 映射）
     → 同上状态机
 
+opencode 状态同步（in-process plugin，~0ms 延迟）：
+  opencode 触发事件（session.created / session.status / message.part.updated 等）
+    → hooks/opencode-plugin/index.mjs（Bun 运行时，插件跑在 opencode.exe 进程内）
+    → translateEvent 映射（opencode v2 事件名 → PascalCase Clawd event 名）
+    → fire-and-forget HTTP POST 127.0.0.1:23333/state
+    → 同上状态机（agent_id: opencode）
+
+opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
+  opencode 请求权限 → event hook 收到 permission.asked
+    → plugin POST /permission（带 bridge_url + bridge_token）→ Clawd 立即 200 ACK（不挂连接）
+    → Clawd 创建 bubble 窗口 → 用户 Allow/Always/Deny
+    → Clawd POST plugin 的反向 bridge → bridge 用 ctx.client._client.post() 调 opencode 内置 Hono 路由 /permission/:id/reply
+    → opencode 执行对应行为（once/always/reject）
+
 远程 SSH 状态同步（反向端口转发）：
   远程服务器上的 Claude Code / Codex CLI
     → hooks 通过 SSH 隧道 POST 到本地 127.0.0.1:23333
@@ -94,6 +108,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - `agents/codex.js` — Codex CLI JSONL 事件映射 + 轮询配置
 - `agents/copilot-cli.js` — Copilot CLI camelCase 事件映射
 - `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
+- `agents/opencode.js` — opencode 事件映射 + 能力（plugin、permission、terminal focus）
 - `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
 - `agents/codex-log-monitor.js` — Codex JSONL 增量轮询器（文件监视 + 增量读取 + 事件去重）
 
@@ -123,6 +138,9 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 | `hooks/gemini-install.js` | 安全注册 Gemini hooks 到 ~/.gemini/settings.json，导出 `registerGeminiHooks()` |
 | `hooks/cursor-hook.js` | Cursor Agent hook：stdin JSON 读取 → 状态映射 → HTTP POST，stdout 返回 JSON；支持 display_svg 工具提示 |
 | `hooks/cursor-install.js` | 安全注册 Cursor hooks 到 ~/.cursor/hooks.json（append-only，幂等），导出 `registerCursorHooks()` |
+| `hooks/opencode-plugin/index.mjs` | opencode in-process plugin（Bun 运行时）：event hook 转发 + `permission.asked` 处理 + 反向 Bun.serve bridge + 进程树 walk 取 source_pid |
+| `hooks/opencode-plugin/package.json` | opencode plugin npm 包清单（name=clawd-opencode-plugin，type=module，零依赖） |
+| `hooks/opencode-install.js` | 安全注册 opencode plugin 到 ~/.config/opencode/opencode.json（`"plugin"` 数组，追加绝对路径，打包时 asar.unpacked 替换），导出 `registerOpencodePlugin()` |
 | `hooks/install.js` | 安全注册 hooks 到 settings.json（command + HTTP），逐事件追加不覆盖，导出 `registerHooks()` 供 main.js 启动时自动注册 |
 | `hooks/auto-start.js` | SessionStart hook：检测 Electron 是否在运行，未运行则 detached 启动，<500ms 退出 |
 | `hooks/server-config.js` | 共享工具：端口常量、运行时配置读写、HTTP helper、服务发现 |
@@ -154,6 +172,19 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
 - **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
 - **Codex 通知气泡**：Codex CLI 无法使用阻塞式 HTTP hook，通过 JSONL 日志检测 `exec_approval_request` / `apply_patch_approval_request` 触发通知气泡，仅提供 Dismiss 按钮（无 Allow/Deny），30 秒自动过期
+
+### opencode Plugin 架构（hooks/opencode-plugin/index.mjs）
+
+opencode 是唯一**以 plugin 形式集成**的 agent，其他 agent 都是 hook 脚本（fork 子进程）。Plugin 跑在 opencode 进程内的 Bun runtime 里，拿到 `ctx.client`、`ctx.serverUrl`、`ctx.directory` 等上下文。
+
+- **进程树 walk 从 process.pid 起步**（不是 ppid），因为 plugin IS opencode；其他 hook 脚本从 ppid 起步因为它们是 opencode spawn 的子进程。在 `getStablePid()` 里实现，同时采用"外层终端优先"策略以适配 Antigravity 等 Electron 终端（renderer → main 都叫 `antigravity.exe`）
+- **session 生命周期 = 主 session + 多个子 session**：opencode 的 `task` 工具不生 subtask part，而是**直接 session.created 出新 sessionID**（agent=explore）。Clawd 多会话 fanout 因此免费跑通 1→typing / 2→juggling / 3+→building
+- **Root session 门控**（Phase 3）：plugin 模块状态 `_rootSessionId` 记首次见到的 sessionID；只有 root 的 `session.idle` 才映射 `attention/Stop`（happy 动画），其他子 session 的 `session.idle` 降级为 `sleeping/SessionEnd` 让 state.js 从 Map 里删掉，避免每次子任务完成都闪一下 happy
+- **反向 HTTP bridge**（Phase 2）：opencode TUI 不对外绑定 HTTP（`ctx.serverUrl` 是 phantom URL，`ctx.client.fetch` 绑在 in-process Hono router 上），Clawd 无法直接调 opencode REST 回复权限。解决方法：plugin 启动时用 `Bun.serve({port: 0})` 随机端口起一个 bridge，token 用 `randomBytes(32).toString("hex")` + `timingSafeEqual` 鉴权；Clawd POST 到 bridge，bridge 再用 `ctx.client._client.post({url: "/permission/:id/reply", body: {reply}})` 调 in-process Hono
+- **permission.ask hook 是死 hook**（2026-04-05 Phase 2 Spike 实测）：opencode 1.3.13 二进制已迁到 v2 `permission.asked` 事件名，但 SDK 1.1.51 的 `permission.ask` hook 派发没跟着迁，hook 0 次调用。只能走 event hook 路线
+- **event hook 必须 fire-and-forget**：plugin 跑在 opencode 进程内，fetch 阻塞会直接拖慢 TUI。POST 用 1000ms AbortController 超时 + try-catch 吞错误，从不 await 结果
+- **端口自愈**：plugin 独立维护 `_cachedPort`，读 `~/.clawd/runtime.json` 失败时扫 23333-23337 全候选，用 `x-clawd-server: clawd-on-desk` response header 鉴别身份
+- **打包路径处理**：`opencode-install.js` 把 `app.asar/` 替换为 `app.asar.unpacked/`（参考 cursor-install.js:78），确保打包后 opencode 能直接 require plugin 的绝对路径
 
 ### 终端聚焦系统
 
@@ -294,6 +325,9 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - Copilot CLI：需手动创建 `~/.copilot/hooks/hooks.json`；无权限气泡（仅支持 deny）
 - Gemini CLI：需 Gemini CLI 支持 hooks；无权限气泡；无 subagent 检测
 - Cursor Agent：无权限气泡（Cursor 权限在 stdout 处理，非 HTTP 阻塞式）；启动恢复检测匹配编辑器本体会误触发，已移除进程检测，靠 hook 事件激活
+- opencode：子会话（task 工具分派的 explore agent）跑起来那 5-8 秒会短暂出现在 Sessions 右键菜单里，完成后自动清理——是纯视觉问题，不影响建筑动画。真要彻底隐藏需要新增 `subagent` 字段贯穿 server.js / state.js / menu.js（不能复用 headless，因为 headless 会把 session 从多会话计数里排除，导致建筑动画丢失）
+- opencode：终端聚焦锚定启动 opencode 的终端窗口；用 `opencode attach` 从其他窗口接入时，点击桌宠仍会跳到最初的启动窗口
+- opencode：permission.ask hook 在 1.3.13 未被调用（SDK/二进制版本不一致），权限只能走 event hook + 反向 bridge 路线；未来 opencode 修复此 hook 后可以考虑迁回
 - 进程存活检测：main.js 定期检查 agent 进程是否存活，清理孤儿会话；但依赖进程名匹配，非标准进程名可能漏检
 
 ## ⚠️ 不要再修 Language 子菜单截断 bug
