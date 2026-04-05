@@ -3,6 +3,7 @@
 
 const { BrowserWindow, globalShortcut } = require("electron");
 const path = require("path");
+const http = require("http");
 const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
@@ -186,6 +187,9 @@ function showPermissionBubble(permEntry) {
       suggestions: permEntry.suggestions || [],
       lang: ctx.lang,
       isElicitation: permEntry.isElicitation || false,
+      isOpencode: permEntry.isOpencode || false,
+      opencodeAlways: permEntry.opencodeAlwaysCandidates || [],
+      opencodePatterns: permEntry.opencodePatterns || [],
     });
     // Don't call bub.focus() — it steals focus from terminal and can trigger
     // false "User answered in terminal" denials in Claude Code, wasting tokens.
@@ -232,7 +236,7 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   pendingPermissions.splice(idx, 1);
 
   const { res, abortHandler, bubble: bub } = permEntry;
-  if (abortHandler) res.removeListener("close", abortHandler);
+  if (res && abortHandler) res.removeListener("close", abortHandler);
 
   // Hide this bubble (fade out + destroy)
   if (bub && !bub.isDestroyed()) {
@@ -247,8 +251,27 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   repositionBubbles();
   syncPermissionShortcuts();
 
+  // opencode: decisions go back via the plugin's reverse bridge (Bun.serve
+  // on a random localhost port). The plugin then calls opencode's in-process
+  // Hono route. Plugin sent us a fire-and-forget POST — no HTTP response to
+  // complete on this connection.
+  if (permEntry.isOpencode) {
+    let reply;
+    if (behavior === "deny") reply = "reject";
+    else if (permEntry.opencodeAlwaysPicked) reply = "always";
+    else reply = "once";
+    replyOpencodePermission({
+      bridgeUrl: permEntry.opencodeBridgeUrl,
+      bridgeToken: permEntry.opencodeBridgeToken,
+      requestId: permEntry.opencodeRequestId,
+      reply,
+      toolName: permEntry.toolName,
+    });
+    return;
+  }
+
   // Guard: client may have disconnected
-  if (res.writableEnded || res.destroyed) return;
+  if (!res || res.writableEnded || res.destroyed) return;
 
   if (permEntry.isElicitation) {
     sendPermissionResponse(res, "deny", null, "Elicitation");
@@ -269,6 +292,70 @@ function permLog(msg) {
   if (!ctx.permDebugLog) return;
   const { rotatedAppend } = require("./log-rotate");
   rotatedAppend(ctx.permDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+}
+
+// Fire-and-forget POST to the opencode plugin's reverse bridge. The plugin
+// runs inside opencode's Bun process and does NOT expose opencode's own
+// permission route externally — TUI mode has no TCP listener at all (see
+// Phase 2 Spike in docs/plan-opencode-integration.md). Instead the plugin
+// starts its own Bun.serve on a random localhost port and forwards our
+// decision to opencode's in-process Hono router via ctx.client._client.post().
+//
+// Shape: POST http://127.0.0.1:<plugin-port>/reply
+//   Authorization: Bearer <hex token>
+//   { "request_id": "per_xxx", "reply": "once" | "always" | "reject" }
+//
+// Uses raw http.request (not fetch) to avoid Electron main-process fetch
+// polyfill concerns. Bridge is always 127.0.0.1 bound by the plugin so no
+// IPv4/IPv6 gotcha. 5s timeout — on failure the opencode TUI still falls
+// back to terminal-based approval.
+function replyOpencodePermission({ bridgeUrl, bridgeToken, requestId, reply, toolName }) {
+  if (!bridgeUrl || !bridgeToken || !requestId) {
+    const missing = !bridgeUrl ? "bridgeUrl" : (!bridgeToken ? "bridgeToken" : "requestId");
+    permLog(`opencode reply skipped: missing ${missing}`);
+    return;
+  }
+  const fullUrl = `${bridgeUrl.replace(/\/$/, "")}/reply`;
+  permLog(`opencode reply: tool=${toolName || "?"} request=${requestId} reply=${reply} url=${fullUrl}`);
+
+  let parsed;
+  try { parsed = new URL(fullUrl); } catch {
+    permLog(`opencode reply skipped: invalid bridge URL ${fullUrl}`);
+    return;
+  }
+  const body = JSON.stringify({ request_id: requestId, reply });
+  const req = http.request({
+    hostname: parsed.hostname,
+    port: parsed.port || 80,
+    path: parsed.pathname + parsed.search,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
+      Authorization: `Bearer ${bridgeToken}`,
+    },
+    timeout: 5000,
+    family: 4,
+  }, (res) => {
+    let respBody = "";
+    res.setEncoding("utf8");
+    res.on("data", (chunk) => { if (respBody.length < 500) respBody += chunk; });
+    res.on("end", () => {
+      permLog(`opencode reply status=${res.statusCode} request=${requestId} body=${respBody.trim() || "(empty)"}`);
+    });
+  });
+  req.on("error", (err) => {
+    const info = err
+      ? `code=${err.code || ""} errno=${err.errno || ""} syscall=${err.syscall || ""} msg=${err.message || ""}`
+      : "null";
+    permLog(`opencode reply ERR ${info} request=${requestId}`);
+  });
+  req.on("timeout", () => {
+    req.destroy();
+    permLog(`opencode reply timeout request=${requestId}`);
+  });
+  req.write(body);
+  req.end();
 }
 
 function sendPermissionResponse(res, decisionOrBehavior, message, hookEventName = "PermissionRequest") {
@@ -307,6 +394,12 @@ function handleDecide(event, behavior) {
   if (!perm) return;
   if (perm.isCodexNotify) {
     dismissCodexNotify(perm);
+    return;
+  }
+  // opencode "Always" button — map to reply="always" via resolvePermissionEntry
+  if (behavior === "opencode-always") {
+    perm.opencodeAlwaysPicked = true;
+    resolvePermissionEntry(perm, "allow");
     return;
   }
   // "suggestion:N" — user picked a permission suggestion
@@ -419,6 +512,7 @@ return {
   handleBubbleHeight, handleDecide, cleanup,
   showCodexNotifyBubble, clearCodexNotifyBubbles,
   syncPermissionShortcuts,
+  replyOpencodePermission,
 };
 
 };

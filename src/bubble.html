@@ -332,6 +332,75 @@ function revealCard() {
 function show(data) {
   elicitationMode = data.isElicitation || false;
 
+  // opencode branch — Phase 2. Three differences from CC:
+  //   1. tool names are lowercase (edit/bash/write) — we PascalCase them so
+  //      existing tool-pill CSS rules match (data-tool="Edit" etc).
+  //   2. toolInput shape is opencode-native ({filepath,diff}/{command}/{url}),
+  //      not CC's {file_path,command,pattern}. Custom picker below.
+  //   3. "Always Allow" button maps to reply="always" via "opencode-always"
+  //      behavior (handleDecide special-cases this).
+  if (data.isOpencode) {
+    headerTitle.textContent = data.lang === "zh" ? "\u6743\u9650\u8BF7\u6C42" : "Permission Request";
+
+    const rawName = data.toolName || "unknown";
+    const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    toolPill.textContent = displayName;
+    toolPill.setAttribute("data-tool", displayName);
+    toolPill.style.display = "";
+
+    // Command block preview: prefer concrete fields, then dedupe patterns,
+    // then fall back to raw JSON. opencode edit metadata often repeats the
+    // filepath (e.g. "foo.md, foo.md") — the Set dedupes that.
+    const input = (data.toolInput && typeof data.toolInput === "object") ? data.toolInput : {};
+    let detail = "";
+    if (typeof input.filepath === "string" && input.filepath) {
+      detail = [...new Set(input.filepath.split(",").map(s => s.trim()).filter(Boolean))].join(", ");
+    } else if (typeof input.command === "string" && input.command) {
+      detail = input.command;
+    } else if (typeof input.url === "string" && input.url) {
+      detail = input.url;
+    } else if (Array.isArray(data.opencodePatterns) && data.opencodePatterns.length) {
+      detail = [...new Set(data.opencodePatterns)].join(", ");
+    } else {
+      try { detail = JSON.stringify(input); } catch { detail = "(n/a)"; }
+    }
+    commandBlock.textContent = truncate(detail, 200);
+
+    btnAllow.textContent = data.lang === "zh" ? "\u6279\u51C6" : "Allow";
+    btnDeny.textContent = data.lang === "zh" ? "\u62D2\u7EDD" : "Deny";
+    btnAllow.style.display = "";
+    btnDeny.style.display = "";
+    btnAllow.disabled = false;
+    btnDeny.disabled = false;
+
+    // Always Allow button — shown only when opencode provided persist candidates.
+    // ⚠ opencode's reply="always" is a BLANKET session rule: a single click
+    // auto-approves every subsequent tool call of the same category in this
+    // session (e.g. ALL bash commands including rm -rf). Unlike Claude Code,
+    // opencode does not scope "always" to the specific pattern of this request.
+    // We keep the button to respect opencode's native UX, but the label + tooltip
+    // make the blast radius explicit.
+    suggestionsContainer.innerHTML = "";
+    if (Array.isArray(data.opencodeAlways) && data.opencodeAlways.length > 0) {
+      const btn = document.createElement("button");
+      btn.className = "btn-suggestion";
+      btn.textContent = data.lang === "zh"
+        ? "\u59CB\u7EC8\u5141\u8BB8\uFF08\u901A\u914D\uFF09"   // 始终允许（通配）
+        : "Always Allow (blanket)";
+      btn.title = data.lang === "zh"
+        ? "\u8B66\u544A\uFF1Aopencode \u7684 always \u89C4\u5219\u4F1A\u8BA9\u672C\u6B21 session \u5185\u4E0B\u4E00\u6B21\u6240\u6709\u540C\u7C7B\u5DE5\u5177\u8C03\u7528\u81EA\u52A8\u653E\u884C\uFF08\u5305\u62EC rm \u7B49\u5371\u9669\u547D\u4EE4\uFF09\u3002\u8BE5\u89C4\u5219\u53EA\u5728\u5185\u5B58\u4E2D\uFF0C\u91CD\u542F opencode \u5373\u6062\u590D\u3002"
+        : "Warning: opencode's 'always' rule auto-approves every subsequent tool call of the same category in this session (including rm and similar destructive commands). The rule lives only in memory — restart opencode to revoke.";
+      btn.addEventListener("click", () => {
+        disableAll();
+        window.bubbleAPI.decide("opencode-always");
+      });
+      suggestionsContainer.appendChild(btn);
+    }
+
+    revealCard();
+    return;
+  }
+
   if (elicitationMode) {
     // Elicitation mode — show question with "Go to Terminal" button
     headerTitle.textContent = data.lang === "zh" ? "\u9700\u8981\u8F93\u5165" : "Needs Input";

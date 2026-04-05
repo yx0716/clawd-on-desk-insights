@@ -23,12 +23,13 @@ module.exports = {
     StopFailure: "error",
     PreCompact: "sweeping",
     PostCompact: "attention",
-    // Phase 2: PermissionRequest → notification (not yet wired in Phase 1)
+    // Phase 2: PermissionRequest rides a parallel channel (event permission.asked
+    // → plugin POST /permission → bubble → REST reply), not agent eventMap.
     // Phase 3: SubagentStart/SubagentStop (subtask tracking)
   },
   capabilities: {
-    httpHook: false,         // opencode permission goes via plugin hook, not HTTP blocking
-    permissionApproval: false, // Phase 2 will flip to true
+    httpHook: false,         // opencode permission goes via plugin event forward, not HTTP blocking
+    permissionApproval: true, // Phase 2: Clawd bubble → opencode REST reply
     sessionEnd: true,
     subagent: false,         // Phase 3 will flip to true once subtask lifecycle verified
   },

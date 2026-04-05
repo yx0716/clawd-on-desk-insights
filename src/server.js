@@ -242,6 +242,82 @@ function startHttpServer() {
 
         try {
           const data = JSON.parse(body);
+
+          // ── opencode branch ──
+          // opencode plugin (agents/opencode.js) posts fire-and-forget. We
+          // always 200 ACK immediately; the user's decision routes through
+          // a separate REST call to opencode's own server (see permission.js
+          // replyOpencodePermission). This means no res is retained on the
+          // permEntry, no res.on("close") abort handler, and hideBubbles
+          // degrades to "TUI only" (plugin doesn't wait on us).
+          if (data.agent_id === "opencode") {
+            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+            res.end("ok");
+
+            const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "unknown";
+            const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+            const toolInput = truncateDeep(rawInput);
+            const sessionId = typeof data.session_id === "string" ? data.session_id : "default";
+            const requestId = typeof data.request_id === "string" ? data.request_id : null;
+            const bridgeUrl = typeof data.bridge_url === "string" ? data.bridge_url : "";
+            const bridgeToken = typeof data.bridge_token === "string" ? data.bridge_token : "";
+            const alwaysCandidates = Array.isArray(data.always) ? data.always : [];
+            const patterns = Array.isArray(data.patterns) ? data.patterns : [];
+
+            ctx.permLog(`opencode perm: tool=${toolName} session=${sessionId} req=${requestId} bridge=${bridgeUrl} always=${alwaysCandidates.length}`);
+
+            // bridge_url/bridge_token are required — this is the reverse
+            // channel Clawd uses to send the decision back to the plugin,
+            // which then calls opencode's in-process Hono route. Without it
+            // we have no way to resolve the pending permission.
+            if (!requestId || !bridgeUrl || !bridgeToken) {
+              const missing = !requestId ? "request_id" : (!bridgeUrl ? "bridge_url" : "bridge_token");
+              ctx.permLog(`SKIPPED opencode perm: missing ${missing}`);
+              return;
+            }
+
+            // DND: proactively reject via bridge, no bubble
+            if (ctx.doNotDisturb) {
+              ctx.permLog(`opencode DND → reject request=${requestId}`);
+              ctx.replyOpencodePermission({ bridgeUrl, bridgeToken, requestId, reply: "reject", toolName });
+              return;
+            }
+
+            const permEntry = {
+              res: null,
+              abortHandler: null,
+              suggestions: [],
+              sessionId,
+              bubble: null,
+              hideTimer: null,
+              toolName,
+              toolInput,
+              resolvedSuggestion: null,
+              createdAt: Date.now(),
+              isOpencode: true,
+              opencodeRequestId: requestId,
+              opencodeBridgeUrl: bridgeUrl,
+              opencodeBridgeToken: bridgeToken,
+              opencodeAlwaysCandidates: alwaysCandidates,
+              opencodePatterns: patterns,
+            };
+            ctx.pendingPermissions.push(permEntry);
+
+            // hideBubbles: drop silently, let opencode TUI handle it.
+            // (Unlike CC we have no HTTP connection to "hold open", so the
+            // only meaningful degradation is to not render a bubble.)
+            if (ctx.hideBubbles) {
+              ctx.permLog(`opencode bubble hidden: tool=${toolName} — TUI fallback`);
+              // Pop the entry back off — we never intend to resolve it ourselves.
+              const popIdx = ctx.pendingPermissions.indexOf(permEntry);
+              if (popIdx !== -1) ctx.pendingPermissions.splice(popIdx, 1);
+            } else {
+              ctx.permLog(`opencode showing bubble: tool=${toolName} session=${sessionId}`);
+              ctx.showPermissionBubble(permEntry);
+            }
+            return;
+          }
+
           const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
           const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
           const toolInput = truncateDeep(rawInput);
