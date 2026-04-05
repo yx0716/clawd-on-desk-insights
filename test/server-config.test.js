@@ -190,4 +190,50 @@ describe("server-config helpers", () => {
       );
     });
   });
+
+  it("requestPermissionFromRunningServer returns Clawd permission response", async () => {
+    const probes = [];
+    const requests = [];
+
+    await new Promise((resolve, reject) => {
+      serverConfig.requestPermissionFromRunningServer(
+        JSON.stringify({ tool_name: "Write" }),
+        {
+          timeoutMs: 50,
+          preferredPort: 23335,
+          runtimePort: 23334,
+          probePort(port, _timeoutMs, cb) {
+            probes.push(port);
+            cb(port === 23336);
+          },
+          requestPermissionOnPort(port, _payload, _timeoutMs, cb) {
+            requests.push(port);
+            if (port !== 23336) {
+              cb(false, port, "", 0);
+              return;
+            }
+            cb(
+              true,
+              port,
+              JSON.stringify({ hookSpecificOutput: { decision: { behavior: "allow" } } }),
+              200
+            );
+          },
+        },
+        (ok, port, body, statusCode) => {
+          try {
+            assert.strictEqual(ok, true);
+            assert.strictEqual(port, 23336);
+            assert.strictEqual(statusCode, 200);
+            assert.deepStrictEqual(JSON.parse(body), { hookSpecificOutput: { decision: { behavior: "allow" } } });
+            assert.deepStrictEqual(requests, [23335, 23334, 23336]);
+            assert.deepStrictEqual(probes, [23333, 23336]);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        }
+      );
+    });
+  });
 });

@@ -201,7 +201,11 @@ function showPermissionBubble(permEntry) {
   bub.on("closed", () => {
     const idx = pendingPermissions.indexOf(permEntry);
     if (idx !== -1) {
-      resolvePermissionEntry(permEntry, "deny", "Bubble window closed by user");
+      resolvePermissionEntry(
+        permEntry,
+        permEntry.fallbackToTerminal ? "fallback" : "deny",
+        permEntry.fallbackToTerminal ? "Bubble closed; answer in terminal" : "Bubble window closed by user"
+      );
     }
   });
 
@@ -257,12 +261,14 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   }
 
   const decision = { behavior: behavior === "deny" ? "deny" : "allow" };
+  if (behavior === "fallback") decision.behavior = "fallback";
   if (behavior === "deny" && message) decision.message = message;
   if (permEntry.resolvedSuggestion) {
     decision.updatedPermissions = [permEntry.resolvedSuggestion];
   }
 
   sendPermissionResponse(res, decision);
+  if (behavior === "fallback") ctx.focusTerminalForSession(permEntry.sessionId);
 }
 
 function permLog(msg) {

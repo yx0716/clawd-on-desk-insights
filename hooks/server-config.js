@@ -199,6 +199,91 @@ function postStateToPort(port, payload, timeoutMs, callback, options = {}) {
   req.end(payload);
 }
 
+function requestPermissionOnPort(port, payload, timeoutMs, callback, options = {}) {
+  const httpRequest = options.httpRequest || http.request;
+  const req = httpRequest(
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: PERMISSION_PATH,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: timeoutMs,
+    },
+    (res) => {
+      let responseBody = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        responseBody += chunk;
+      });
+      res.on("end", () => {
+        const confirmed = readHeader(res, CLAWD_SERVER_HEADER) === CLAWD_SERVER_ID || isClawdResponse(res, responseBody);
+        callback(confirmed, port, responseBody, res.statusCode || 0);
+      });
+    }
+  );
+
+  req.on("error", () => callback(false, port, "", 0));
+  req.on("timeout", () => {
+    req.destroy();
+    callback(false, port, "", 0);
+  });
+  req.end(payload);
+}
+
+function requestPermissionFromRunningServer(body, options, callback) {
+  const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 600000;
+  const payload = typeof body === "string" ? body : JSON.stringify(body);
+  const { direct, fallback } = splitPortCandidates(options && options.preferredPort, options);
+  const probe = options && options.probePort ? options.probePort : probePort;
+  const request = options && options.requestPermissionOnPort ? options.requestPermissionOnPort : requestPermissionOnPort;
+  let directIndex = 0;
+  let fallbackIndex = 0;
+
+  const tryFallback = () => {
+    if (fallbackIndex >= fallback.length) {
+      callback(false, null, "", 0);
+      return;
+    }
+
+    const port = fallback[fallbackIndex++];
+    probe(port, timeoutMs, (ok) => {
+      if (!ok) {
+        tryFallback();
+        return;
+      }
+      request(port, payload, timeoutMs, (confirmed, confirmedPort, responseBody, statusCode) => {
+        if (confirmed) {
+          callback(true, confirmedPort, responseBody, statusCode);
+          return;
+        }
+        tryFallback();
+      }, options);
+    }, options);
+  };
+
+  const tryDirect = () => {
+    if (directIndex >= direct.length) {
+      tryFallback();
+      return;
+    }
+
+    const port = direct[directIndex++];
+    request(port, payload, timeoutMs, (confirmed, confirmedPort, responseBody, statusCode) => {
+      if (confirmed) {
+        callback(true, confirmedPort, responseBody, statusCode);
+        return;
+      }
+      tryDirect();
+    }, options);
+  };
+
+  tryDirect();
+}
+
 function discoverClawdPort(options, callback) {
   const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 100;
   const ports = getPortCandidates(options && options.preferredPort, options);
@@ -363,6 +448,8 @@ module.exports = {
   discoverClawdPort,
   getPortCandidates,
   postStateToRunningServer,
+  requestPermissionFromRunningServer,
+  requestPermissionOnPort,
   probePort,
   readHostPrefix,
   readRuntimePort,
