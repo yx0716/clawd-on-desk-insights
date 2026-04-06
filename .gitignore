@@ -28,6 +28,12 @@ docs/*
 # WIP artwork (unpublished, All Rights Reserved)
 tools/calico-*
 !tools/calico-final.svg
+
+# Internal pipeline tools (not for distribution)
+tools/chroma_key.py
+tools/fix_gray_bleed.py
+tools/rebuild_apng.py
+tools/check_dark.py
 !tools/calico-test.html
 
 # Debug logs
