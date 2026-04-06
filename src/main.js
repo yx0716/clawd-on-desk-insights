@@ -978,9 +978,8 @@ if (!gotTheLock) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
     }
 
-    // Auto-updater: setup event handlers + silent check after 5s
+    // Auto-updater: setup event handlers (user triggers check via tray menu)
     setupAutoUpdater();
-    setTimeout(() => checkForUpdates(false), 5000);
   });
 
   app.on("before-quit", () => {
