@@ -282,11 +282,12 @@ function startHttpServer() {
               return;
             }
 
-            // DND: proactively reject via bridge so the TUI unblocks
-            // immediately instead of waiting for opencode's own timeout.
+            // DND: drop silently — do NOT reply via bridge. opencode TUI
+            // will fall back to its built-in permission prompt so the user
+            // can confirm in the terminal themselves. Spike 2026-04-06
+            // confirmed this works: TUI shows Allow/Reject without hanging.
             if (ctx.doNotDisturb) {
-              ctx.permLog(`opencode DND → reject request=${requestId}`);
-              ctx.replyOpencodePermission({ bridgeUrl, bridgeToken, requestId, reply: "reject", toolName });
+              ctx.permLog(`opencode DND → silent drop, TUI fallback — request=${requestId}`);
               return;
             }
 
