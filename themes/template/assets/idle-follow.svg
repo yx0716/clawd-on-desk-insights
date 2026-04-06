@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <!--
+    Idle SVG Skeleton for Clawd Themes
+    ===================================
+    This SVG is the ONLY file that must be SVG format (if eyeTracking is enabled).
+    The three groups below (#shadow-js, #body-js, #eyes-js) are manipulated by
+    the renderer for cursor-following eye tracking.
+
+    How to customize:
+    1. Replace the <path> inside #body-js with your character's body shape
+    2. Replace the <path> inside #eyes-js with your character's eyes
+    3. Replace the <ellipse> inside #shadow-js with your character's shadow
+    4. Adjust the viewBox if your character has different dimensions
+    5. Add CSS @keyframes for breathing/blinking animations (optional)
+
+    Rules:
+    - Keep the group IDs exactly as they are (#eyes-js, #body-js, #shadow-js)
+    - #eyes-js receives translate(dx, dy) from the renderer (cursor tracking)
+    - #body-js receives a smaller translate (subtle body lean)
+    - #shadow-js receives translate + scaleX (shadow stretch toward cursor)
+    - Z-order: shadow (bottom) → body (middle) → eyes (top)
+  -->
+
+  <style>
+    /* Optional: breathing animation example */
+    @keyframes breathe {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-0.3px); }
+    }
+    #body-js {
+      animation: breathe 3s ease-in-out infinite;
+    }
+
+    /* Optional: blinking animation example */
+    @keyframes blink {
+      0%, 92%, 100% { transform: scaleY(1); }
+      95% { transform: scaleY(0.1); }
+    }
+    #eyes-js {
+      transform-origin: 7.5px 4px;
+      animation: blink 4s ease-in-out infinite;
+    }
+  </style>
+
+  <!-- Shadow: rendered at the bottom, stretched toward cursor -->
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <!-- Replace with your shadow shape -->
+    <ellipse cx="7.5" cy="16" rx="6" ry="1.5" fill="rgba(0,0,0,0.15)"/>
+  </g>
+
+  <!-- Body: the main character shape, leans slightly toward cursor -->
+  <g id="body-js">
+    <!-- Replace with your character body -->
+    <!-- Example: a simple rounded rectangle as placeholder -->
+    <rect x="1" y="-2" width="13" height="16" rx="3" fill="#cccccc" stroke="#999999" stroke-width="0.5"/>
+    <!-- Feet -->
+    <rect x="2" y="13" width="4" height="2" rx="1" fill="#bbbbbb"/>
+    <rect x="9" y="13" width="4" height="2" rx="1" fill="#bbbbbb"/>
+  </g>
+
+  <!-- Eyes: follows cursor position, rendered on top -->
+  <g id="eyes-js">
+    <!-- Replace with your character eyes -->
+    <!-- Example: two simple dots -->
+    <circle cx="5" cy="4" r="1.2" fill="#333333"/>
+    <circle cx="10" cy="4" r="1.2" fill="#333333"/>
+  </g>
+</svg>

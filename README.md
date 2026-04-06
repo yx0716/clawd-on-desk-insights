@@ -187,13 +187,36 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 | **macOS/Linux packaged auto-update** | DMG/AppImage/deb installs cannot auto-update — use `git clone` + `npm start` for auto-update via `git pull`, or download new versions manually from GitHub Releases. |
 | **No test framework for Electron** | Unit tests cover agents and log polling, but the Electron main process (state machine, windows, tray) has no automated tests. |
 
+## Custom Themes
+
+Clawd supports custom themes — replace the default crab with your own character and animations.
+
+**Quick start:**
+1. Copy `themes/template/` to your themes directory:
+   - Windows: `%APPDATA%/clawd-on-desk/themes/my-theme/`
+   - macOS: `~/Library/Application Support/clawd-on-desk/themes/my-theme/`
+   - Linux: `~/.config/clawd-on-desk/themes/my-theme/`
+2. Edit `theme.json` and create your assets (SVG, GIF, APNG, or WebP)
+3. Right-click Clawd → Theme → select your theme
+
+**Minimum viable theme:** 1 SVG (idle with eye tracking) + 7 GIF/APNG files (thinking, working, error, happy, notification, sleeping, waking). Eye tracking can be disabled to use any format for all states.
+
+Validate your theme before distributing:
+```bash
+node scripts/validate-theme.js path/to/your-theme
+```
+
+See [docs/guide-theme-creation.md](docs/guide-theme-creation.md) for the full creation guide with tiered paths (beginner → advanced), `theme.json` field reference, and asset guidelines.
+
+> Third-party SVG files are automatically sanitized for security.
+
 ### Roadmap
 
 Some things we'd like to explore in the future:
 
 - Codex terminal focus via process tree lookup from `codex.exe` PID
 - Auto-registration of Copilot CLI hooks (like we do for Claude Code)
-- Custom character skins / animations
+- Theme registry and in-app download
 - Hook uninstall script for clean app removal
 
 ## Contributing

@@ -182,13 +182,36 @@ Host my-server
 | **Kiro CLI：无 subagent 检测** | Kiro CLI 没有 subagent 事件，不会触发杂耍/指挥动画。 |
 | **Kiro CLI：终端权限确认仍在终端处理** | macOS 上 Kiro 的状态 hooks 已验证可用；但当 Kiro 显示 `t / y / n` 这类原生权限确认时，当前仍需在终端里处理，Clawd 不接管这类确认。 |
 
+## 自定义主题
+
+Clawd 支持自定义主题——用你自己的角色和动画替换默认的螃蟹。
+
+**快速开始：**
+1. 将 `themes/template/` 复制到主题目录：
+   - Windows: `%APPDATA%/clawd-on-desk/themes/my-theme/`
+   - macOS: `~/Library/Application Support/clawd-on-desk/themes/my-theme/`
+   - Linux: `~/.config/clawd-on-desk/themes/my-theme/`
+2. 编辑 `theme.json`，创建你的素材（SVG、GIF、APNG 或 WebP 格式）
+3. 右键 Clawd → 主题 → 选择你的主题
+
+**最小可用主题：** 1 个 SVG（带眼球追踪的 idle）+ 7 个 GIF/APNG 文件（thinking、working、error、happy、notification、sleeping、waking）。关闭眼球追踪后所有状态都可以用任意格式。
+
+校验主题：
+```bash
+node scripts/validate-theme.js path/to/your-theme
+```
+
+详见 [docs/guide-theme-creation.md](docs/guide-theme-creation.md)（主题创作完整指南，含入门/进阶/高级路径、theme.json 字段说明、素材规范）。
+
+> 第三方 SVG 文件会被自动消毒，确保安全。
+
 ### 未来计划
 
 一些我们想探索的方向：
 
 - Codex 终端聚焦（通过 `codex.exe` PID 反查进程树）
 - Copilot CLI hooks 自动注册（像 Claude Code 那样开箱即用）
-- 自定义角色皮肤 / 动画
+- 主题注册表 + 应用内下载
 - Hook 卸载脚本（干净移除应用）
 
 ## 参与贡献

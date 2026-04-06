@@ -15,9 +15,10 @@ PLAN.md
 PLAN-*.md
 codex-*.md
 CHANGELOG-draft.md
-docs/
+docs/*
 !docs/copilot-setup.md
 !docs/release-v0.5.5.md
+!docs/guide-theme-creation.md
 
 # Temp files from testing
 .tmp_*
@@ -37,3 +38,4 @@ scripts/*
 !scripts/remote-deploy.sh
 !scripts/run-clawdbot-stress.sh
 !scripts/monitor-clawd-resources.sh
+!scripts/validate-theme.js
