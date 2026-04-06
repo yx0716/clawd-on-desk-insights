@@ -382,6 +382,12 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
 
   const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, pidReachable };
 
+  // Log analytics event (with rich metadata)
+  if (ctx.logAnalyticsEvent) {
+    const prevState = existing ? existing.state : null;
+    ctx.logAnalyticsEvent(sessionId, prevState, state, event, srcAgentId, srcCwd, srcEditor, displaySvg);
+  }
+
   // Evict oldest session if at capacity and this is a new session
   if (!existing && sessions.size >= MAX_SESSIONS) {
     let oldestId = null, oldestTime = Infinity;

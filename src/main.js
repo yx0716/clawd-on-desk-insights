@@ -198,6 +198,13 @@ function stopMonitorForAgent(agentId) {
 const themeLoader = require("./theme-loader");
 themeLoader.init(__dirname, app.getPath("userData"));
 
+// ── Analytics modules (initialized in createWindow) ──
+let _analyticsLog = null;
+let _analyticsData = null;
+let _analyticsAI = null;
+let _analyticsDash = null;
+let _analyticsScan = null;
+
 // Lenient load so a missing/corrupt user-selected theme can't brick boot.
 // If lenient fell back to "clawd", hydrate prefs to match so the store
 // stays truth.
@@ -544,12 +551,6 @@ const _stateCtx = {
     return !!(entry && entry.disabled === true);
   },
   hasAnyEnabledAgent: () => {
-    // `get("agents")` returns the live reference (no clone) — we're only
-    // reading. Missing agents field falls back to "assume enabled" (the
-    // legacy default-true contract for unconfigured installs); but an
-    // explicit empty object means every agent was cleared, so return
-    // false. Without that distinction, a user who wiped the field would
-    // still trigger startup-recovery process scans.
     const agents = _settingsController.get("agents");
     if (!agents || typeof agents !== "object") return true;
     const probe = { agents };
@@ -558,6 +559,7 @@ const _stateCtx = {
     }
     return false;
   },
+  logAnalyticsEvent: (...args) => _analyticsLog ? _analyticsLog.logEvent(...args) : null,
 };
 const _state = require("./state")(_stateCtx);
 const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride,
@@ -642,7 +644,7 @@ const _serverCtx = {
   permLog,
 };
 const _server = require("./server")(_serverCtx);
-const { startHttpServer, getHookServerPort } = _server;
+const { startHttpServer, getHookServerPort, syncClawdHooks } = _server;
 
 // ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
 // The "always-on-top-changed" event only fires from Electron's own SetAlwaysOnTop
@@ -793,6 +795,7 @@ const _menuCtx = {
   getActiveThemeId: () => activeTheme ? activeTheme._id : "clawd",
   ensureUserThemesDir: () => themeLoader.ensureUserThemesDir(),
   openSettingsWindow: () => openSettingsWindow(),
+  toggleAnalyticsDashboard: () => _analyticsDash ? _analyticsDash.toggleDashboard() : null,
 };
 const _menu = require("./menu")(_menuCtx);
 const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
@@ -1611,8 +1614,49 @@ if (!gotTheLock) {
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     createWindow();
 
+    // ── Initialize analytics modules ──
+    const os = require("os");
+    const analyticsPath = path.join(os.homedir(), ".clawd", "analytics.jsonl");
+    _analyticsLog = require("./analytics-log")({ analyticsPath });
+    _analyticsData = require("./analytics-data")({ analyticsPath });
+    _analyticsAI = require("./analytics-ai")({
+      getAIConfig: () => {
+        try {
+          const p = loadPrefs();
+          return (p && p.aiConfig) || null;
+        } catch { return null; }
+      },
+      setAIConfig: (config) => {
+        try {
+          const raw = fs.existsSync(PREFS_PATH) ? JSON.parse(fs.readFileSync(PREFS_PATH, "utf8")) : {};
+          raw.aiConfig = config;
+          fs.writeFileSync(PREFS_PATH, JSON.stringify(raw));
+        } catch (err) {
+          console.warn("Clawd: failed to save AI config:", err.message);
+        }
+      },
+    });
+    _analyticsScan = require("./analytics-scan")({});
+    _analyticsDash = require("./analytics")({
+      analyticsData: _analyticsData,
+      analyticsAI: _analyticsAI,
+      analyticsScan: _analyticsScan,
+    });
+
     // Register global shortcut for toggling pet visibility
     registerToggleShortcut();
+
+    // Register analytics dashboard shortcut
+    try {
+      globalShortcut.register("CommandOrControl+Shift+Alt+A", () => {
+        if (_analyticsDash) _analyticsDash.toggleDashboard();
+      });
+    } catch (err) {
+      console.warn("Clawd: failed to register analytics shortcut:", err.message);
+    }
+
+    // Auto-register Claude Code hooks on every launch (dedup-safe)
+    syncClawdHooks();
 
     // Construct log monitors. We always instantiate them so toggling the
     // agent on/off later can call start()/stop() without paying the require
@@ -1674,6 +1718,8 @@ if (!gotTheLock) {
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();
+    if (_analyticsLog) _analyticsLog.cleanup();
+    if (_analyticsDash) _analyticsDash.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
     if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();

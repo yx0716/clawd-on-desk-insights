@@ -1,10 +1,12 @@
 {
-  "name": "clawd-on-desk",
-  "version": "0.5.10",
-  "description": "A desktop pet that reacts to your Claude Code sessions in real-time.",
+  "name": "clawd-on-desk-insights",
+  "version": "0.6.0",
+  "description": "A desktop pet fork with a RescueTime-style analytics dashboard and AI-generated coding session insights.",
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
+    "package:trial": "electron-builder --publish never",
+    "package:trial:dir": "electron-builder --dir --publish never",
     "build": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
@@ -20,12 +22,12 @@
     "electron",
     "claude-code"
   ],
-  "author": "rullerzhou-afk",
+  "author": "yx0716",
   "license": "MIT",
   "type": "commonjs",
   "build": {
-    "appId": "com.clawd.on-desk",
-    "productName": "Clawd on Desk",
+    "appId": "com.clawd.on-desk.insights",
+    "productName": "Clawd on Desk Insights",
     "mac": {
       "icon": "assets/icon.png",
       "target": [
@@ -45,7 +47,7 @@
     "win": {
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false,
-      "artifactName": "Clawd-on-Desk-Setup-${version}.${ext}",
+      "artifactName": "Clawd-on-Desk-Insights-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -56,7 +58,7 @@
       ]
     },
     "linux": {
-      "maintainer": "rullerzhou-afk <rullerzhou-afk@users.noreply.github.com>",
+      "maintainer": "yx0716",
       "icon": "assets/icons",
       "category": "Utility",
       "target": [
@@ -104,8 +106,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "rullerzhou-afk",
-        "repo": "clawd-on-desk"
+        "owner": "yx0716",
+        "repo": "clawd-on-desk-insights"
       }
     ]
   },

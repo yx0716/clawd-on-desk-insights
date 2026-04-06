@@ -13,7 +13,6 @@ function makeTranslate(ctx) {
     return fallback != null ? fallback : key;
   };
 }
-
 function compareVersions(v1, v2) {
   const parts1 = String(v1).replace(/^v/, "").split(".").map(Number);
   const parts2 = String(v2).replace(/^v/, "").split(".").map(Number);
@@ -236,8 +235,8 @@ function initUpdater(ctx, deps = {}) {
     return new Promise((resolve, reject) => {
       const req = httpsGet({
         hostname: "api.github.com",
-        path: "/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-        headers: { "User-Agent": "Clawd-on-Desk" },
+        path: "/repos/yx0716/clawd-on-desk-insights/releases/latest",
+        headers: { "User-Agent": "Clawd-on-Desk-Insights" },
       }, (res) => {
         let data = "";
         res.on("data", (chunk) => { data += chunk; });
@@ -488,7 +487,7 @@ function initUpdater(ctx, deps = {}) {
         version: info.version,
         onPrimary: async () => {
           if (isMac) {
-            shell.openExternal("https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
+            shell.openExternal("https://github.com/yx0716/clawd-on-desk-insights/releases/latest");
             updateStatus = "idle";
             manualUpdateCheck = false;
             rebuildMenus();
