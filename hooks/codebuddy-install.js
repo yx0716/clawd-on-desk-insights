@@ -6,45 +6,9 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { resolveNodeBin, buildPermissionUrl, DEFAULT_SERVER_PORT, readRuntimePort } = require("./server-config");
-const { writeJsonAtomic, asarUnpackedPath } = require("./json-utils");
+const { writeJsonAtomic, asarUnpackedPath, extractExistingNodeBin } = require("./json-utils");
 const MARKER = "codebuddy-hook.js";
 const HTTP_MARKER = "/permission";
-
-/** Extract the existing absolute node path from hook commands containing marker. */
-function extractExistingNodeBin(settings, marker) {
-  if (!settings || !settings.hooks) return null;
-  for (const entries of Object.values(settings.hooks)) {
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      if (!entry || typeof entry !== "object") continue;
-      // Check nested hooks array (Claude Code format)
-      const innerHooks = entry.hooks;
-      if (Array.isArray(innerHooks)) {
-        for (const h of innerHooks) {
-          if (!h || typeof h.command !== "string") continue;
-          if (!h.command.includes(marker)) continue;
-          const qi = h.command.indexOf('"');
-          if (qi === -1) continue;
-          const qe = h.command.indexOf('"', qi + 1);
-          if (qe === -1) continue;
-          const first = h.command.substring(qi + 1, qe);
-          if (!first.includes(marker) && first.startsWith("/")) return first;
-        }
-      }
-      // Also check flat format for migration
-      const cmd = entry.command;
-      if (typeof cmd === "string" && cmd.includes(marker)) {
-        const qi = cmd.indexOf('"');
-        if (qi === -1) continue;
-        const qe = cmd.indexOf('"', qi + 1);
-        if (qe === -1) continue;
-        const first = cmd.substring(qi + 1, qe);
-        if (!first.includes(marker) && first.startsWith("/")) return first;
-      }
-    }
-  }
-  return null;
-}
 
 // CodeBuddy supported hook events (as of v1.16+)
 const CODEBUDDY_HOOK_EVENTS = [
@@ -90,7 +54,7 @@ function registerCodeBuddyHooks(options = {}) {
   // Resolve node path; if detection fails, preserve existing absolute path
   const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
   const nodeBin = resolved
-    || extractExistingNodeBin(settings, MARKER)
+    || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
   const desiredCommand = `"${nodeBin}" "${hookScript}"`;
 

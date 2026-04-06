@@ -349,7 +349,7 @@ const _serverCtx = {
   permLog,
 };
 const _server = require("./server")(_serverCtx);
-const { startHttpServer, getHookServerPort, syncClawdHooks } = _server;
+const { startHttpServer, getHookServerPort } = _server;
 
 // ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
 // The "always-on-top-changed" event only fires from Electron's own SetAlwaysOnTop
@@ -935,9 +935,6 @@ if (!gotTheLock) {
 
     // Register global shortcut for toggling pet visibility
     registerToggleShortcut();
-
-    // Auto-register Claude Code hooks on every launch (dedup-safe)
-    syncClawdHooks();
 
     // Start Codex CLI JSONL log monitor
     try {

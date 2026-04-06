@@ -13,6 +13,7 @@ const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { resolveNodeBin } = require("./server-config");
+const { writeJsonAtomic, extractExistingNodeBin } = require("./json-utils");
 const MARKER = "kiro-hook.js";
 const CLAWD_AGENT_NAME = "clawd";
 const BUILTIN_DEFAULT_AGENT = "kiro_default";
@@ -24,20 +25,6 @@ const KIRO_HOOK_EVENTS = [
   "postToolUse",
   "stop",
 ];
-
-function writeJsonAtomic(filePath, data) {
-  const dir = path.dirname(filePath);
-  const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
-  fs.mkdirSync(dir, { recursive: true });
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tmpPath, filePath);
-  } catch (err) {
-    try { fs.unlinkSync(tmpPath); } catch {}
-    throw err;
-  }
-}
 
 /**
  * Inject Clawd hooks into a single agent config file.
@@ -296,30 +283,10 @@ function registerKiroHooks(options = {}) {
   return { added: totalAdded, skipped: totalSkipped, updated: totalUpdated, files };
 }
 
-/** Extract the existing absolute node path from hook commands containing marker. */
-function extractExistingNodeBin(settings, marker) {
-  if (!settings || !settings.hooks) return null;
-  for (const entries of Object.values(settings.hooks)) {
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      if (!entry || typeof entry !== "object" || typeof entry.command !== "string") continue;
-      if (!entry.command.includes(marker)) continue;
-      const qi = entry.command.indexOf('"');
-      if (qi === -1) continue;
-      const qe = entry.command.indexOf('"', qi + 1);
-      if (qe === -1) continue;
-      const first = entry.command.substring(qi + 1, qe);
-      if (!first.includes(marker) && first.startsWith("/")) return first;
-    }
-  }
-  return null;
-}
-
 module.exports = {
   registerKiroHooks,
   KIRO_HOOK_EVENTS,
   __test: {
-    extractExistingNodeBin,
     generateClawdTemplateFromBuiltin,
     getKiroCliCandidates,
     injectHooksIntoFile,

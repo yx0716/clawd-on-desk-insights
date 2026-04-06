@@ -5,27 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { resolveNodeBin } = require("./server-config");
-const { writeJsonAtomic, asarUnpackedPath } = require("./json-utils");
+const { writeJsonAtomic, asarUnpackedPath, extractExistingNodeBin } = require("./json-utils");
 const MARKER = "cursor-hook.js";
-
-/** Extract the existing absolute node path from hook commands containing marker. */
-function extractExistingNodeBin(settings, marker) {
-  if (!settings || !settings.hooks) return null;
-  for (const entries of Object.values(settings.hooks)) {
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      if (!entry || typeof entry !== "object" || typeof entry.command !== "string") continue;
-      if (!entry.command.includes(marker)) continue;
-      const qi = entry.command.indexOf('"');
-      if (qi === -1) continue;
-      const qe = entry.command.indexOf('"', qi + 1);
-      if (qe === -1) continue;
-      const first = entry.command.substring(qi + 1, qe);
-      if (!first.includes(marker) && first.startsWith("/")) return first;
-    }
-  }
-  return null;
-}
 
 const CURSOR_HOOK_EVENTS = [
   "sessionStart",

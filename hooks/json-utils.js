@@ -36,4 +36,49 @@ function asarUnpackedPath(p) {
   return p.replace("app.asar/", "app.asar.unpacked/");
 }
 
-module.exports = { writeJsonAtomic, asarUnpackedPath };
+/**
+ * Extract the existing absolute node binary path from hook commands that
+ * contain `marker` (e.g. "cursor-hook.js").  Scans settings.hooks for
+ * matching commands, then returns the first quoted token that is an
+ * absolute path (and not the marker itself).
+ *
+ * @param {object} settings - Parsed JSON settings/config object
+ * @param {string} marker   - Hook script filename to search for
+ * @param {object} [options]
+ * @param {boolean} [options.nested] - Also check entry.hooks[].command
+ *   (CodeBuddy / Claude Code nested format)
+ * @returns {string|null}
+ */
+function extractExistingNodeBin(settings, marker, options) {
+  if (!settings || !settings.hooks) return null;
+  const nested = options && options.nested;
+
+  for (const entries of Object.values(settings.hooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+
+      // Collect candidate command strings
+      const cmds = [];
+      if (nested && Array.isArray(entry.hooks)) {
+        for (const h of entry.hooks) {
+          if (h && typeof h.command === "string") cmds.push(h.command);
+        }
+      }
+      if (typeof entry.command === "string") cmds.push(entry.command);
+
+      for (const cmd of cmds) {
+        if (!cmd.includes(marker)) continue;
+        const qi = cmd.indexOf('"');
+        if (qi === -1) continue;
+        const qe = cmd.indexOf('"', qi + 1);
+        if (qe === -1) continue;
+        const first = cmd.substring(qi + 1, qe);
+        if (!first.includes(marker) && first.startsWith("/")) return first;
+      }
+    }
+  }
+  return null;
+}
+
+module.exports = { writeJsonAtomic, asarUnpackedPath, extractExistingNodeBin };
