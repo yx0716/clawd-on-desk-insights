@@ -234,9 +234,14 @@ Thanks to everyone who has helped make Clawd better:
 ## Acknowledgments
 
 - Clawd pixel art reference from [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- The Clawd character is the property of [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic. The character artwork in this repository may not be used for commercial purposes.
 - Shared on [LINUX DO](https://linux.do/) community
 
 ## License
 
-MIT
+Source code is licensed under the [MIT License](LICENSE).
+
+**Artwork (assets/) is NOT covered by MIT.** All rights reserved by their respective copyright holders. See [assets/LICENSE](assets/LICENSE) for details.
+
+- **Clawd** character is the property of [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic.
+- **Calico cat (三花猫)** artwork by 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)). All rights reserved.
+- **Third-party contributions**: copyright retained by respective artists.

@@ -219,9 +219,14 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 ## 致谢
 
 - Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- Clawd 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。本仓库中的角色美术素材不得用于商业用途。
 - 本项目在 [LINUX DO](https://linux.do/) 社区推广
 
 ## 许可证
 
-MIT
+源代码基于 [MIT 许可证](LICENSE) 开源。
+
+**美术素材（assets/）不适用 MIT 许可。** 所有权利归各自版权持有人所有，详见 [assets/LICENSE](assets/LICENSE)。
+
+- **Clawd** 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。
+- **三花猫** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作，保留所有权利。
+- **第三方画师作品**：版权归各自作者所有。
