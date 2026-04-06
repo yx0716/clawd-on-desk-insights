@@ -24,6 +24,9 @@ docs/
 *.tmp
 
 
+# WIP artwork (unpublished, All Rights Reserved)
+tools/calico-*
+
 # Debug logs
 logs/
 
