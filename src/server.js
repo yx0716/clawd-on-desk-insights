@@ -64,6 +64,18 @@ function syncCodeBuddyHooks() {
   }
 }
 
+function syncKiroHooks() {
+  try {
+    const { registerKiroHooks } = require("../hooks/kiro-install.js");
+    const { added, updated } = registerKiroHooks({ silent: true });
+    if (added > 0 || updated > 0) {
+      console.log(`Clawd: synced Kiro hooks (added ${added}, updated ${updated})`);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to sync Kiro hooks:", err.message);
+  }
+}
+
 function syncCursorHooks() {
   try {
     const { registerCursorHooks } = require("../hooks/cursor-install.js");
@@ -462,6 +474,7 @@ function startHttpServer() {
       syncGeminiHooks();
       syncCursorHooks();
       syncCodeBuddyHooks();
+      syncKiroHooks();
       syncOpencodePlugin();
       watchSettingsForHookLoss();
     });
@@ -476,6 +489,6 @@ function cleanup() {
   if (httpServer) httpServer.close();
 }
 
-return { startHttpServer, getHookServerPort, syncClawdHooks, syncGeminiHooks, syncCursorHooks, syncCodeBuddyHooks, syncOpencodePlugin, cleanup };
+return { startHttpServer, getHookServerPort, syncClawdHooks, syncGeminiHooks, syncCursorHooks, syncCodeBuddyHooks, syncKiroHooks, syncOpencodePlugin, cleanup };
 
 };
