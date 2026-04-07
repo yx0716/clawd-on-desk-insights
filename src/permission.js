@@ -189,6 +189,13 @@ function showPermissionBubble(permEntry) {
     skipTaskbar: true,
     hasShadow: false,
     ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
+    // macOS: must use NSPanel (`type: "panel"`) when combining
+    // `transparent + frame:false + focusable:false`. Otherwise Electron
+    // tries to apply NSWindowStyleMaskNonactivatingPanel (0x80) on a plain
+    // NSWindow and AppKit logs:
+    //   "NSWindow does not support nonactivating panel styleMask 0x80"
+    // once per bubble. Same fix as the main `win` and `hitWin` in main.js.
+    ...(isMac ? { type: "panel", roundedCorners: false } : {}),
     focusable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-bubble.js"),

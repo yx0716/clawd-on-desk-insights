@@ -443,7 +443,13 @@ module.exports = function initMenu(ctx) {
       { type: "separator" },
       { label: t("quit"), click: () => requestAppQuit() },
     );
-    ctx.tray.setContextMenu(Menu.buildFromTemplate(items));
+    // Retain the *previous* tray menu before we drop our only reference to
+    // it (Tray's setContextMenu replaces the held menu without exposing a
+    // getter). The delayed release prevents the representedObject warning
+    // when the user has the tray menu open and something triggers a rebuild.
+    retainMenu(_lastTrayMenu);
+    _lastTrayMenu = Menu.buildFromTemplate(items);
+    ctx.tray.setContextMenu(_lastTrayMenu);
   }
 
   function rebuildAllMenus() {
@@ -496,6 +502,37 @@ module.exports = function initMenu(ctx) {
     return ctx.contextMenuOwner;
   }
 
+  // Strong reference to whichever Menu is currently popped up. Keeping this
+  // alive until `menu.popup`'s callback fires fixes the macOS warning:
+  //   "representedObject is not a WeakPtrToElectronMenuModelAsNSObject"
+  // Without it, callers like main.js's `popupMenuAt(Menu.buildFromTemplate(
+  // buildSessionSubmenu()))` pass an unrooted Menu — V8 can GC it while
+  // AppKit is still walking the live NSMenu's NSMenuItem.representedObject
+  // weak pointers (the C++ ElectronMenuModel is freed when the JS Menu dies).
+  // The popup callback closure does NOT capture `menu` itself, so a function
+  // parameter alone isn't enough to keep it alive across the popup lifetime.
+  let _activePopupMenu = null;
+
+  // Holding queue for recently-replaced Menus (tray + pet context menu).
+  // The same `representedObject` warning fires when a rebuild happens while
+  // the previous Menu's NSMenu is still being walked by AppKit — for example,
+  // when updater.js polls and calls rebuildAllMenus() while the user has the
+  // tray menu popped up, or when state.js's DND toggle rebuilds the menu
+  // mid-click. We keep the previous Menu alive for a few seconds so AppKit
+  // can finish whatever it was doing before V8 reclaims it.
+  const _retainedMenus = [];
+  function retainMenu(menu) {
+    if (!menu) return;
+    _retainedMenus.push(menu);
+    setTimeout(() => {
+      const idx = _retainedMenus.indexOf(menu);
+      if (idx !== -1) _retainedMenus.splice(idx, 1);
+    }, 5000);
+  }
+  // Most recent tray menu — see buildTrayMenu() comment for why we hold our
+  // own reference (Tray's setContextMenu has no matching getter).
+  let _lastTrayMenu = null;
+
   function popupMenuAt(menu) {
     if (ctx.menuOpen) return;
     const owner = ensureContextMenuOwner();
@@ -507,10 +544,12 @@ module.exports = function initMenu(ctx) {
     owner.focus();
 
     ctx.menuOpen = true;
+    _activePopupMenu = menu;
     menu.popup({
       window: owner,
       callback: () => {
         ctx.menuOpen = false;
+        _activePopupMenu = null;
         if (owner && !owner.isDestroyed()) owner.hide();
         if (ctx.win && !ctx.win.isDestroyed()) {
           ctx.win.showInactive();
@@ -708,6 +747,10 @@ module.exports = function initMenu(ctx) {
       { type: "separator" },
       { label: t("quit"), click: () => requestAppQuit() },
     );
+    // Retain the previous pet context menu so AppKit can finish processing
+    // any in-flight click handler before V8 reclaims the underlying
+    // ElectronMenuModel — see retainMenu() comment for the full story.
+    retainMenu(ctx.contextMenu);
     ctx.contextMenu = Menu.buildFromTemplate(template);
   }
 
