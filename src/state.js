@@ -88,10 +88,6 @@ let staleCleanupTimer = null;
 let _detectInFlight = false;
 
 // ── Session Dashboard constants ──
-const STATE_EMOJI = {
-  working: "\u{1F528}", thinking: "\u{1F914}", juggling: "\u{1F939}",
-  idle: "\u{1F4A4}", sleeping: "\u{1F4A4}",
-};
 const STATE_LABEL_KEY = {
   working: "sessionWorking", thinking: "sessionThinking", juggling: "sessionJuggling",
   idle: "sessionIdle", sleeping: "sessionSleeping",
@@ -581,7 +577,6 @@ function buildSessionSubmenu() {
   const now = Date.now();
 
   function buildItem(e) {
-    const emoji = STATE_EMOJI[e.state] || "";
     const stateText = ctx.t(STATE_LABEL_KEY[e.state] || "sessionIdle");
     const folder = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
     const name = ctx.showSessionId ? `${folder} #${e.id.slice(-3)}` : folder;
@@ -589,7 +584,7 @@ function buildSessionSubmenu() {
     const hasPid = !!e.sourcePid;
     const icon = getAgentIcon(e.agentId);
     const item = {
-      label: `${e.headless ? "🤖 " : ""}${emoji} ${name}  ${stateText}  ${elapsed}`,
+      label: `${e.headless ? "🤖 " : ""}${name}  ${stateText}  ${elapsed}`,
       enabled: hasPid,
       click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };

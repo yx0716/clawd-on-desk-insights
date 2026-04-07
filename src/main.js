@@ -95,7 +95,7 @@ let win;
 let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let tray = null;
 let contextMenuOwner = null;
-let currentSize = "S";   // "S" | "M" | "L" | "P:<ratio>" (e.g. "P:10", "P:7.5")
+let currentSize = "P:10"; // "P:<ratio>" — pet occupies <ratio>% of work area width
 
 // ── Proportional size mode ──
 // currentSize = "P:<ratio>" means the pet occupies <ratio>% of the work area width.
@@ -534,7 +534,15 @@ const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel
 
 function createWindow() {
   const prefs = loadPrefs();
-  if (prefs && (SIZES[prefs.size] || isProportionalMode(prefs.size))) currentSize = prefs.size;
+  if (prefs && isProportionalMode(prefs.size)) {
+    currentSize = prefs.size;
+  } else if (prefs && SIZES[prefs.size]) {
+    // Migrate legacy S/M/L to proportional mode
+    const wa = screen.getPrimaryDisplay().workArea;
+    const px = SIZES[prefs.size].width;
+    const ratio = Math.round(px / wa.width * 100);
+    currentSize = `P:${Math.max(1, Math.min(75, ratio))}`;
+  }
   if (prefs && (prefs.lang === "en" || prefs.lang === "zh")) lang = prefs.lang;
   // macOS: restore tray/dock visibility from prefs
   if (isMac && prefs) {

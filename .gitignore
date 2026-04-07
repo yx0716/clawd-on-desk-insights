@@ -25,6 +25,9 @@ docs/*
 *.tmp
 
 
+# Calico animation studio (WIP pipeline, not for distribution)
+calico-studio/
+
 # WIP artwork (unpublished, All Rights Reserved)
 tools/calico-*
 !tools/calico-final.svg
