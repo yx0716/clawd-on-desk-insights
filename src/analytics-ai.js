@@ -1035,6 +1035,16 @@ module.exports = function initAnalyticsAI(ctx) {
   //   savings:    -40% cost, -14% duration, -24% output tokens
   //
   // Why each flag matters:
+  //   --verbose              → REQUIRED on Claude CLI 2.2+ when combining
+  //                            -p / --print with --output-format=stream-json.
+  //                            Older versions (≤2.1.x) implicitly enabled it,
+  //                            newer versions hard-error without it:
+  //                            "Error: When using --print, --output-format=
+  //                            stream-json requires --verbose". The flag does
+  //                            not change the NDJSON shape we already parse —
+  //                            metadata events (system/init, hook_*, rate_limit_event)
+  //                            were already streamed in 2.1.x and are skipped
+  //                            by our parser's type-switch.
   //   --append-system-prompt → tells the model "no tools, JSON only" while
   //                            keeping the default system prompt cacheable
   //   --tools ""             → drops 25K of tool definitions from the prompt
@@ -1050,6 +1060,7 @@ module.exports = function initAnalyticsAI(ctx) {
       const args = [
         "-p", prompt,
         "--output-format", "stream-json",
+        "--verbose",                                            // required by Claude CLI 2.2+ with -p + stream-json
         "--tools", "",                                          // disable all built-in tools (-25K tokens)
         "--disable-slash-commands",                             // skip skill loading
         "--append-system-prompt", ANALYSIS_APPEND_SYSTEM_PROMPT, // nudge to JSON-only mode
