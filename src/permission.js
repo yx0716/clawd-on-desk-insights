@@ -157,6 +157,7 @@ function showPermissionBubble(permEntry) {
     height: pos.height,
     x: pos.x,
     y: pos.y,
+    show: false, // Fix lost focus
     frame: false,
     transparent: true,
     alwaysOnTop: true,
