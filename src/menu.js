@@ -13,6 +13,16 @@ const os = require("os");
 const AUTOSTART_DIR = path.join(os.homedir(), ".config", "autostart");
 const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "clawd-on-desk.desktop");
 
+function getLoginItemSettings({ isLinux, isPackaged, openAtLogin, execPath, appPath }) {
+  if (isLinux) return null;
+  if (isPackaged) return { openAtLogin };
+  return {
+    openAtLogin,
+    path: execPath,
+    args: [appPath],
+  };
+}
+
 function linuxGetOpenAtLogin() {
   try { return fs.existsSync(AUTOSTART_FILE); } catch { return false; }
 }
@@ -342,7 +352,13 @@ module.exports = function initMenu(ctx) {
           if (isLinux) {
             linuxSetOpenAtLogin(menuItem.checked);
           } else {
-            app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+            app.setLoginItemSettings(getLoginItemSettings({
+              isLinux,
+              isPackaged: app.isPackaged,
+              openAtLogin: menuItem.checked,
+              execPath: process.execPath,
+              appPath: app.getAppPath(),
+            }));
           }
           buildTrayMenu();
           buildContextMenu();
@@ -722,4 +738,8 @@ module.exports = function initMenu(ctx) {
     resizeWindow,
     requestAppQuit,
   };
+};
+
+module.exports.__test = {
+  getLoginItemSettings,
 };
