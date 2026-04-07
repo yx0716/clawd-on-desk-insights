@@ -1,18 +1,24 @@
-<p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
-</p>
+<!-- <p align="center">
+  <img src="assets/tray-icon.png" width="128" alt="Clawd Insights">
+</p> -->
 <h1 align="center">clawd-on-desk-insights</h1>
 <p align="center">
-  You work with coding agents for hours every day.<br>
-  <strong>But what did you actually walk away with?</strong>
+  Among all the bubbles you've shared with your Agent,<br>
+  <strong>what's surfacing?</strong>
 </p>
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
 </p>
 
-<<<<<<< HEAD
-A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen, scans local conversation history, and adds a RescueTime-style insights layer with AI-generated session summaries. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (calico cat), with full support for custom themes.
-=======
+
+**A local-first analytics dashboard for your AI coding sessions.** It scans the conversations you've already had with Claude Code, Codex CLI, Cursor and other agents, and turns them into a timeline plus AI-generated session summaries — so you can finally **see your Vibe Coding journey clearly**.
+
+Every conversation leaves an **imprint**. No idea you tried, no bug you wrestled with, no decision you made together with the Agent is ever wasted — they all come back into view in the **Analytics Dashboard**.
+
+All data stays on your machine. AI analysis runs through your own local `claude code` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
+
+> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js.
+
 <p align="center">
   <img src="assets/screenshot-timeline.png" width="800" alt="Timeline Dashboard">
 </p>
@@ -21,303 +27,164 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
   <img src="assets/screenshot-analysis.png" width="800" alt="AI Session Analysis">
 </p>
 
-Every conversation leaves an **imprint** — an idea you explored, a bug you solved, a decision you made. This tool makes those imprints visible.
+## Why it exists
 
-A fork of [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) that keeps the desktop pet and adds an insights layer: scan local conversation history, visualize agent usage on a timeline, and generate AI summaries of what each session actually accomplished.
+A day of vibe coding — five sessions open, three projects touched, two approaches debated with the Agent, terminal closed. You feel exhausted 🥱 but can't quite recall what you accomplished.
 
-All data stays on your machine. Analysis runs through your own Claude Code or Codex CLI.
->>>>>>> f070cc1 (docs: add dashboard screenshots and rewrite README intro)
+Or maybe the conversations *were* productive 🥂, but going back through the raw history to review them feels like a chore.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**.
+This project takes that weight off your shoulders 🎒: every conversation you've had with an AI agent is already sitting on your disk as JSONL (`~/.claude/projects/`, `~/.codex/sessions/`, `~/.cursor/projects/`) — it's just that nobody normally opens them. The insights dashboard turns those raw logs into a scrollable timeline and AI-generated review summaries.
 
-## Features
+Next time you want to recall *"what did I actually do today"*, *"which session had that working solution"*, or *"how did we end up handling that library last week"* — let the dashboard handle it.
 
-### Insights Dashboard
-- **RescueTime-style timeline** — visualize sessions by day, duration, project, and agent in a dedicated analytics window
-- **Local history scanning** — read Claude Code, Codex CLI, and Cursor Agent conversation files directly from your machine
-- **Session-level AI review** — summarize each conversation from the user's point of view, including outcomes, topics, and time breakdown
-- **Flexible analysis backends** — use local Claude Code, local Codex, or a configured API / Ollama fallback
-- **Batch pre-analysis** — precompute recent session summaries and reuse provider-aware cached results in the dashboard
-- **Quick access** — open the analytics dashboard from the tray menu or with `Cmd/Ctrl+Shift+Alt+A`
+## What the Dashboard does
 
-### Multi-Agent Support
-- **Claude Code** — full integration via command hooks + HTTP permission hooks
-- **Codex CLI** — automatic JSONL log polling (`~/.codex/sessions/`), no configuration needed
-- **Copilot CLI** — command hooks via `~/.copilot/hooks/hooks.json`
-- **Gemini CLI** — command hooks via `~/.gemini/settings.json` (registered automatically when Clawd starts, or run `npm run install:gemini-hooks`)
-- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks) in `~/.cursor/hooks.json` (registered automatically when Clawd starts, or run `npm run install:cursor-hooks`)
-- **Kiro CLI** — command hooks injected into custom agent configs under `~/.kiro/agents/`, plus an auto-created `clawd` agent that is re-synced from Kiro's built-in `kiro_default` whenever Clawd starts, so you can opt into hooks with minimal behavior drift via `kiro-cli --agent clawd` or `/agent swap clawd` (registered automatically when Clawd starts, or run `npm run install:kiro-hooks`). State hooks have been verified on macOS.
-- **opencode** — [plugin integration](https://opencode.ai/docs/plugins) via `~/.config/opencode/opencode.json` (registered automatically when Clawd starts); zero-latency event streaming, permission bubbles with Allow/Always/Deny, and building animations when parallel subagents are spawned via the `task` tool
-- **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
+| Capability | What you get |
+|---|---|
+| **Timeline view** | Visualize every session by date / project / agent / duration — at a glance, see when you worked, on what, and for how long |
+| **Local history scan** | Reads `~/.claude/projects/`, `~/.codex/sessions/`, `~/.cursor/projects/` directly. No upload, no telemetry |
+| **AI session review** | Per-session summary from the *user's* point of view: what you were trying to do, what you walked away with, key topics, time breakdown |
+| **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys |
+| **Batch pre-analysis** | Pre-compute summaries for recent sessions and reuse provider-aware cached results |
+| **Cost tracking** | See token usage and cost per analysis run |
+| **Quick access** | Open from the tray menu, the right-click menu on the pet, or a global shortcut |
 
-### Animations & Interaction
-- **Real-time state awareness** — agent hooks and log polling drive Clawd's animations automatically
-- **12 animated states** — idle, thinking, typing, building, juggling, conducting, error, happy, notification, sweeping, carrying, sleeping
-- **Eye tracking** — Clawd follows your cursor in idle state, with body lean and shadow stretch
-- **Sleep sequence** — yawning, dozing, collapsing, sleeping after 60s idle; mouse movement triggers a startled wake-up animation
-- **Click reactions** — double-click for a poke, 4 clicks for a flail
-- **Drag from any state** — grab Clawd anytime (Pointer Capture prevents fast-flick drops), release to resume
-- **Mini mode** — drag to right edge or right-click "Mini Mode"; Clawd hides at screen edge with peek-on-hover, mini alerts/celebrations, and parabolic jump transitions
+## Getting Started
 
-### Permission Bubble
-- **In-app permission review** — when Claude Code requests tool permissions, Clawd pops a floating bubble card instead of waiting in the terminal
-- **Allow / Deny / Suggestions** — one-click approve, reject, or apply permission rules (e.g. "Always allow Read")
-- **Global hotkeys** — `Ctrl+Shift+Y` to Allow, `Ctrl+Shift+N` to Deny the latest permission bubble (only registered while bubbles are visible)
-- **Stacking layout** — multiple permission requests stack upward from the bottom-right corner
-- **Auto-dismiss** — if you answer in the terminal first, the bubble disappears automatically
-
-### Session Intelligence
-- **Multi-session tracking** — sessions across all agents resolve to the highest-priority state
-- **Subagent awareness** — juggling for 1 subagent, conducting for 2+
-- **Terminal focus** — right-click Clawd → Sessions menu to jump to a specific session's terminal window; notification/attention states auto-focus the relevant terminal
-- **Process liveness detection** — detects crashed/exited agent processes (Claude Code, Codex, Copilot) and cleans up orphan sessions
-- **Startup recovery** — if Clawd restarts while any agent is running, it stays awake instead of falling asleep
-
-### System
-- **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
-- **Position memory** — Clawd remembers where you left it across restarts (including mini mode)
-- **Single instance lock** — prevents duplicate Clawd windows
-- **Auto-start** — Claude Code's SessionStart hook can launch Clawd automatically if it's not running
-- **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Clawd. Permission bubbles are suppressed during DND — opencode falls back to its built-in TUI prompt, and Claude Code will handle permissions automatically
-- **Sound effects** — short audio cues on task completion and permission requests (toggle via right-click menu; 10s cooldown, auto-muted during DND)
-- **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
-- **i18n** — English and Chinese UI; switch via right-click menu or tray
-- **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS/Linux `git pull` + restart when running from a cloned repo
-
-## State Mapping
-
-Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
-
-| Agent Event | State | Animation | Clawd | Calico |
-|---|---|---|---|---|
-| Idle (no activity) | idle | Eye-tracking follow | <img src="assets/gif/clawd-idle.gif" width="160"> | <img src="assets/gif/calico-idle.gif" width="130"> |
-| Idle (random) | idle | Reading / patrol | <img src="assets/gif/clawd-idle-reading.gif" width="160"> | |
-| UserPromptSubmit | thinking | Thought bubble | <img src="assets/gif/clawd-thinking.gif" width="160"> | <img src="assets/gif/calico-thinking.gif" width="130"> |
-| PreToolUse / PostToolUse | working (typing) | Typing | <img src="assets/gif/clawd-typing.gif" width="160"> | <img src="assets/gif/calico-typing.gif" width="130"> |
-| PreToolUse (3+ sessions) | working (building) | Building | <img src="assets/gif/clawd-building.gif" width="160"> | <img src="assets/gif/calico-building.gif" width="130"> |
-| SubagentStart (1) | juggling | Juggling | <img src="assets/gif/clawd-juggling.gif" width="160"> | <img src="assets/gif/calico-juggling.gif" width="130"> |
-| SubagentStart (2+) | conducting | Conducting | <img src="assets/gif/clawd-conducting.gif" width="160"> | <img src="assets/gif/calico-conducting.gif" width="130"> |
-| PostToolUseFailure | error | Error | <img src="assets/gif/clawd-error.gif" width="160"> | <img src="assets/gif/calico-error.gif" width="130"> |
-| Stop / PostCompact | attention | Happy | <img src="assets/gif/clawd-happy.gif" width="160"> | <img src="assets/gif/calico-happy.gif" width="130"> |
-| PermissionRequest | notification | Alert | <img src="assets/gif/clawd-notification.gif" width="160"> | <img src="assets/gif/calico-notification.gif" width="130"> |
-| PreCompact | sweeping | Sweeping | <img src="assets/gif/clawd-sweeping.gif" width="160"> | <img src="assets/gif/calico-sweeping.gif" width="130"> |
-| WorktreeCreate | carrying | Carrying | <img src="assets/gif/clawd-carrying.gif" width="160"> | <img src="assets/gif/calico-carrying.gif" width="130"> |
-| 60s no events | sleeping | Sleep | <img src="assets/gif/clawd-sleeping.gif" width="160"> | <img src="assets/gif/calico-sleeping.gif" width="130"> |
-
-### Mini Mode
-
-Drag to the right screen edge (or right-click → "Mini Mode") to enter mini mode — half-body visible at screen edge, peeking out on hover.
-
-| Trigger | Mini Reaction | Clawd | Calico |
-|---|---|---|---|
-| Default | Breathing + blinking + eye tracking | <img src="assets/gif/clawd-mini-idle.gif" width="100"> | <img src="assets/gif/calico-mini-idle.gif" width="80"> |
-| Hover | Peek out + wave | <img src="assets/gif/clawd-mini-peek.gif" width="100"> | <img src="assets/gif/calico-mini-peek.gif" width="80"> |
-| Notification | Alert pop | <img src="assets/gif/clawd-mini-alert.gif" width="100"> | <img src="assets/gif/calico-mini-alert.gif" width="80"> |
-| Task complete | Happy celebration | <img src="assets/gif/clawd-mini-happy.gif" width="100"> | <img src="assets/gif/calico-mini-happy.gif" width="80"> |
-
-### Click Reactions
-
-Easter eggs — try double-clicking, rapid 4-clicks, or poking Clawd repeatedly to discover hidden reactions.
-
-## Quick Start
+### 1. Install and run
 
 ```bash
-# Clone your fork
 git clone https://github.com/yx0716/clawd-on-desk-insights.git
 cd clawd-on-desk-insights
-
-# Install dependencies
 npm install
-
-# Start Clawd Insights (auto-registers Claude Code hooks on launch)
 npm start
 ```
 
-After launch, open the analytics dashboard from the tray menu or press `Cmd/Ctrl+Shift+Alt+A`.
+Once it launches, a small crab (the default theme) appears on your desktop — that's the Clawd pet, and **every entry point to the dashboard goes through it**.
 
-### Agent Setup
+### 2. Open the Analytics Dashboard
 
-**Claude Code** — works out of the box. Hooks are auto-registered on launch. Versioned hooks (`PreCompact`, `PostCompact`, `StopFailure`) are registered only when Clawd can positively detect a compatible Claude Code version; if detection fails (common for packaged macOS launches), Clawd falls back to core hooks and removes stale incompatible versioned hooks automatically.
+There are three ways to open it — pick whichever feels natural:
 
-**Codex CLI** — works out of the box. Clawd polls `~/.codex/sessions/` for JSONL logs automatically.
+- **Right-click the desktop pet** → choose **Analytics Dashboard** from the context menu
+- **Click the tray icon** (menu bar on macOS, system tray on Windows/Linux) → **Analytics Dashboard**
+- **Keyboard shortcut**: macOS `⌘ + Shift + Option + A` / Windows · Linux `Ctrl + Shift + Alt + A`
 
-**Copilot CLI** — requires manual hook setup. See [docs/copilot-setup.md](docs/copilot-setup.md) for instructions.
+<p align="center">
+  <img src="assets/screenshot-dashboard-menu.gif" width="720" alt="Right-click menu showing Analytics Dashboard">
+</p>
 
-**Kiro CLI** — run `npm run install:kiro-hooks` if you want hooks registered before launching Clawd. Kiro's built-in `kiro_default` agent is not backed by an editable JSON file, so Clawd creates a custom `clawd` agent and re-syncs it from the latest `kiro_default` each time Clawd starts, then appends hooks. Use `kiro-cli --agent clawd` for a new chat, or `/agent swap clawd` inside an existing Kiro session, when you want hooks enabled. On macOS, state-driven animations have been verified; native terminal permission prompts such as `t / y / n` still need to be answered in the terminal.
+The first time you open it, you'll see your timeline immediately — it just reads the session logs already on your disk. **No setup required for that part.**
 
-### Insights Setup
+### 3. Configure an AI provider for session summaries
 
-The analytics dashboard works locally and does not require a server. It reads local history from:
+The timeline works out of the box. But to make the dashboard automatically **generate a recap summary for each session**, you need to point it at something that can call a large language model — what we call an **AI Provider** (the analysis backend).
 
-- `~/.claude/projects/`
-- `~/.codex/sessions/`
-- `~/.cursor/projects/`
+**What's a "provider"?** Plain answer: it's *whoever reads your conversation logs and writes the summary*. You have three options:
 
-For AI-generated session summaries, the app prefers a local `claude` or `codex` CLI. If neither is available, you can configure an API provider or Ollama as a fallback inside the app.
+| Provider type | What it is | Setup | Best for |
+|---|---|---|---|
+| **Local CLI** *(recommended)* | Reuses the `claude` (Claude Code) or `codex` CLI you already have installed. Uses your existing subscription, no extra API charges. | **Nothing — auto-detected** | Anyone already using Claude Code or Codex — zero overhead |
+| **API key** | An API key from Anthropic, OpenAI, or another provider. Pay-per-token. | Paste your key into the dashboard settings | Users without a local CLI who don't mind a small token cost |
+| **Ollama** | A locally-hosted open model server (e.g. Ollama). | Point the dashboard at your Ollama endpoint | Fully offline, never sends data to the cloud |
 
-### Remote SSH (Claude Code & Codex CLI)
+> **💡 Strong recommendation**: if you already have Claude Code or Codex CLI installed, **do nothing** — the dashboard auto-detects them and reuses your existing subscription quota. Cheapest and easiest path.
 
-<img src="assets/screenshot-remote-ssh.png" width="560" alt="Remote SSH — permission bubble from Raspberry Pi">
+<p align="center">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Selecting and configuring an AI Provider in action">
+</p>
 
-Clawd can sense AI agent activity on remote servers via SSH reverse port forwarding. Hook events and permission requests travel through the SSH tunnel back to your local Clawd — no code changes needed on the Clawd side.
+### 4. Where to configure / change the provider later
 
-**One-click deploy:**
+If you skipped step 3, or you want to switch providers later, you can open **AI Provider Settings** at any time:
 
-```bash
-bash scripts/remote-deploy.sh user@remote-host
-```
+Open the Analytics Dashboard → click the **gear icon ⚙** in the top-right → **AI Provider Settings** dialog appears.
 
-This copies hook files to the remote server, registers Claude Code hooks in remote mode, and prints SSH configuration instructions.
+<p align="center">
+  <img src="assets/screenshot-ai-provider-settings.gif" width="720" alt="AI Provider Settings dialog">
+</p>
 
-**SSH configuration** (add to your local `~/.ssh/config`):
+The dialog has two sections:
 
-```
-Host my-server
-    HostName remote-host
-    User user
-    RemoteForward 127.0.0.1:23333 127.0.0.1:23333
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-```
+- **LOCAL CLI DETECTION** — shows whether the dashboard found `claude` and `codex` on your machine. Green dot = found (with version + path); red dot = missing. **If you already see green dots, you're done — nothing to configure.**
+- **API PROVIDER (FALLBACK)** — only kicks in when no local CLI is available. Pick a provider (Claude / OpenAI / Ollama / …), paste an API key, and you're set.
 
-**How it works:**
-- **Claude Code** — command hooks on the remote server POST state changes to `localhost:23333`, which the SSH tunnel forwards back to your local Clawd. Permission bubbles work too — the HTTP round-trip goes through the tunnel.
-- **Codex CLI** — a standalone log monitor (`codex-remote-monitor.js`) polls JSONL files on the remote server and POSTs state changes through the same tunnel. Start it on the remote: `node ~/.claude/hooks/codex-remote-monitor.js --port 23333`
+> **Tip**: if your `claude` or `codex` was installed via **NVM, fnm, or Volta**, auto-detection may miss it. Run `which claude` or `which codex` in your terminal and paste the output into the **Claude binary path** / **Codex binary path** override field.
 
-Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs are meaningless locally). Terminal focus is not available for remote sessions.
+### 5. Trigger AI analysis
 
-> Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
+Once your provider is set up, **how do you actually make the dashboard read your conversations and produce summaries?** Two paths — pick whichever (or combine them):
 
-### Sharing Trial Builds
+#### Method A: Batch pre-analysis (auto-prompted on dashboard open)
 
-For a quick same-platform trial build from your current machine:
+Every time you open the Analytics Dashboard, if there are unanalyzed sessions, the dashboard **automatically pops up a dialog** — `Pre-analyze Sessions` — letting you analyze a whole time range in one go.
 
-```bash
-npm run package:trial
-```
+Available scopes:
 
-Artifacts are written to `dist/`. For cross-platform artifacts from one branch, use the `Build & Release` GitHub Actions workflow. Manual runs upload artifacts only; `v*` tags publish a GitHub Release. See [docs/trial-sharing.md](docs/trial-sharing.md).
+- **Today** — every session from today
+- **3 Days** — the last 3 days
+- **Week** — the last 7 days
+- **Custom** — your last N sessions
 
-### macOS Notes
+Pick a scope, hit confirm, and the dashboard runs through them with an `Analyzing 1/N`, `2/N`, ... progress bar in the background. **Already-analyzed sessions are auto-skipped** (per-provider cache), so re-clicking never wastes tokens.
 
-- **From source** (`npm start`): works out of the box on Intel and Apple Silicon.
-- **DMG installer**: the app is not signed with an Apple Developer certificate, so macOS Gatekeeper will block it. To open:
-  - Right-click the app → **Open** → click **Open** in the dialog, or
-  - Run `xattr -cr /Applications/Clawd\ on\ Desk\ Insights.app` in Terminal.
+<p align="center">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Batch pre-analysis and per-session analysis in action">
+</p>
 
-### Linux Notes
+> **Best for**: first-time users, monthly retrospectives, catching up on a backlog.
 
-- **From source** (`npm start`): `--no-sandbox` is passed automatically to work around chrome-sandbox SUID requirements in dev mode.
-- **Packages**: AppImage and `.deb` can be distributed from this repository's Releases page. After deb install, the app icon appears in GNOME's app menu.
-- **Terminal focus**: uses `wmctrl` or `xdotool` (whichever is available). Install one for session terminal jumping to work: `sudo apt install wmctrl` or `sudo apt install xdotool`.
-- **Auto-update**: when running from a cloned repo, "Check for Updates" performs `git pull` + `npm install` (if dependencies changed) and restarts the app automatically.
+#### Method B: Click a single session (from the timeline or the sessions list)
 
-## Known Limitations
+If you **only want to review one specific session**, no batch needed, just click it:
 
-| Limitation | Details |
-|---|---|
-| **Codex CLI: no terminal focus** | Codex sessions use JSONL log polling which doesn't carry terminal PID info. Clicking Clawd won't jump to the Codex terminal. Claude Code and Copilot CLI work fine. |
-| **Insights scan coverage** | The analytics dashboard currently scans local histories from Claude Code, Codex CLI, and Cursor Agent. Copilot CLI and Gemini CLI still drive pet states, but their local conversation histories are not yet part of the dashboard scanner. |
-| **Insights need a summarizer** | AI session summaries require a local `claude` or `codex` CLI, or a configured API / Ollama backend. Without one, the dashboard still shows timelines and raw session metadata. |
-| **Codex CLI: Windows hooks disabled** | Codex hardcodes hooks off on Windows, so we poll log files instead. This means ~1.5s latency vs near-instant for hook-based agents. |
-| **Copilot CLI: manual hook setup** | Copilot hooks require manually creating `~/.copilot/hooks/hooks.json`. Claude Code and Codex work out of the box. |
-| **Copilot CLI: no permission bubble** | Copilot's `preToolUse` hook only supports deny, not the full allow/deny flow. Permission bubbles only work with Claude Code. |
-| **Gemini CLI: no working state** | Gemini's session JSON only records completed messages, not in-progress tool execution. The pet jumps from thinking straight to happy/error — no typing animation during work. |
-| **Gemini CLI: no permission bubble** | Gemini handles tool approval inside the terminal. File polling can't intercept or display approval requests. |
-| **Gemini CLI: no terminal focus** | Session JSON doesn't carry terminal PID info, same limitation as Codex. |
-| **Gemini CLI: polling latency** | ~1.5s poll interval + 4s defer window for batching tool completion signals. Noticeably slower than hook-based agents. |
-| **Cursor Agent: no permission bubble** | Cursor handles permissions via stdout JSON in the hook, not HTTP blocking — Clawd can't intercept the approval flow. |
-| **Cursor Agent: startup recovery** | No process detection on startup (matching the editor PID would false-trigger on any Cursor instance). Clawd stays idle until the first hook event fires. |
-| **Kiro CLI: no session tracking** | Kiro CLI stdin JSON has no session_id — all Kiro sessions are merged into a single tracked session. |
-| **Kiro CLI: no SessionEnd** | Kiro CLI has no session end event, so Clawd can't detect when a Kiro session ends. |
-| **Kiro CLI: no subagent detection** | Kiro CLI has no subagent events, so juggling/conducting animations won't trigger. |
-| **Kiro CLI: terminal permission prompts stay in terminal** | Kiro state hooks are verified on macOS, but when Kiro shows native terminal permission prompts such as `t / y / n`, those still need to be handled in the terminal. Clawd does not currently replace that flow. |
-| **opencode: subtask menu clutter** | When opencode delegates to parallel subagents via the `task` tool, the subagent sessions briefly appear in the Sessions submenu while they run (5-8 seconds), then self-clean. Cosmetic only — the building animation fires correctly. |
-| **opencode: terminal focus limited to spawning terminal** | The plugin runs in-process with opencode, so `source_pid` points to the terminal that launched opencode. If you use `opencode attach` from a different window, terminal focus jumps to the original launcher. |
-| **macOS/Linux packaged auto-update** | DMG/AppImage/deb installs cannot auto-update — use `git clone` + `npm start` for auto-update via `git pull`, or download new versions manually from GitHub Releases. |
-| **No test framework for Electron** | Unit tests cover agents and log polling, but the Electron main process (state machine, windows, tray) has no automated tests. |
+- **From the timeline** — in Timeline view, click any colored block (each block is a session) and the detail card slides out on the right
+- **From the Sessions list** — click any session card in the right-side list
 
-## Custom Themes
+Either way, the dashboard will:
 
-Clawd supports custom themes — replace the default crab with your own character and animations.
+1. Show the **cached summary first** if it exists (sessions previously batch-analyzed are tagged `Analyzed` and open instantly)
+2. If not yet analyzed, the click **immediately kicks off a single-session analysis** — the card shows an `Analyzing…` tag, and the result appears in seconds to tens of seconds
 
-**Quick start:**
-1. Copy `themes/template/` to your themes directory:
-   - Windows: `%APPDATA%/clawd-on-desk/themes/my-theme/`
-   - macOS: `~/Library/Application Support/clawd-on-desk/themes/my-theme/`
-   - Linux: `~/.config/clawd-on-desk/themes/my-theme/`
-2. Edit `theme.json` and create your assets (SVG, GIF, APNG, or WebP)
-3. Right-click Clawd → Theme → select your theme
+<p align="center">
+  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="Triggering single-session analysis from the timeline">
+</p>
 
-**Minimum viable theme:** 1 SVG (idle with eye tracking) + 7 GIF/APNG files (thinking, working, error, happy, notification, sleeping, waking). Eye tracking can be disabled to use any format for all states.
+> **Best for**: you already know which session you want to revisit, ad-hoc lookups, day-to-day "scrolling through" history.
 
-Validate your theme before distributing:
-```bash
-node scripts/validate-theme.js path/to/your-theme
-```
+#### How to combine the two
 
-See [docs/guide-theme-creation.md](docs/guide-theme-creation.md) for the full creation guide with tiered paths (beginner → advanced), `theme.json` field reference, and asset guidelines.
+- **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want analyzed (a few minutes, costs more tokens upfront, but every record opens instantly afterwards)
+- **Daily use** → after that initial batch, switch to **Method B — pick specific sessions** as needed; only fresh ones require a manual trigger
+- **Token-sensitive** → use **Method B on demand**, only analyze the sessions you actually want to read — not a single wasted cent
 
-> Third-party SVG files are automatically sanitized for security.
+> **About cost**: Local CLI (Claude Code / Codex subscription) analysis **uses your existing subscription quota** — typically no extra charges. In API key mode, the dashboard shows **token usage and cost** in the top status bar after each analysis completes, so you always know what you're spending.
 
-### Roadmap
+## FAQ
 
-Some things we'd like to explore in the future:
+**Q: Does the dashboard need internet?**
+Scanning and the timeline are **fully offline**. Whether AI summaries need internet depends on which provider you pick: Local CLI uses whatever network stack Claude Code / Codex normally use; Ollama is fully offline; API key mode talks to the cloud.
 
-- Codex terminal focus via process tree lookup from `codex.exe` PID
-- Auto-registration of Copilot CLI hooks (like we do for Claude Code)
-- Theme registry and in-app download
-- Hook uninstall script for clean app removal
+**Q: Are my conversations uploaded anywhere?**
+No. Clawd Insights collects zero telemetry. The provider step is *your* CLI or *your* API key calling *the model you chose* directly — no third-party server in the middle.
 
-## Contributing
+**Q: I don't have Claude Code or Codex. Can I still use it?**
+Yes. You can use the timeline view alone (completely free, no LLM required), or paste an Anthropic / OpenAI API key into AI Provider Settings to enable the cloud path.
 
-`clawd-on-desk-insights` is a community-driven fork. Bug reports, feature ideas, and pull requests are all welcome — open an issue in this repository or submit a PR directly.
+## About the Fork
 
-### Contributors
+This is a fork of [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) — a desktop pet that reacts to your coding agent in real time. The pet is still here (animations, permission bubbles, multi-agent state tracking), but the focus of *this* fork is the insights layer on top.
 
-Thanks to everyone who has helped make Clawd better:
+Multi-agent support carried over from upstream: **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**. Note that the analytics scanner currently covers Claude Code, Codex CLI, and Cursor Agent only — the other agents still drive pet animations, but their histories aren't yet wired into the dashboard.
 
-<table>
-  <tr>
-    <td align="center"><a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /><br /><sub>PixelCookie-zyf</sub></a></td>
-    <td align="center"><a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /><br /><sub>yujiachen-y</sub></a></td>
-    <td align="center"><a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /><br /><sub>AooooooZzzz</sub></a></td>
-    <td align="center"><a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /><br /><sub>purefkh</sub></a></td>
-    <td align="center"><a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /><br /><sub>Tobeabellwether</sub></a></td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /><br /><sub>Jasonhonghh</sub></a></td>
-    <td align="center"><a href="https://github.com/crashchen"><img src="https://github.com/crashchen.png" width="50" style="border-radius:50%" /><br /><sub>crashchen</sub></a></td>
-    <td align="center"><a href="https://github.com/hongbigtou"><img src="https://github.com/hongbigtou.png" width="50" style="border-radius:50%" /><br /><sub>hongbigtou</sub></a></td>
-    <td align="center"><a href="https://github.com/InTimmyDate"><img src="https://github.com/InTimmyDate.png" width="50" style="border-radius:50%" /><br /><sub>InTimmyDate</sub></a></td>
-    <td align="center"><a href="https://github.com/NeizhiTouhu"><img src="https://github.com/NeizhiTouhu.png" width="50" style="border-radius:50%" /><br /><sub>NeizhiTouhu</sub></a></td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://github.com/xu3stones-cmd"><img src="https://github.com/xu3stones-cmd.png" width="50" style="border-radius:50%" /><br /><sub>xu3stones-cmd</sub></a></td>
-    <td align="center"><a href="https://github.com/androidZzT"><img src="https://github.com/androidZzT.png" width="50" style="border-radius:50%" /><br /><sub>androidZzT</sub></a></td>
-    <td align="center"><a href="https://github.com/Ye-0413"><img src="https://github.com/Ye-0413.png" width="50" style="border-radius:50%" /><br /><sub>Ye-0413</sub></a></td>
-    <td align="center"><a href="https://github.com/WanfengzzZ"><img src="https://github.com/WanfengzzZ.png" width="50" style="border-radius:50%" /><br /><sub>WanfengzzZ</sub></a></td>
-    <td align="center"><a href="https://github.com/TaoXieSZ"><img src="https://github.com/TaoXieSZ.png" width="50" style="border-radius:50%" /><br /><sub>TaoXieSZ</sub></a></td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://github.com/ssly"><img src="https://github.com/ssly.png" width="50" style="border-radius:50%" /><br /><sub>ssly</sub></a></td>
-    <td align="center"><a href="https://github.com/stickycandy"><img src="https://github.com/stickycandy.png" width="50" style="border-radius:50%" /><br /><sub>stickycandy</sub></a></td>
-    <td align="center"><a href="https://github.com/Rladmsrl"><img src="https://github.com/Rladmsrl.png" width="50" style="border-radius:50%" /><br /><sub>Rladmsrl</sub></a></td>
-    <td align="center"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="50" style="border-radius:50%" /><br /><sub>YOIMIYA66</sub></a></td>
-  </tr>
-</table>
-
-## Acknowledgments
-
-- Clawd pixel art reference from [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- Shared on [LINUX DO](https://linux.do/) community
+For the full feature list of the desktop pet (animations, permission bubbles, mini mode, click reactions, themes, remote SSH, etc.), see the [upstream README](https://github.com/rullerzhou-afk/clawd-on-desk).
 
 ## License
 
-Source code is licensed under the [MIT License](LICENSE).
+Source code: [MIT License](LICENSE).
 
-**Artwork (assets/) is NOT covered by MIT.** All rights reserved by their respective copyright holders. See [assets/LICENSE](assets/LICENSE) for details.
+**Artwork (assets/) is NOT covered by MIT.** All rights reserved by their respective copyright holders. See [assets/LICENSE](assets/LICENSE).
 
-- **Clawd** character is the property of [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic.
+- **Clawd** character is the property of [Anthropic](https://www.anthropic.com). Unofficial fan project, not affiliated with Anthropic.
 - **Calico cat (三花猫)** artwork by 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)). All rights reserved.
 - **Third-party contributions**: copyright retained by respective artists.
