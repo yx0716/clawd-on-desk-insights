@@ -350,11 +350,14 @@ function startHttpServer() {
           }
 
           // ── Claude Code branch ──
-          // DND here sends an HTTP deny — CC waits synchronously on the
-          // response, so this unblocks the caller immediately.
+          // DND: destroy connection — do NOT send deny on the user's behalf.
+          // CC falls back to its built-in chat permission prompt so the user
+          // decides themselves. Spike 2026-04-07 confirmed: CC shows Allow/
+          // Deny in chat, no hang, no timeout. Same pattern as opencode
+          // silent drop (95cbfc7).
           if (ctx.doNotDisturb) {
-            ctx.permLog("SKIPPED: DND mode");
-            ctx.sendPermissionResponse(res, "deny", "Clawd is in Do Not Disturb mode");
+            ctx.permLog("CC DND → destroy connection, CC chat fallback");
+            res.destroy();
             return;
           }
 
