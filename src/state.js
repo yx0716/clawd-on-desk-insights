@@ -1,9 +1,24 @@
 // src/state.js — State machine + session management + DND + wake poll
 // Extracted from main.js L158-240, L299-505, L544-960
 
-let screen;
-try { ({ screen } = require("electron")); } catch { screen = null; }
+let screen, nativeImage;
+try { ({ screen, nativeImage } = require("electron")); } catch { screen = null; nativeImage = null; }
 const path = require("path");
+const fs = require("fs");
+
+// ── Agent icons (official logos from assets/icons/agents/) ──
+const AGENT_ICON_DIR = path.join(__dirname, "..", "assets", "icons", "agents");
+const _agentIconCache = new Map();
+
+function getAgentIcon(agentId) {
+  if (!nativeImage || !agentId) return undefined;
+  if (_agentIconCache.has(agentId)) return _agentIconCache.get(agentId);
+  const iconPath = path.join(AGENT_ICON_DIR, `${agentId}.png`);
+  if (!fs.existsSync(iconPath)) return undefined;
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  _agentIconCache.set(agentId, icon);
+  return icon;
+}
 
 module.exports = function initState(ctx) {
 
@@ -551,7 +566,7 @@ function formatElapsed(ms) {
 function buildSessionSubmenu() {
   const entries = [];
   for (const [id, s] of sessions) {
-    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host, headless: s.headless });
+    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host, headless: s.headless, agentId: s.agentId });
   }
   if (entries.length === 0) {
     return [{ label: ctx.t("noSessions"), enabled: false }];
@@ -572,11 +587,14 @@ function buildSessionSubmenu() {
     const name = ctx.showSessionId ? `${folder} #${e.id.slice(-3)}` : folder;
     const elapsed = formatElapsed(now - e.updatedAt);
     const hasPid = !!e.sourcePid;
-    return {
+    const icon = getAgentIcon(e.agentId);
+    const item = {
       label: `${e.headless ? "🤖 " : ""}${emoji} ${name}  ${stateText}  ${elapsed}`,
       enabled: hasPid,
       click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };
+    if (icon) item.icon = icon;
+    return item;
   }
 
   // Single-pass grouping by host
