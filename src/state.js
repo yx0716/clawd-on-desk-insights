@@ -385,7 +385,7 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   // Log analytics event (with rich metadata)
   if (ctx.logAnalyticsEvent) {
     const prevState = existing ? existing.state : null;
-    ctx.logAnalyticsEvent(sessionId, prevState, state, event, srcAgentId, srcCwd, srcEditor, displaySvg);
+    ctx.logAnalyticsEvent(sessionId, prevState, state, event, srcAgentId, srcCwd, srcEditor, displayHint);
   }
 
   // Evict oldest session if at capacity and this is a new session
