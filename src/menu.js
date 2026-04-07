@@ -615,17 +615,8 @@ module.exports = function initMenu(ctx) {
   function buildContextMenu() {
     const template = [
       {
-        label: t("size"),
-        submenu: [
-          { label: t("small"), type: "radio", checked: ctx.currentSize === "S", click: () => resizeWindow("S") },
-          { label: t("medium"), type: "radio", checked: ctx.currentSize === "M", click: () => resizeWindow("M") },
-          { label: t("large"), type: "radio", checked: ctx.currentSize === "L", click: () => resizeWindow("L") },
-          { type: "separator" },
-          {
-            label: t("proportional"),
-            submenu: buildProportionalSubmenu(),
-          },
-        ],
+        label: t("proportional"),
+        submenu: buildProportionalSubmenu(),
       },
       {
         label: t("sendToDisplay"),
