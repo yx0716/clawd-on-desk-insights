@@ -12,6 +12,24 @@ const {
 const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
 const isWin = process.platform === "win32";
+const { execFile } = require("child_process");
+
+function captureFrontApp(cb) {
+  if (!isMac) { cb(null); return; }
+  execFile("osascript", ["-e",
+    'tell application "System Events" to get name of first application process whose frontmost is true'
+  ], { timeout: 500 }, (err, stdout) => {
+    cb(err ? null : stdout.trim());
+  });
+}
+
+function restoreFrontApp(appName) {
+  if (!isMac || !appName) return;
+  execFile("osascript", ["-e",
+    `tell application "${appName.replace(/"/g, '\\"')}" to activate`
+  ], { timeout: 1000 }, () => {});
+}
+
 const WIN_TOPMOST_LEVEL = "pop-up-menu";
 const LINUX_WINDOW_TYPE = "toolbar";
 
@@ -52,19 +70,21 @@ function syncPermissionShortcuts() {
   }
 }
 
-function hotkeyAllow() {
+function hotkeyResolve(behavior, message) {
   const targets = getActionablePermissions();
   if (!targets.length) return;
   const perm = targets[targets.length - 1]; // newest
-  resolvePermissionEntry(perm, "allow");
+  captureFrontApp((appName) => {
+    resolvePermissionEntry(perm, behavior, message);
+    setTimeout(() => {
+      if (appName) restoreFrontApp(appName);
+      else ctx.focusTerminalForSession(perm.sessionId);
+    }, 300);
+  });
 }
 
-function hotkeyDeny() {
-  const targets = getActionablePermissions();
-  if (!targets.length) return;
-  const perm = targets[targets.length - 1]; // newest
-  resolvePermissionEntry(perm, "deny", "Denied via hotkey");
-}
+function hotkeyAllow() { hotkeyResolve("allow"); }
+function hotkeyDeny()  { hotkeyResolve("deny", "Denied via hotkey"); }
 
 // Fallback height before renderer reports actual measurement
 function estimateBubbleHeight(sugCount) {
