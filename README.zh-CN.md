@@ -1,185 +1,188 @@
+<!-- <p align="center">
+  <img src="assets/tray-icon.png" width="128" alt="Clawd Insights">
+</p> -->
+<h1 align="center">clawd-on-desk-insights</h1>
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  在你和 Agent 的对话泡泡中,<br>
+  <strong>什么正在浮现？</strong>
 </p>
-<h1 align="center">Clawd 桌宠</h1>
 <p align="center">
   <a href="README.md">English</a>
 </p>
 
-一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。内置两套主题：**Clawd**（像素螃蟹）和 **Calico**（三花猫），支持自定义主题。
 
-> 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Kiro CLI**、**Cursor Agent** 与 **opencode**。
+**这是一个本地优先的 AI 会话分析面板。** 它将扫描你和 Claude Code、Codex CLI、Cursor 等 Agent 已经进行的对话,生成时间线和会话智能分析摘要——让你的 **Vibe Coding 之路清晰显现**。
 
-## 功能特性
+每一段对话都留下了**痕迹**,没有一段尝试和探索是徒劳无功——所有你尝试的想法、解决的 bug、和 Agent 讨论做出的决定,都将在 **Analytics Dashboard** 中一一显现。
 
-### 多 Agent 支持
-- **Claude Code** — 通过 command hook + HTTP 权限 hook 完整集成
-- **Codex CLI** — 自动轮询 JSONL 日志（`~/.codex/sessions/`），无需配置
-- **Copilot CLI** — 通过 `~/.copilot/hooks/hooks.json` 配置 command hook
-- **Gemini CLI** — 通过 `~/.gemini/settings.json` 配置 command hook（Clawd 启动时自动注册，或执行 `npm run install:gemini-hooks`）
-- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks)，配置在 `~/.cursor/hooks.json`（Clawd 启动时自动注册，或执行 `npm run install:cursor-hooks`）
-- **Kiro CLI** — command hooks 注入到 `~/.kiro/agents/` 下的自定义 agent 配置中，并自动创建一个 `clawd` agent；Clawd 每次启动时都会重新从内置 `kiro_default` 同步它，尽量保持与默认 agent 一致。macOS 上状态动效已验证可用；需要时可用 `kiro-cli --agent clawd` 或在会话内执行 `/agent swap clawd` 启用 hooks（Clawd 启动时自动注册，或执行 `npm run install:kiro-hooks`）
-- **opencode** — [plugin 集成](https://opencode.ai/docs/plugins)，写入 `~/.config/opencode/opencode.json`（Clawd 启动时自动注册）；零延迟事件流、Allow/Always/Deny 权限气泡、`task` 工具分派并行子代理时自动播放建筑动画
-- **多 Agent 共存** — 多个 Agent 可同时运行，Clawd 独立追踪每个会话
+数据全部留在本地。AI 分析通过你自己的本地 `claude` / `codex` CLI(或者你配置的 API / Ollama 后端)完成,你的对话不被第三方获取。
 
-### 动画与交互
-- **实时状态感知** — 通过 Agent hook 和日志轮询自动驱动动画
-- **12 种动画状态** — 待机、思考、打字、建造、杂耍、指挥、报错、开心、通知、扫地、搬运、睡觉
-- **眼球追踪** — 待机状态下 Clawd 跟随鼠标，身体微倾，影子拉伸
-- **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画
-- **点击反应** — 双击戳戳，连点 4 下东张西望
-- **任意状态拖拽** — 随时抓起 Clawd（Pointer Capture 防止快甩丢失），松手恢复当前动画
-- **极简模式** — 拖到右边缘或右键"极简模式"；Clawd 藏在屏幕边缘，悬停探头招手，通知/完成有迷你动画，抛物线跳跃过渡
+> 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。
 
-### 权限审批气泡
-- **桌面端权限审批** — Claude Code 请求工具权限时，Clawd 弹出浮动卡片，无需切回终端
-- **允许 / 拒绝 / 建议** — 一键批准、拒绝，或应用权限规则（如"始终允许 Read"）
-- **全局快捷键** — `Ctrl+Shift+Y` 允许、`Ctrl+Shift+N` 拒绝最新的权限气泡（仅在气泡可见时注册）
-- **堆叠布局** — 多个权限请求从屏幕右下角向上堆叠
-- **自动关闭** — 如果你先在终端回答了，气泡自动消失
+<p align="center">
+  <img src="assets/screenshot-timeline.png" width="800" alt="时间线面板">
+</p>
 
-### 会话智能
-- **多会话追踪** — 多个 Claude Code 会话自动解析到最高优先级状态
-- **子代理感知** — 1 个子代理杂耍，2 个以上指挥
-- **终端聚焦** — 右键 Clawd → 会话菜单，一键跳转到对应会话的终端窗口；通知/注意状态自动聚焦相关终端
-- **进程存活检测** — 检测已崩溃/退出的 Claude Code 进程，10 秒内清理孤儿会话
-- **启动恢复** — 如果 Clawd 在 Claude Code 运行期间重启，会保持清醒等待 hook，而不是直接睡觉
+<p align="center">
+  <img src="assets/screenshot-analysis.png" width="800" alt="AI 会话分析">
+</p>
 
-### 系统
-- **点击穿透** — 透明区域的点击直接穿透到下方窗口，只有角色本体可交互
-- **位置记忆** — 重启后 Clawd 回到上次的位置（包括极简模式）
-- **单实例锁** — 防止重复启动
-- **自动启动** — Claude Code 的 SessionStart hook 可在 Clawd 未运行时自动拉起
-- **免打扰模式** — 右键或托盘菜单进入休眠，所有 hook 事件静默，直到手动唤醒。免打扰期间不弹权限气泡——opencode 会回退到终端内置确认，Claude Code 则自动处理权限请求
-- **提示音效** — 任务完成和权限请求时播放短音效（右键菜单可开关；10 秒冷却，免打扰模式自动静音）
-- **系统托盘** — 调大小（S/M/L）、免打扰、语言切换、开机自启、检查更新
-- **国际化** — 支持英文和中文界面，右键菜单或托盘切换
-- **自动更新** — 检查 GitHub release；Windows 退出时安装 NSIS 更新包，macOS/Linux 源码运行时通过 `git pull` + 重启自动更新
+## 为什么需要它
 
-## 动画一览
+Vibe Coding 的一天 —— 你开了五个 session,改了三个项目,跟 Agent 讨论了两个方案,关掉终端。感觉很疲倦🥱,但又想不起来做了什么。又或者,你觉得和 AI 的聊天卓有成效,但重新看一遍历史记录复盘总结又显得过于繁重。
 
-<table>
-  <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待机</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>杂耍</sub></td>
-    <td align="center"><img src="assets/gif/clawd-conducting.gif" width="100"><br><sub>指挥</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/clawd-error.gif" width="100"><br><sub>报错</sub></td>
-    <td align="center"><img src="assets/gif/clawd-happy.gif" width="100"><br><sub>开心</sub></td>
-    <td align="center"><img src="assets/gif/clawd-notification.gif" width="100"><br><sub>通知</sub></td>
-    <td align="center"><img src="assets/gif/clawd-sweeping.gif" width="100"><br><sub>扫地</sub></td>
-    <td align="center"><img src="assets/gif/clawd-carrying.gif" width="100"><br><sub>搬运</sub></td>
-    <td align="center"><img src="assets/gif/clawd-sleeping.gif" width="100"><br><sub>睡觉</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待机</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花杂耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指挥</sub></td>
-  </tr>
-</table>
+这个项目将帮你丢下这些烦恼和负担🎒:你和 AI 的每次对话都以 JSONL 的形式留在了本地(`~/.claude/projects/`、`~/.codex/sessions/`、`~/.cursor/projects/`),只是平时没人会翻开看。洞察面板把这些原始日志变成可以刷的时间线和 AI 复盘摘要。
 
-完整事件映射表、极简模式、点击彩蛋见：**[docs/state-mapping.zh-CN.md](docs/state-mapping.zh-CN.md)**
+下次再想回顾"今天都干了什么"、"那个 session 里调通的写法"或者"上周那个库最后怎么处理的",交给桌面就好。
 
-## 快速开始
+## 洞察面板能做什么
+
+| 能力 | 说明 |
+|---|---|
+| **时间线视图** | 按日期 / 项目 / Agent / 时长可视化所有会话——一眼看清自己什么时候在忙什么、忙了多久 |
+| **本地历史扫描** | 直接读 `~/.claude/projects/`、`~/.codex/sessions/`、`~/.cursor/projects/`,不上传、无遥测 |
+| **AI 会话复盘** | 从**用户视角**总结每段对话:你想做什么、最后拿到了什么、关键话题、时间分配 |
+| **灵活分析后端** | 本地 `claude` CLI、本地 `codex` CLI,或回退到你配置的 API provider / Ollama——你的选择,你的 key |
+| **批量预分析** | 对最近会话批量预生成摘要,按 provider 隔离的缓存可复用 |
+| **成本追踪** | 显示每次 AI 分析的 token 用量与费用 |
+| **快捷入口** | 托盘菜单、右键桌宠或快捷键一键打开 |
+
+## 上手指南
+
+### 1. 安装并启动
 
 ```bash
-# 克隆仓库
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
-
-# 安装依赖
+git clone https://github.com/yx0716/clawd-on-desk-insights.git
+cd clawd-on-desk-insights
 npm install
-
-# 启动 Clawd（启动时会自动注册 Claude Code hooks；如需预先手动注册，可单独执行 `node hooks/install.js`）
 npm start
 ```
 
-**Claude Code** 和 **Codex CLI** 开箱即用。其他 Agent（Copilot、Kiro 等）需一次性配置。也涵盖远程 SSH、WSL 及平台说明（macOS / Linux）：**[docs/setup-guide.zh-CN.md](docs/setup-guide.zh-CN.md)**
+启动后桌面右下角会出现一只小螃蟹(默认主题),它就是 Clawd 桌宠。**洞察面板的入口都通过它**。
 
-## 已知限制
+### 2. 打开 Analytics Dashboard
 
-部分 Agent 存在功能差异（无权限气泡、轮询延迟、无法跳转终端等）。完整列表见：**[docs/known-limitations.zh-CN.md](docs/known-limitations.zh-CN.md)**
+有三种方式可以打开洞察面板,选你顺手的:
 
-## 自定义主题
+- **右键点击桌宠** → 在弹出菜单中选 **Analytics Dashboard**
+- **点击托盘图标**(macOS 顶部菜单栏 / Windows 系统托盘) → **Analytics Dashboard**
+- **快捷键**:macOS `⌘ + Shift + Option + A` / Windows · Linux `Ctrl + Shift + Alt + A`
 
-Clawd 支持自定义主题——用你自己的角色和动画替换默认的螃蟹。
+<p align="center">
+  <img src="assets/screenshot-dashboard-menu.gif" width="720" alt="右键菜单中的 Analytics Dashboard">
+</p>
 
-**快速开始：**
-1. 将 `themes/template/` 复制到主题目录：
-   - Windows: `%APPDATA%/clawd-on-desk/themes/my-theme/`
-   - macOS: `~/Library/Application Support/clawd-on-desk/themes/my-theme/`
-   - Linux: `~/.config/clawd-on-desk/themes/my-theme/`
-2. 编辑 `theme.json`，创建你的素材（SVG、GIF、APNG 或 WebP 格式）
-3. 右键 Clawd → 主题 → 选择你的主题
+第一次打开就能立刻看到时间线视图——它直接读你硬盘上已有的会话日志,**不需要任何配置**。
 
-**最小可用主题：** 1 个 SVG（带眼球追踪的 idle）+ 7 个 GIF/APNG 文件（thinking、working、error、happy、notification、sleeping、waking）。关闭眼球追踪后所有状态都可以用任意格式。
+### 3.配置一个 AI Provider,启用会话摘要
 
-校验主题：
-```bash
-node scripts/validate-theme.js path/to/your-theme
-```
+时间线本身是开箱即用的,但要让面板自动**生成每段会话的复盘摘要**,需要告诉它一个能调用大模型的入口， **AI Provider**(分析后端)。
 
-详见 [docs/guide-theme-creation.md](docs/guide-theme-creation.md)（主题创作完整指南，含入门/进阶/高级路径、theme.json 字段说明、素材规范）。
+**Provider 是什么?** 简单说,就是"谁来读你的对话日志、谁来写摘要"。你有三种选择:
 
-> 第三方 SVG 文件会被自动消毒，确保安全。
+| Provider 类型 | 是什么 | 怎么配置 | 适合谁 |
+|---|---|---|---|
+| **本地 CLI**(推荐) | 复用你已经装在电脑上的 `claude`(Claude Code)或 `codex` 命令行 | **不用配**,面板会自动检测 | 已经在用 Claude Code / Codex 订阅的人——使用订阅内的额度，无额外开销 |
+| **API Key** | Anthropic、OpenAI 等服务商的 API key,按 token 计费 | 在面板设置里粘贴 key | 没装本地 CLI、又愿意为分析付一点 token 费用 |
+| **Ollama** | 本地跑的开源模型服务(如 Ollama) | 在设置里填本地 endpoint | 想完全离线、不发送任何数据到云端 |
 
-### 未来计划
+> **💡 强烈推荐**:如果你电脑上已经装了 Claude Code 或 Codex CLI,**直接什么都不用配**——面板会自动找到它们,直接复用你已有的订阅额度。这是最省事也最便宜的方案。
 
-一些我们想探索的方向：
+<p align="center">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="选择并配置 AI Provider 的实际操作演示">
+</p>
 
-- Codex 终端聚焦（通过 `codex.exe` PID 反查进程树）
-- Copilot CLI hooks 自动注册（像 Claude Code 那样开箱即用）
-- 主题注册表 + 应用内下载
-- Hook 卸载脚本（干净移除应用）
+### 4. 在哪里配置 / 修改 Provider?
 
-## 参与贡献
+如果第 3 步你跳过了,或者后来想换个 provider,随时可以打开 **AI Provider Settings** 重新配置:
 
-Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 里聊或直接提交 PR。
+打开 Analytics Dashboard → 点右上角的 **齿轮图标 ⚙** → 弹出 **AI Provider Settings** 面板。
 
-### 贡献者
+<p align="center">
+  <img src="assets/screenshot-ai-provider-settings.gif" width="720" alt="AI Provider Settings 弹窗">
+</p>
 
-感谢每一位让 Clawd 变得更好的贡献者：
+这个面板有两块内容:
 
-<a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/crashchen"><img src="https://github.com/crashchen.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/hongbigtou"><img src="https://github.com/hongbigtou.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/InTimmyDate"><img src="https://github.com/InTimmyDate.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/NeizhiTouhu"><img src="https://github.com/NeizhiTouhu.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/xu3stones-cmd"><img src="https://github.com/xu3stones-cmd.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ye-0413"><img src="https://github.com/Ye-0413.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/WanfengzzZ"><img src="https://github.com/WanfengzzZ.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/androidZzT"><img src="https://github.com/androidZzT.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/TaoXieSZ"><img src="https://github.com/TaoXieSZ.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/ssly"><img src="https://github.com/ssly.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/stickycandy"><img src="https://github.com/stickycandy.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Rladmsrl"><img src="https://github.com/Rladmsrl.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Kevin7Qi"><img src="https://github.com/Kevin7Qi.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sefuzhou770801-hub"><img src="https://github.com/sefuzhou770801-hub.png" width="50" style="border-radius:50%" /></a>
+- **LOCAL CLI DETECTION**(本地 CLI 自动检测) — 显示面板有没有找到你本地的 `claude` 和 `codex`。绿点 = 找到了,显示版本号和路径;红点 = 没找到。**已经绿点的就什么都不用做**。
+- **API PROVIDER (FALLBACK)**(API 备选) — 如果本地 CLI 都没装,在这里选一个服务商(Claude / OpenAI / Ollama 等)、粘贴 API key 即可。
 
-## 致谢
+> **小提示**:如果你的 `claude` / `codex` 是通过 NVM、fnm、Volta 这类版本管理工具装的,自动检测可能找不到。这时候在终端执行 `which claude` 或 `which codex`,把输出的路径粘贴到上面的 **Claude binary path** / **Codex binary path** 输入框里就行。
 
-- Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- 本项目在 [LINUX DO](https://linux.do/) 社区推广
+### 5. 触发 AI 分析 
+
+Provider 配好之后,**怎么让面板真正去读你的对话、生成摘要?** 有两条路,任选其一(也可结合使用):
+
+#### 方法 A:批量预分析(开 Dashboard 时弹出)
+
+每次打开 Analytics Dashboard,如果检测到有未分析的会话,面板会**自动弹出一个对话框** —— `Pre-analyze Sessions`,让你一次性把一段时间内的会话全部分析掉。
+
+可选范围:
+
+- **Today** — 今天的所有会话
+- **3 Days** — 最近三天
+- **Week** — 最近一周
+- **Custom** — 自定义最近 N 条
+
+选好之后点确认,面板会显示 `Analyzing 1/N`、`2/N`...的进度条,在后台一条条跑分析。**已经分析过的会话会自动跳过**(按 provider 隔离的缓存),所以重复点击不会浪费 token。
+<p align="center">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="批量预分析与单条会话分析演示">
+</p>
+
+> **适合谁**:第一次打开面板的新用户、想做一次性月度复盘、批量回顾过去一段时间的工作。
+
+#### 方法 B:点单条会话(timeline / sessions 列表里点击)
+
+如果你**只想看某一个具体 session 的复盘**,不需要批量,可以直接点击:
+
+- **从时间线点** — 在 Timeline 视图里,点击任意一个时间块(色块代表一段会话),右侧会跳出该 session 的详情卡片
+- **从 sessions 列表点** — 右侧 Sessions 列表里,点击任意一张会话卡片
+
+无论从哪里点,面板都会:
+
+1. 优先显示**已缓存的摘要**(如果之前批量预分析过,会标 `Analyzed`,直接秒开)
+2. 如果还没分析过,**点击会立即触发单条分析**,卡片显示 `Analyzing…` 标签,几秒到几十秒后出结果
+
+<p align="center">
+  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="批量预分析与单条会话分析演示">
+</p>
+
+
+> **适合谁**:已经知道自己想看哪段会话的、临时想起来的查阅、平时按需"刷"历史。
+
+#### 两种姿势怎么搭配?
+
+- **第一次用** → 建议先跑一次 **方法 A 的 Week**, 选择特定数目/周期的对话进行分析(几分钟,消耗token较多，但之后可以随时秒开记录)
+- **日常用** → 跑完一次 多条绘画分析后，日常采用 **方法 B 选择特定对话进行分析** 
+- **token 敏感** → 用 **方法 B 按需触发**,只分析你真的想看的那几条,不浪费一分钱
+
+> **关于成本**:本地 CLI(Claude Code / Codex 订阅)分析**走你已有的订阅额度**,通常几乎不需要额外付费。API key 模式下,面板会在每条分析完成后**显示 token 用量和费用**(顶部状态栏),让你心里有数。
+
+## 常见问题
+
+**Q:面板需要联网吗?**
+扫描和时间线**完全离线**。AI 摘要要不要联网取决于你选的 provider:本地 CLI 用 Claude Code / Codex 时会走它们各自的网络栈;Ollama 完全离线;API key 模式才会走云端。
+
+**Q:我的对话内容会被上传吗?**
+不会。Clawd Insights 不收集任何遥测数据。Provider 这一步是"你的 CLI / 你的 API key 直接调你选的模型",中间没有第三方服务器。
+
+**Q:我没有 Claude Code 也没有 Codex,能用吗?**
+可以。你可以只用时间线视图(完全免费、不需要任何 LLM),或者在 AI Provider Settings 里填一个 Anthropic / OpenAI API key 走云端模式。
+
+## 关于 Fork 仓的说明
+
+本仓库 fork 自 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk)——一个会实时感知你的 coding agent 状态的桌宠。桌宠还在(动画、权限气泡、多 Agent 状态追踪),但**这个 fork 的重心是上层的洞察分析**。
+
+从上游继承的多 Agent 支持:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。需要注意的是,目前分析面板的扫描器只覆盖 Claude Code、Codex CLI 和 Cursor Agent——其他 agent 仍能驱动桌宠动画,但本地历史尚未接入分析面板。
+
+桌宠本体的完整功能(动画、权限气泡、极简模式、点击反应、自定义主题、远程 SSH 等)详见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
 
 ## 许可证
 
-源代码基于 [MIT 许可证](LICENSE) 开源。
+源代码:[MIT 许可证](LICENSE)。
 
-**美术素材（assets/）不适用 MIT 许可。** 所有权利归各自版权持有人所有，详见 [assets/LICENSE](assets/LICENSE)。
+**美术素材(assets/)不适用 MIT 许可。** 所有权利归各自版权持有人所有,详见 [assets/LICENSE](assets/LICENSE)。
 
-- **Clawd** 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。
-- **三花猫** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作，保留所有权利。
-- **第三方画师作品**：版权归各自作者所有。
+- **Clawd** 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品,与 Anthropic 无官方关联。
+- **三花猫** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作,保留所有权利。
+- **第三方画师作品**:版权归各自作者所有。
