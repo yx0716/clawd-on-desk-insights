@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("analyticsAPI", {
   getAIConfig: () => ipcRenderer.invoke("analytics-get-ai-config"),
   saveAIConfig: (config) => ipcRenderer.invoke("analytics-save-ai-config", config),
   clearAIConfig: () => ipcRenderer.invoke("analytics-clear-ai-config"),
+  getCliDiagnostics: () => ipcRenderer.invoke("analytics-cli-diagnostics"),
+  testCliPath: (path) => ipcRenderer.invoke("analytics-test-cli-path", path),
   getProviders: () => ipcRenderer.invoke("analytics-get-providers"),
   getConversations: (range) => ipcRenderer.invoke("analytics-get-conversations", range),
   getTimeline: (range) => ipcRenderer.invoke("analytics-get-timeline", range),

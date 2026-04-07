@@ -99,6 +99,21 @@ module.exports = function initAnalytics(ctx) {
     return { ok: true };
   });
 
+  // Settings UI: report which CLIs were detected and what was searched, so
+  // users can debug "Codex doesn't show up in the provider list" without
+  // reading source code.
+  ipcMain.handle("analytics-cli-diagnostics", async () => {
+    if (!ctx.analyticsAI || !ctx.analyticsAI.getCliDiagnostics) return null;
+    return ctx.analyticsAI.getCliDiagnostics();
+  });
+
+  // Settings UI: validate a user-supplied custom CLI path. Returns
+  // { ok, version, error } so the form can show inline feedback before save.
+  ipcMain.handle("analytics-test-cli-path", async (_event, rawPath) => {
+    if (!ctx.analyticsAI || !ctx.analyticsAI.testCliPath) return { ok: false, error: "unsupported" };
+    return ctx.analyticsAI.testCliPath(rawPath);
+  });
+
   ipcMain.handle("analytics-get-providers", async () => {
     return ctx.analyticsAI.PROVIDERS;
   });

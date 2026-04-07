@@ -37,6 +37,12 @@ module.exports = function initAnalyticsAI(ctx) {
   const isWin = process.platform === "win32";
   let cachedInsights = null;
   let cacheExpiry = 0;
+  // Hoisted CLI lookup caches — keep at the top of the closure so
+  // invalidateCliCaches() (called from setConfig) never trips a TDZ if a
+  // hot-reload happens to invoke setConfig before the original `let` lines
+  // further down in the file are executed.
+  let cachedClaudePath = undefined; // undefined = not searched, null = not found
+  let cachedCodexPath = undefined;
   const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
   const PROVIDER_COOLDOWN_MS = 5 * 60 * 1000;
   const providerCooldowns = new Map();
@@ -52,6 +58,16 @@ module.exports = function initAnalyticsAI(ctx) {
     if (ctx.setAIConfig) ctx.setAIConfig(config);
     cachedInsights = null;
     cacheExpiry = 0;
+    // The custom CLI paths live in config — invalidating the binary lookup
+    // cache here is what makes "Settings → Save → providers refresh" work
+    // without an app restart. Without this, findClaudeBinary/findCodexBinary
+    // would keep returning whatever they cached on first call.
+    invalidateCliCaches();
+    // Also drop any cooldown for CLIs the user is trying to fix — otherwise
+    // a previously-failing CLI is still locked out for ~5 min after the user
+    // points it at a working binary.
+    providerCooldowns.clear();
+    loggedProviderCooldowns.clear();
   }
 
   // Legacy compat
@@ -265,6 +281,7 @@ module.exports = function initAnalyticsAI(ctx) {
     const dirs = [
       path.join(home, ".npm-global", "bin"),
       path.join(home, ".local", "bin"),
+      path.join(home, "bin"),
     ];
     if (isWin) {
       const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
@@ -272,6 +289,36 @@ module.exports = function initAnalyticsAI(ctx) {
     } else {
       dirs.unshift("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin");
     }
+    // Node version managers — Codex (and other npm-installed CLIs) end up
+    // here when the user manages Node via NVM / Volta / fnm / asdf instead
+    // of system Node. Without these, `findInLoginShell` is the only fallback
+    // and it routinely fails because most NVM users put `nvm.sh` in
+    // `~/.zshrc` (interactive) while we spawn `-l` (login) shells.
+    try {
+      const nvmDir = process.env.NVM_DIR || path.join(home, ".nvm");
+      const nvmNodes = path.join(nvmDir, "versions", "node");
+      const versions = fs.readdirSync(nvmNodes).sort().reverse();
+      for (const v of versions) dirs.push(path.join(nvmNodes, v, "bin"));
+    } catch { /* no nvm */ }
+    try {
+      const fnmRoot = process.env.FNM_DIR || path.join(home, ".fnm", "node-versions");
+      const versions = fs.readdirSync(fnmRoot).sort().reverse();
+      for (const v of versions) dirs.push(path.join(fnmRoot, v, "installation", "bin"));
+    } catch { /* no fnm */ }
+    try {
+      const voltaHome = process.env.VOLTA_HOME || path.join(home, ".volta");
+      dirs.push(path.join(voltaHome, "bin"));
+    } catch { /* no volta */ }
+    try {
+      const asdfData = process.env.ASDF_DATA_DIR || path.join(home, ".asdf");
+      dirs.push(path.join(asdfData, "shims"));
+    } catch { /* no asdf */ }
+    // pnpm / Yarn / Bun globals — covers users who installed Codex via
+    // alternative package managers
+    try { dirs.push(path.join(home, ".bun", "bin")); } catch {}
+    try { dirs.push(path.join(home, ".yarn", "bin")); } catch {}
+    if (process.env.PNPM_HOME) dirs.push(process.env.PNPM_HOME);
+    try { dirs.push(path.join(home, "Library", "pnpm")); } catch {} // pnpm default on macOS
     return uniqueExistingPaths(dirs);
   }
 
@@ -391,17 +438,29 @@ module.exports = function initAnalyticsAI(ctx) {
 
   function findInLoginShell(commandName) {
     if (isWin) return null;
-    try {
-      const shell = process.env.SHELL || "/bin/sh";
-      const result = execFileSync(shell, ["-l", "-c", `command -v ${commandName}`], {
-        encoding: "utf8",
-        timeout: 5000,
-        env: buildCliEnv(),
-      });
-      const lines = parseLocatorOutput(result).filter(line => line.startsWith("/"));
-      const hit = lines[lines.length - 1];
-      if (hit && fs.existsSync(hit)) return hit;
-    } catch { /* login shell lookup failed */ }
+    const shell = process.env.SHELL || "/bin/sh";
+    // Try login + interactive in turn. Most NVM/Volta/fnm users init their
+    // version manager from `~/.zshrc` (interactive), so a pure `-l` (login)
+    // invocation misses Codex even though `which codex` works in the user's
+    // own terminal. We try the most aggressive combo first, then fall back.
+    const attempts = [
+      ["-l", "-i", "-c", `command -v ${commandName} 2>/dev/null`],
+      ["-i", "-c", `command -v ${commandName} 2>/dev/null`],
+      ["-l", "-c", `command -v ${commandName} 2>/dev/null`],
+    ];
+    for (const args of attempts) {
+      try {
+        const result = execFileSync(shell, args, {
+          encoding: "utf8",
+          timeout: 5000,
+          env: buildCliEnv(),
+          stdio: ["ignore", "pipe", "ignore"], // suppress shell rc noise
+        });
+        const lines = parseLocatorOutput(result).filter(line => line.startsWith("/"));
+        const hit = lines[lines.length - 1];
+        if (hit && fs.existsSync(hit)) return hit;
+      } catch { /* try next combo */ }
+    }
     return null;
   }
 
@@ -478,10 +537,33 @@ module.exports = function initAnalyticsAI(ctx) {
   }
 
   // ── Local Claude CLI detection ──
+  // (cachedClaudePath is hoisted to the top of the closure — see comment there)
 
-  let cachedClaudePath = undefined; // undefined = not searched, null = not found
+  // Read user-supplied override (set via Settings UI). Returns the path if it
+  // exists on disk, otherwise null. Bypasses every search heuristic so users
+  // with exotic install layouts (NVM in non-standard dir, custom prefix, etc.)
+  // have a guaranteed escape hatch.
+  function getCustomCliPath(key) {
+    const cfg = getConfig();
+    if (!cfg || !cfg.customCliPaths) return null;
+    const candidate = cfg.customCliPaths[key];
+    if (typeof candidate !== "string" || !candidate.trim()) return null;
+    const expanded = candidate.trim().replace(/^~(?=\/)/, os.homedir());
+    try { if (fs.existsSync(expanded)) return expanded; } catch {}
+    return null;
+  }
+
+  // Invalidate cached binary lookups when the user changes their custom path
+  // (or any other config) — without this, switching from "wrong path" to
+  // "right path" would still report the old result until app restart.
+  function invalidateCliCaches() {
+    cachedClaudePath = undefined;
+    cachedCodexPath = undefined;
+  }
 
   function findClaudeBinary() {
+    const custom = getCustomCliPath("claude");
+    if (custom) return custom;
     if (cachedClaudePath !== undefined) return cachedClaudePath;
     const extraCandidates = [];
 
@@ -517,12 +599,68 @@ module.exports = function initAnalyticsAI(ctx) {
   }
 
   // ── Codex CLI detection ──
+  // (cachedCodexPath is hoisted to the top of the closure — see comment there)
 
-  let cachedCodexPath = undefined;
+  // Many users install Codex via the OpenAI desktop app (Codex.app) or the
+  // OpenAI ChatGPT plugin for Cursor/VS Code instead of `npm i -g @openai/codex`.
+  // Both bundle a fully working `codex-cli` binary that we can call directly,
+  // but `which codex` returns nothing because nothing is on PATH. Enumerate
+  // the known bundle locations so auto-detection covers these cases without
+  // requiring the user to set a manual override.
+  function getBundledCodexCandidates() {
+    const home = os.homedir();
+    const out = [];
+    const exe = isWin ? "codex.exe" : "codex";
+
+    // Mac app bundle (system + user-local Applications). Codex.app drops a
+    // standalone Mach-O at Contents/Resources/codex; the .app shell is just
+    // the launcher GUI. Verified on Codex.app 0.118.0-alpha.2 (Mar 2026).
+    if (process.platform === "darwin") {
+      out.push(`/Applications/Codex.app/Contents/Resources/codex`);
+      out.push(path.join(home, "Applications", "Codex.app", "Contents", "Resources", "codex"));
+    }
+
+    // Cursor / VS Code "OpenAI ChatGPT" extension (publisher: openai.chatgpt).
+    // The extension ships per-platform binaries under `bin/<platform>-<arch>/codex`.
+    // Folder name encodes the version + platform: openai.chatgpt-26.325.31654-darwin-arm64
+    // We glob the parent extensions dir, then dive into bin/* to find the binary.
+    const extRoots = [
+      path.join(home, ".cursor", "extensions"),
+      path.join(home, ".vscode", "extensions"),
+      path.join(home, ".vscode-insiders", "extensions"),
+      path.join(home, ".windsurf", "extensions"), // Codeium fork
+    ];
+    for (const extRoot of extRoots) {
+      try {
+        const entries = fs.readdirSync(extRoot);
+        for (const entry of entries) {
+          // Match the OpenAI publisher prefix — covers `openai.chatgpt-*`
+          // and any future Codex-branded extension under the same publisher.
+          if (!/^openai\./i.test(entry) && !/codex/i.test(entry)) continue;
+          const binDir = path.join(extRoot, entry, "bin");
+          try {
+            const archDirs = fs.readdirSync(binDir);
+            for (const archDir of archDirs) {
+              out.push(path.join(binDir, archDir, exe));
+            }
+          } catch { /* no bin dir */ }
+        }
+      } catch { /* no extensions dir */ }
+    }
+
+    return out;
+  }
 
   function findCodexBinary() {
+    const custom = getCustomCliPath("codex");
+    if (custom) return custom;
     if (cachedCodexPath !== undefined) return cachedCodexPath;
-    cachedCodexPath = findCommandBinary("codex", ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"]);
+    const extras = [
+      "/opt/homebrew/bin/codex",
+      "/usr/local/bin/codex",
+      ...getBundledCodexCandidates(),
+    ];
+    cachedCodexPath = findCommandBinary("codex", extras);
     return cachedCodexPath;
   }
 
@@ -907,6 +1045,64 @@ module.exports = function initAnalyticsAI(ctx) {
       if (m) return m[1];
     } catch { /* ignore */ }
     return null;
+  }
+
+  // Diagnostic helper for the Settings UI: report which CLIs were detected,
+  // where they were found, and what search paths were tried for the missing
+  // ones. Lets the user see "ah Codex isn't in any of these dirs, I'll point
+  // it manually at /Users/me/.fnm/.../bin/codex".
+  function getCliDiagnostics() {
+    const out = {
+      claude: null,
+      codex: null,
+      searchDirs: [],
+      bundleCandidates: [],
+      shell: process.env.SHELL || null,
+    };
+    try { out.searchDirs = getCommonCliSearchDirs(); } catch {}
+    // Surface the Codex.app + Cursor/VS Code extension candidates so users
+    // can verify Clawd checked the right place. We show all candidates (even
+    // non-existent ones) so users on a fresh machine can see the search
+    // surface area instead of an empty list.
+    try { out.bundleCandidates = getBundledCodexCandidates(); } catch {}
+
+    const claudePath = findClaudeBinary();
+    out.claude = {
+      found: !!claudePath,
+      path: claudePath || null,
+      version: claudePath ? getCliVersion(claudePath) : null,
+      custom: !!getCustomCliPath("claude"),
+      cooldown: getProviderCooldown("claude-code"),
+    };
+
+    const codexPath = findCodexBinary();
+    out.codex = {
+      found: !!codexPath,
+      path: codexPath || null,
+      version: codexPath ? getCliVersion(codexPath) : null,
+      custom: !!getCustomCliPath("codex"),
+      cooldown: getProviderCooldown("codex"),
+    };
+
+    return out;
+  }
+
+  // Test whether a user-supplied path is a valid CLI binary. Used by the
+  // Settings UI's "Test" button so users can verify their custom path before
+  // saving. Returns { ok, version, error }.
+  function testCliPath(rawPath) {
+    if (!rawPath || typeof rawPath !== "string") {
+      return { ok: false, error: "empty path" };
+    }
+    const expanded = rawPath.trim().replace(/^~(?=\/)/, os.homedir());
+    try {
+      if (!fs.existsSync(expanded)) return { ok: false, error: "file not found: " + expanded };
+      const version = getCliVersion(expanded);
+      if (!version) return { ok: false, error: "binary did not respond to --version" };
+      return { ok: true, version, path: expanded };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
   }
 
   function getAvailableAnalysisProviders() {
@@ -1380,5 +1576,5 @@ module.exports = function initAnalyticsAI(ctx) {
     return null;
   }
 
-  return { getInsights, getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner };
+  return { getInsights, getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath };
 };

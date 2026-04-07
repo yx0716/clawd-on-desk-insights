@@ -205,6 +205,32 @@ body * { -webkit-app-region:no-drag; }
 .analysis-error-link { color:var(--accent); text-decoration:underline; cursor:pointer; font-weight:600; }
 .analysis-error-link:hover { color:var(--accent-dark); }
 
+/* Settings dialog — section dividers + CLI diagnostics */
+.settings-section { margin-top:18px; padding-top:14px; border-top:1px solid var(--border-light); }
+.settings-section:first-of-type { margin-top:0; padding-top:0; border-top:none; }
+.settings-section h3 { font-size:12px; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+.cli-diag { background:var(--bg); border:1px solid var(--border-light); border-radius:6px; padding:8px 10px; margin-bottom:10px; font-size:11px; }
+.cli-diag-row { display:flex; align-items:center; gap:8px; padding:3px 0; }
+.cli-diag-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.cli-diag-dot.found { background:#48BB78; }
+.cli-diag-dot.missing { background:#CBD5E0; }
+.cli-diag-name { font-weight:700; min-width:78px; }
+.cli-diag-path { color:var(--text-secondary); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.cli-diag-version { color:var(--accent); font-size:10px; font-weight:600; }
+.cli-diag-tag { font-size:9px; padding:1px 6px; border-radius:8px; background:var(--accent-light); color:var(--accent); font-weight:600; }
+.cli-diag-help { font-size:10px; color:var(--text-muted); margin-top:6px; line-height:1.4; }
+.cli-diag-help summary { cursor:pointer; color:var(--text-secondary); font-weight:600; }
+.cli-diag-help summary:hover { color:var(--accent); }
+.cli-diag-paths { margin-top:4px; padding:4px 8px; background:var(--bg-card); border-radius:4px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; color:var(--text-muted); max-height:80px; overflow-y:auto; }
+.cli-diag-paths div { padding:1px 0; }
+.cli-path-row { display:flex; gap:6px; align-items:center; }
+.cli-path-row input { flex:1; }
+.cli-path-row button { padding:6px 12px; font-size:11px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); cursor:pointer; font-weight:600; flex-shrink:0; }
+.cli-path-row button:hover { background:var(--accent-light); color:var(--accent); border-color:var(--accent); }
+.cli-test-result { font-size:10px; margin-top:3px; }
+.cli-test-result.ok { color:#2E7D32; }
+.cli-test-result.fail { color:#C62828; }
+
 .evt-day-header { font-size:13px; font-weight:700; color:var(--text); margin:12px 0 6px; display:flex; align-items:center; gap:8px; }
 .evt-day-header:first-child { margin-top:0; }
 .evt-day-count { font-size:10px; font-weight:500; color:var(--text-muted); }
@@ -300,31 +326,62 @@ body * { -webkit-app-region:no-drag; }
 <div class="confirm-overlay" id="settingsOverlay" style="display:none">
   <div class="settings-dialog">
     <h2>AI Provider Settings</h2>
-    <div class="settings-sub">Configure an API key as a fallback when no local CLI (Claude Code / Codex) is available, or to override the default analyzer.</div>
+    <div class="settings-sub">Local CLI (Claude Code / Codex) is preferred when available. Configure an API key below as a fallback, or point Clawd at a custom CLI install.</div>
     <div class="settings-status" id="settingsStatus"></div>
-    <div class="settings-field">
-      <label for="settingsProvider">Provider</label>
-      <select id="settingsProvider">
-        <option value="claude">Claude (Anthropic)</option>
-        <option value="openai">OpenAI-Compatible (Qwen, DeepSeek, OpenRouter, etc.)</option>
-        <option value="ollama">Ollama (Local)</option>
-      </select>
+
+    <!-- Section 1: Local CLI Detection -->
+    <div class="settings-section">
+      <h3>Local CLI Detection</h3>
+      <div class="cli-diag" id="cliDiag">
+        <div style="color:var(--text-muted);text-align:center;padding:6px 0">Loading…</div>
+      </div>
+      <div class="settings-field">
+        <label for="settingsClaudePath">Claude binary path <span style="color:var(--text-muted);font-weight:400">(optional override)</span></label>
+        <div class="cli-path-row">
+          <input id="settingsClaudePath" type="text" autocomplete="off" spellcheck="false" placeholder="/path/to/claude">
+          <button type="button" data-test-cli="claude">Test</button>
+        </div>
+        <div class="cli-test-result" id="claudeTestResult"></div>
+      </div>
+      <div class="settings-field">
+        <label for="settingsCodexPath">Codex binary path <span style="color:var(--text-muted);font-weight:400">(optional override)</span></label>
+        <div class="cli-path-row">
+          <input id="settingsCodexPath" type="text" autocomplete="off" spellcheck="false" placeholder="/path/to/codex">
+          <button type="button" data-test-cli="codex">Test</button>
+        </div>
+        <div class="cli-test-result" id="codexTestResult"></div>
+        <div class="field-hint">If auto-detection fails (e.g. NVM/fnm/Volta install), run <code>which codex</code> in your terminal and paste the path here.</div>
+      </div>
     </div>
-    <div class="settings-field" id="settingsApiKeyField">
-      <label for="settingsApiKey">API Key</label>
-      <input id="settingsApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
-      <div class="field-hint" id="settingsApiKeyHint">Stored locally in your prefs file. Leave blank to keep the existing key.</div>
+
+    <!-- Section 2: API Provider (fallback) -->
+    <div class="settings-section">
+      <h3>API Provider (Fallback)</h3>
+      <div class="settings-field">
+        <label for="settingsProvider">Provider</label>
+        <select id="settingsProvider">
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="openai">OpenAI-Compatible (Qwen, DeepSeek, OpenRouter, etc.)</option>
+          <option value="ollama">Ollama (Local)</option>
+        </select>
+      </div>
+      <div class="settings-field" id="settingsApiKeyField">
+        <label for="settingsApiKey">API Key</label>
+        <input id="settingsApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+        <div class="field-hint" id="settingsApiKeyHint">Stored locally in your prefs file. Leave blank to keep the existing key.</div>
+      </div>
+      <div class="settings-field">
+        <label for="settingsBaseUrl">Endpoint <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <input id="settingsBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="">
+        <div class="field-hint" id="settingsBaseUrlHint"></div>
+      </div>
+      <div class="settings-field">
+        <label for="settingsModel">Model <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <input id="settingsModel" type="text" autocomplete="off" spellcheck="false" placeholder="">
+        <div class="field-hint" id="settingsModelHint"></div>
+      </div>
     </div>
-    <div class="settings-field">
-      <label for="settingsBaseUrl">Endpoint <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
-      <input id="settingsBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="">
-      <div class="field-hint" id="settingsBaseUrlHint"></div>
-    </div>
-    <div class="settings-field">
-      <label for="settingsModel">Model <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
-      <input id="settingsModel" type="text" autocomplete="off" spellcheck="false" placeholder="">
-      <div class="field-hint" id="settingsModelHint"></div>
-    </div>
+
     <div class="settings-btns">
       <button class="btn-clear" id="settingsClearBtn" type="button">Clear</button>
       <button class="btn-cancel" id="settingsCancelBtn" type="button">Cancel</button>
@@ -1023,6 +1080,14 @@ async function openSettings() {
   applyProviderDefaults(provider);
   document.getElementById("settingsBaseUrl").value = (cfg && cfg.baseUrl) || "";
   document.getElementById("settingsModel").value = (cfg && cfg.model) || "";
+  // Custom CLI path overrides
+  const customCli = (cfg && cfg.customCliPaths) || {};
+  document.getElementById("settingsClaudePath").value = customCli.claude || "";
+  document.getElementById("settingsCodexPath").value = customCli.codex || "";
+  document.getElementById("claudeTestResult").textContent = "";
+  document.getElementById("claudeTestResult").className = "cli-test-result";
+  document.getElementById("codexTestResult").textContent = "";
+  document.getElementById("codexTestResult").className = "cli-test-result";
   // The main process masks the key before sending it to us, so the input
   // is always blank — show the masked hint inline so the user knows a key
   // is already saved and they can leave the field empty to keep it.
@@ -1034,11 +1099,98 @@ async function openSettings() {
     apiKeyEl.placeholder = "sk-...";
   }
   document.getElementById("settingsOverlay").style.display = "flex";
+  // Kick off the diagnostic load (non-blocking — UI shows "Loading…" until done)
+  loadCliDiagnostics();
   // Focus the first empty / actionable field for keyboard users
   setTimeout(() => {
     if (cfg && cfg.apiKeyMasked) document.getElementById("settingsProvider").focus();
     else apiKeyEl.focus();
   }, 0);
+}
+
+async function loadCliDiagnostics() {
+  const el = document.getElementById("cliDiag");
+  if (!el) return;
+  let diag = null;
+  try { diag = await window.analyticsAPI.getCliDiagnostics(); } catch (e) { console.warn("getCliDiagnostics failed", e); }
+  if (!diag) {
+    el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:6px 0">Diagnostics unavailable</div>';
+    return;
+  }
+  renderCliDiagnostics(diag);
+}
+
+function renderCliDiagnostics(diag) {
+  const el = document.getElementById("cliDiag");
+  if (!el) return;
+  const rows = [];
+  for (const key of ["claude", "codex"]) {
+    const info = diag[key] || {};
+    const dotClass = info.found ? "found" : "missing";
+    const label = key === "claude" ? "Claude Code" : "Codex";
+    const pathHtml = info.found
+      ? `<span class="cli-diag-path" title="${escapeHtml(info.path||"")}">${escapeHtml(info.path||"")}</span>`
+      : `<span class="cli-diag-path" style="color:#C62828">not detected</span>`;
+    const versionHtml = info.version ? `<span class="cli-diag-version">v${escapeHtml(info.version)}</span>` : "";
+    const customTag = info.custom ? `<span class="cli-diag-tag">custom</span>` : "";
+    const cooldownTag = info.cooldown ? `<span class="cli-diag-tag" style="background:#FDECEA;color:#C62828">cooldown</span>` : "";
+    rows.push(
+      `<div class="cli-diag-row">`
+      + `<span class="cli-diag-dot ${dotClass}"></span>`
+      + `<span class="cli-diag-name">${label}</span>`
+      + pathHtml
+      + versionHtml
+      + customTag
+      + cooldownTag
+      + `</div>`
+    );
+  }
+  // Searched-paths reveal — useful when a CLI is missing so the user knows
+  // which dirs Clawd actually looked in before deciding to set a custom path.
+  const dirsHtml = (diag.searchDirs && diag.searchDirs.length)
+    ? `<details class="cli-diag-help"><summary>Searched ${diag.searchDirs.length} directories</summary>`
+      + `<div class="cli-diag-paths">` + diag.searchDirs.map(d => `<div>${escapeHtml(d)}</div>`).join("") + `</div>`
+      + (diag.shell ? `<div style="margin-top:4px">Login shell: <code>${escapeHtml(diag.shell)}</code></div>` : "")
+      + `</details>`
+    : "";
+  // Codex bundle candidates: Codex.app + Cursor/VS Code OpenAI extension.
+  // These are checked even when `which codex` returns nothing — surface them
+  // so users with only the Mac app or IDE plugin can see Clawd looked there.
+  const bundlesHtml = (diag.bundleCandidates && diag.bundleCandidates.length)
+    ? `<details class="cli-diag-help"><summary>Codex bundle locations checked (${diag.bundleCandidates.length})</summary>`
+      + `<div class="cli-diag-paths">` + diag.bundleCandidates.map(d => `<div>${escapeHtml(d)}</div>`).join("") + `</div>`
+      + `<div style="margin-top:4px;color:var(--text-muted)">Includes Codex.app and Cursor/VS Code OpenAI ChatGPT extensions.</div>`
+      + `</details>`
+    : "";
+  el.innerHTML = rows.join("") + dirsHtml + bundlesHtml;
+}
+
+async function testCustomCliPath(key) {
+  const inputId = key === "claude" ? "settingsClaudePath" : "settingsCodexPath";
+  const resultId = key === "claude" ? "claudeTestResult" : "codexTestResult";
+  const inp = document.getElementById(inputId);
+  const out = document.getElementById(resultId);
+  const raw = inp.value.trim();
+  if (!raw) {
+    out.className = "cli-test-result fail";
+    out.textContent = "Path is empty";
+    return;
+  }
+  out.className = "cli-test-result";
+  out.textContent = "Testing…";
+  try {
+    const r = await window.analyticsAPI.testCliPath(raw);
+    if (r && r.ok) {
+      out.className = "cli-test-result ok";
+      out.textContent = `OK — v${r.version}`;
+    } else {
+      out.className = "cli-test-result fail";
+      out.textContent = (r && r.error) || "Test failed";
+    }
+  } catch (e) {
+    out.className = "cli-test-result fail";
+    out.textContent = "Test failed: " + (e.message || e);
+  }
 }
 
 function closeSettings() {
@@ -1073,12 +1225,25 @@ async function saveSettings() {
   if (baseUrl) payload.baseUrl = baseUrl;
   if (model) payload.model = model;
 
+  // Custom CLI overrides — only include the field when at least one path
+  // is set so we don't wipe a previously-saved override by accident.
+  // Always send the object (even if individual fields are empty) so the
+  // user can clear an override by blanking the input and saving.
+  const claudePath = document.getElementById("settingsClaudePath").value.trim();
+  const codexPath = document.getElementById("settingsCodexPath").value.trim();
+  payload.customCliPaths = {};
+  if (claudePath) payload.customCliPaths.claude = claudePath;
+  if (codexPath) payload.customCliPaths.codex = codexPath;
+
   try {
     await window.analyticsAPI.saveAIConfig(payload);
     setSettingsStatus("Saved", "success");
     // Refresh the analysis option list so the API provider shows up in
     // pickers (batch dialog, error-recovery flow, etc.) without reloading.
     await refreshAnalysisOptions();
+    // Re-render the diagnostic block so the user can confirm the custom
+    // path is now picked up before the modal auto-closes.
+    loadCliDiagnostics();
     setTimeout(closeSettings, 600);
   } catch (e) {
     setSettingsStatus("Save failed: " + (e.message || e), "error");
@@ -1086,7 +1251,7 @@ async function saveSettings() {
 }
 
 async function clearSettings() {
-  if (!confirm("Clear the saved API key and provider config?")) return;
+  if (!confirm("Clear the saved API key, provider config, and custom CLI paths?")) return;
   try {
     await window.analyticsAPI.clearAIConfig();
     setSettingsStatus("Cleared", "success");
@@ -1094,6 +1259,14 @@ async function clearSettings() {
     document.getElementById("settingsApiKey").placeholder = "sk-...";
     document.getElementById("settingsBaseUrl").value = "";
     document.getElementById("settingsModel").value = "";
+    document.getElementById("settingsClaudePath").value = "";
+    document.getElementById("settingsCodexPath").value = "";
+    document.getElementById("claudeTestResult").textContent = "";
+    document.getElementById("claudeTestResult").className = "cli-test-result";
+    document.getElementById("codexTestResult").textContent = "";
+    document.getElementById("codexTestResult").className = "cli-test-result";
+    // Re-run diagnostics since clearing the override changes detection
+    loadCliDiagnostics();
     await refreshAnalysisOptions();
     setTimeout(closeSettings, 600);
   } catch (e) {
@@ -1120,6 +1293,15 @@ document.getElementById("settingsSaveBtn").addEventListener("click", saveSetting
 document.getElementById("settingsClearBtn").addEventListener("click", clearSettings);
 document.getElementById("settingsProvider").addEventListener("change", function() {
   applyProviderDefaults(this.value, { clearKey: true });
+});
+// Wire the Test buttons inside the Local CLI Detection section. Using a
+// data-attribute lookup keeps the HTML declarative — adding a third CLI in
+// the future just needs a new <button data-test-cli="foo"> with a matching
+// input/result element pair.
+document.querySelectorAll("[data-test-cli]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    testCustomCliPath(btn.getAttribute("data-test-cli"));
+  });
 });
 // Click backdrop to close
 document.getElementById("settingsOverlay").addEventListener("click", function(e) {
