@@ -95,7 +95,32 @@ let win;
 let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let tray = null;
 let contextMenuOwner = null;
-let currentSize = "S";
+let currentSize = "S";   // "S" | "M" | "L" | "P:<ratio>" (e.g. "P:10", "P:7.5")
+
+// ── Proportional size mode ──
+// currentSize = "P:<ratio>" means the pet occupies <ratio>% of the work area width.
+const PROPORTIONAL_RATIOS = [8, 10, 12, 15];
+
+function isProportionalMode(size) {
+  return typeof (size || currentSize) === "string" && (size || currentSize).startsWith("P:");
+}
+
+function getProportionalRatio(size) {
+  return parseFloat((size || currentSize).slice(2)) || 10;
+}
+
+function getCurrentPixelSize(overrideWa) {
+  if (!isProportionalMode()) return SIZES[currentSize] || SIZES.S;
+  const ratio = getProportionalRatio();
+  let wa = overrideWa;
+  if (!wa && win && !win.isDestroyed()) {
+    const { x, y, width, height } = win.getBounds();
+    wa = getNearestWorkArea(x + width / 2, y + height / 2);
+  }
+  if (!wa) wa = screen.getPrimaryDisplay().workArea;
+  const px = Math.round(wa.width * ratio / 100);
+  return { width: px, height: px };
+}
 let contextMenu;
 let doNotDisturb = false;
 let isQuitting = false;
@@ -480,6 +505,10 @@ const _menuCtx = {
   getUpdateMenuItem: () => getUpdateMenuItem(),
   buildSessionSubmenu: () => buildSessionSubmenu(),
   savePrefs,
+  syncHitWin,
+  getCurrentPixelSize,
+  isProportionalMode,
+  PROPORTIONAL_RATIOS,
   getHookServerPort: () => getHookServerPort(),
   clampToScreen,
   getNearestWorkArea,
@@ -505,7 +534,7 @@ const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel
 
 function createWindow() {
   const prefs = loadPrefs();
-  if (prefs && SIZES[prefs.size]) currentSize = prefs.size;
+  if (prefs && (SIZES[prefs.size] || isProportionalMode(prefs.size))) currentSize = prefs.size;
   if (prefs && (prefs.lang === "en" || prefs.lang === "zh")) lang = prefs.lang;
   // macOS: restore tray/dock visibility from prefs
   if (isMac && prefs) {
@@ -521,7 +550,7 @@ function createWindow() {
   if (isMac) {
     applyDockVisibility();
   }
-  const size = SIZES[currentSize];
+  const size = getCurrentPixelSize();
 
   // Restore saved position, or default to bottom-right of primary display
   let startX, startY;
@@ -677,9 +706,12 @@ function createWindow() {
   ipcMain.on("move-window-by", (event, dx, dy) => {
     if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return;
     const { x, y } = win.getBounds();
-    const size = SIZES[currentSize];
-    const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
-    win.setBounds({ ...clamped, width: size.width, height: size.height });
+    const size = getCurrentPixelSize();
+    // During drag: allow free movement across screens, only prevent
+    // the pet from going completely off-screen (keep 25% visible).
+    const newX = x + dx, newY = y + dy;
+    const looseClamped = looseClampToDisplays(newX, newY, size.width, size.height);
+    win.setBounds({ ...looseClamped, width: size.width, height: size.height });
     syncHitWin();
     if (bubbleFollowPet && pendingPermissions.length) repositionBubbles();
   });
@@ -706,6 +738,15 @@ function createWindow() {
   ipcMain.on("drag-end", () => {
     if (!_mini.getMiniMode() && !_mini.getMiniTransitioning()) {
       checkMiniModeSnap();
+      // After drag, clamp to the nearest screen (loose clamp during drag allows cross-screen).
+      // In proportional mode, also recalculate size for the landing display.
+      if (win && !win.isDestroyed()) {
+        const size = getCurrentPixelSize();
+        const { x, y } = win.getBounds();
+        const clamped = clampToScreen(x, y, size.width, size.height);
+        win.setBounds({ ...clamped, width: size.width, height: size.height });
+        syncHitWin();
+      }
     }
   });
 
@@ -789,6 +830,7 @@ function createWindow() {
   startTopmostWatchdog();
 
   // ── Display change: re-clamp window to prevent off-screen ──
+  // In proportional mode, also recalculate size based on the new work area.
   screen.on("display-metrics-changed", () => {
     reapplyMacVisibility();
     if (!win || win.isDestroyed()) return;
@@ -796,10 +838,12 @@ function createWindow() {
       _mini.handleDisplayChange();
       return;
     }
-    const { x, y, width, height } = win.getBounds();
-    const clamped = clampToScreen(x, y, width, height);
-    if (clamped.x !== x || clamped.y !== y) {
-      win.setBounds({ ...clamped, width, height });
+    const size = getCurrentPixelSize();
+    const { x, y } = win.getBounds();
+    const clamped = clampToScreen(x, y, size.width, size.height);
+    if (isProportionalMode() || clamped.x !== x || clamped.y !== y) {
+      win.setBounds({ ...clamped, width: size.width, height: size.height });
+      syncHitWin();
     }
   });
   screen.on("display-removed", () => {
@@ -809,9 +853,11 @@ function createWindow() {
       exitMiniMode();
       return;
     }
-    const { x, y, width, height } = win.getBounds();
-    const clamped = clampToScreen(x, y, width, height);
-    win.setBounds({ ...clamped, width, height });
+    const size = getCurrentPixelSize();
+    const { x, y } = win.getBounds();
+    const clamped = clampToScreen(x, y, size.width, size.height);
+    win.setBounds({ ...clamped, width: size.width, height: size.height });
+    syncHitWin();
   });
   screen.on("display-added", () => {
     reapplyMacVisibility();
@@ -830,6 +876,25 @@ function getNearestWorkArea(cx, cy) {
     if (dist < minDist) { minDist = dist; nearest = wa; }
   }
   return nearest;
+}
+
+// Loose clamp used during drag: union of all display work areas as the boundary,
+// so the pet can freely cross between screens. Only prevents going fully off-screen.
+function looseClampToDisplays(x, y, w, h) {
+  const displays = screen.getAllDisplays();
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const d of displays) {
+    const wa = d.workArea;
+    if (wa.x < minX) minX = wa.x;
+    if (wa.y < minY) minY = wa.y;
+    if (wa.x + wa.width > maxX) maxX = wa.x + wa.width;
+    if (wa.y + wa.height > maxY) maxY = wa.y + wa.height;
+  }
+  const margin = Math.round(w * 0.25);
+  return {
+    x: Math.max(minX - margin, Math.min(x, maxX - w + margin)),
+    y: Math.max(minY - margin, Math.min(y, maxY - h + margin)),
+  };
 }
 
 function clampToScreen(x, y, w, h) {
@@ -852,6 +917,8 @@ const _miniCtx = {
   get doNotDisturb() { return doNotDisturb; },
   set doNotDisturb(v) { doNotDisturb = v; },
   SIZES,
+  getCurrentPixelSize,
+  isProportionalMode,
   sendToRenderer,
   sendToHitWin,
   syncHitWin,

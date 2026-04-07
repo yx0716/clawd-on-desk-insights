@@ -45,3 +45,9 @@ scripts/*
 !scripts/run-clawdbot-stress.sh
 !scripts/monitor-clawd-resources.sh
 !scripts/validate-theme.js
+
+# oh-my-cursor state
+.omc/
+
+# Cursor local config (MCP, rules from omc setup)
+.cursor/

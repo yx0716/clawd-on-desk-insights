@@ -59,6 +59,15 @@ const i18n = {
     small: "Small (S)",
     medium: "Medium (M)",
     large: "Large (L)",
+    proportional: "Proportional",
+    proportionalPct: "{n}%",
+    proportionalCustom: "Custom…",
+    proportionalCustomTitle: "Custom Proportional Size",
+    proportionalCustomMsg: "Enter screen width percentage (1–75):",
+    sendToDisplay: "Send to Display",
+    displayLabel: "Display {n}",
+    displayLabelPrimary: "Display {n} (Primary)",
+    displayResolution: "{w}×{h}",
     miniMode: "Mini Mode",
     exitMiniMode: "Exit Mini Mode",
     sleep: "Sleep (Do Not Disturb)",
@@ -113,6 +122,15 @@ const i18n = {
     small: "小 (S)",
     medium: "中 (M)",
     large: "大 (L)",
+    proportional: "按比例",
+    proportionalPct: "{n}%",
+    proportionalCustom: "自定义…",
+    proportionalCustomTitle: "自定义比例大小",
+    proportionalCustomMsg: "请输入屏幕宽度百分比（1–75）：",
+    sendToDisplay: "发送到显示器",
+    displayLabel: "显示器 {n}",
+    displayLabelPrimary: "显示器 {n}（主屏）",
+    displayResolution: "{w}×{h}",
     miniMode: "极简模式",
     exitMiniMode: "退出极简模式",
     sleep: "休眠（免打扰）",
@@ -476,6 +494,121 @@ module.exports = function initMenu(ctx) {
     });
   }
 
+  function buildProportionalSubmenu() {
+    const isP = ctx.isProportionalMode && ctx.isProportionalMode();
+    const currentRatio = isP ? parseFloat(ctx.currentSize.slice(2)) : 0;
+    const isCustom = isP && !ctx.PROPORTIONAL_RATIOS.includes(currentRatio);
+    const items = ctx.PROPORTIONAL_RATIOS.map(r => ({
+      label: t("proportionalPct").replace("{n}", r),
+      type: "radio",
+      checked: ctx.currentSize === `P:${r}`,
+      click: () => resizeWindow(`P:${r}`),
+    }));
+    items.push({ type: "separator" });
+    items.push({
+      label: isCustom
+        ? `${t("proportionalCustom")} (${currentRatio}%)`
+        : t("proportionalCustom"),
+      type: "radio",
+      checked: isCustom,
+      click: () => promptCustomRatio(isCustom ? currentRatio : 10),
+    });
+    return items;
+  }
+
+  function promptCustomRatio(defaultVal) {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; padding: 16px; background: #f5f5f5; user-select: none; }
+  label { display: block; font-size: 13px; margin-bottom: 8px; color: #333; }
+  input { width: 80px; padding: 4px 8px; font-size: 14px; border: 1px solid #ccc;
+          border-radius: 4px; outline: none; text-align: center; }
+  input:focus { border-color: #4a90d9; }
+  .buttons { margin-top: 12px; text-align: right; }
+  button { padding: 4px 16px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;
+           background: #fff; cursor: pointer; margin-left: 6px; }
+  button.primary { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  .hint { font-size: 11px; color: #999; margin-top: 4px; }
+</style></head><body>
+<label>${t("proportionalCustomMsg")}</label>
+<input id="v" type="number" min="1" max="75" step="1" value="${defaultVal}" autofocus>
+<div class="hint">1% ≈ tiny &nbsp; 15% ≈ large &nbsp; 75% = max</div>
+<div class="buttons">
+  <button onclick="close()">Cancel</button>
+  <button class="primary" onclick="ok()">OK</button>
+</div>
+<script>
+  const {ipcRenderer} = require("electron");
+  const inp = document.getElementById("v");
+  inp.select();
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") ok(); if (e.key === "Escape") close(); });
+  function ok() { const n = parseFloat(inp.value); if (n >= 1 && n <= 75) ipcRenderer.send("proportional-custom", n); window.close(); }
+</script></body></html>`;
+
+    const promptWin = new BrowserWindow({
+      width: 280, height: 140,
+      resizable: false, minimizable: false, maximizable: false,
+      alwaysOnTop: true, skipTaskbar: true,
+      frame: false, transparent: false,
+      show: false,
+      webPreferences: { nodeIntegration: true, contextIsolation: false },
+    });
+    promptWin.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+    promptWin.once("ready-to-show", () => promptWin.show());
+
+    const { ipcMain } = require("electron");
+    const handler = (_, val) => {
+      resizeWindow(`P:${val}`);
+      ipcMain.removeListener("proportional-custom", handler);
+    };
+    ipcMain.on("proportional-custom", handler);
+    promptWin.on("closed", () => {
+      ipcMain.removeListener("proportional-custom", handler);
+    });
+  }
+
+  function buildDisplaySubmenu() {
+    const displays = screen.getAllDisplays();
+    if (displays.length <= 1) return [{ label: t("displayLabel").replace("{n}", 1), enabled: false }];
+    const current = ctx.win && !ctx.win.isDestroyed()
+      ? screen.getDisplayNearestPoint(ctx.win.getBounds())
+      : null;
+    return displays.map((d, i) => {
+      const isPrimary = d.bounds.x === 0 && d.bounds.y === 0;
+      const labelKey = isPrimary ? "displayLabelPrimary" : "displayLabel";
+      const res = t("displayResolution").replace("{w}", d.bounds.width).replace("{h}", d.bounds.height);
+      const isCurrent = current && current.id === d.id;
+      return {
+        label: `${t(labelKey).replace("{n}", i + 1)}  ${res}`,
+        enabled: !isCurrent,
+        click: () => sendToDisplay(d),
+      };
+    });
+  }
+
+  function sendToDisplay(display) {
+    if (!ctx.win || ctx.win.isDestroyed()) return;
+    if (ctx.getMiniMode()) return;
+    const wa = display.workArea;
+    if (ctx.isProportionalMode && ctx.isProportionalMode()) {
+      const ratio = parseFloat(ctx.currentSize.slice(2)) || 10;
+      const px = Math.round(wa.width * ratio / 100);
+      const size = { width: px, height: px };
+      const x = Math.round(wa.x + (wa.width - size.width) / 2);
+      const y = Math.round(wa.y + (wa.height - size.height) / 2);
+      ctx.win.setBounds({ x, y, width: size.width, height: size.height });
+    } else {
+      const size = SIZES[ctx.currentSize] || ctx.getCurrentPixelSize();
+      const x = Math.round(wa.x + (wa.width - size.width) / 2);
+      const y = Math.round(wa.y + (wa.height - size.height) / 2);
+      ctx.win.setBounds({ x, y, width: size.width, height: size.height });
+    }
+    ctx.syncHitWin();
+    if (ctx.bubbleFollowPet && ctx.pendingPermissions.length) ctx.repositionBubbles();
+    ctx.savePrefs();
+  }
+
   function buildContextMenu() {
     const template = [
       {
@@ -484,7 +617,17 @@ module.exports = function initMenu(ctx) {
           { label: t("small"), type: "radio", checked: ctx.currentSize === "S", click: () => resizeWindow("S") },
           { label: t("medium"), type: "radio", checked: ctx.currentSize === "M", click: () => resizeWindow("M") },
           { label: t("large"), type: "radio", checked: ctx.currentSize === "L", click: () => resizeWindow("L") },
+          { type: "separator" },
+          {
+            label: t("proportional"),
+            submenu: buildProportionalSubmenu(),
+          },
         ],
+      },
+      {
+        label: t("sendToDisplay"),
+        submenu: buildDisplaySubmenu(),
+        visible: screen.getAllDisplays().length > 1 && !ctx.getMiniMode(),
       },
       { type: "separator" },
       {
@@ -554,12 +697,13 @@ module.exports = function initMenu(ctx) {
 
   function resizeWindow(sizeKey) {
     ctx.currentSize = sizeKey;
-    const size = SIZES[sizeKey];
+    const size = SIZES[sizeKey] || ctx.getCurrentPixelSize();
     if (!ctx.miniHandleResize(sizeKey)) {
       if (ctx.win && !ctx.win.isDestroyed()) {
         const { x, y } = ctx.win.getBounds();
         const clamped = ctx.clampToScreen(x, y, size.width, size.height);
         ctx.win.setBounds({ ...clamped, width: size.width, height: size.height });
+        ctx.syncHitWin();
       }
     }
     if (ctx.bubbleFollowPet && ctx.pendingPermissions.length) ctx.repositionBubbles();

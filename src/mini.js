@@ -116,10 +116,14 @@ function cancelMiniTransition() {
   isAnimating = false;
 }
 
+function _getSize() {
+  return ctx.getCurrentPixelSize ? ctx.getCurrentPixelSize() : ctx.SIZES[ctx.currentSize];
+}
+
 function checkMiniModeSnap() {
   if (miniMode) return;
   const bounds = ctx.win.getBounds();
-  const size = ctx.SIZES[ctx.currentSize];
+  const size = _getSize();
   const mEdge = Math.round(size.width * 0.25);
   const centerX = bounds.x + size.width / 2;
   const displays = screen.getAllDisplays();
@@ -152,7 +156,7 @@ function enterMiniMode(wa, viaMenu, edge) {
   }
   miniMode = true;
   if (edge) miniEdge = edge;
-  const size = ctx.SIZES[ctx.currentSize];
+  const size = _getSize();
   currentMiniX = calcMiniX(wa, size);
   miniSnap = { y: bounds.y, width: size.width, height: size.height };
 
@@ -210,7 +214,7 @@ function exitMiniMode() {
   miniSnap = null;
   miniSleepPeeked = false;
 
-  const size = ctx.SIZES[ctx.currentSize];
+  const size = _getSize();
   const clamped = ctx.clampToScreen(preMiniX, preMiniY, size.width, size.height);
   const wa = ctx.getNearestWorkArea(clamped.x + size.width / 2, clamped.y + size.height / 2);
   const mEdge = Math.round(size.width * 0.25);
@@ -246,7 +250,7 @@ function exitMiniMode() {
 
 function enterMiniViaMenu() {
   const bounds = ctx.win.getBounds();
-  const size = ctx.SIZES[ctx.currentSize];
+  const size = _getSize();
   const wa = ctx.getNearestWorkArea(bounds.x + size.width / 2, bounds.y + size.height / 2);
 
   // Auto-detect nearest edge
@@ -283,7 +287,7 @@ function enterMiniViaMenu() {
 function handleDisplayChange() {
   if (!ctx.win || ctx.win.isDestroyed()) return;
   if (!miniMode) return;
-  const size = ctx.SIZES[ctx.currentSize];
+  const size = _getSize();
   const snapY = miniSnap ? miniSnap.y : ctx.win.getBounds().y;
   const wa = ctx.getNearestWorkArea(currentMiniX + size.width / 2, snapY + size.height / 2);
   currentMiniX = calcMiniX(wa, size);
@@ -293,7 +297,7 @@ function handleDisplayChange() {
 }
 
 function handleResize(sizeKey) {
-  const size = ctx.SIZES[sizeKey];
+  const size = ctx.SIZES[sizeKey] || _getSize();
   if (!miniMode) return false;
   const { y } = ctx.win.getBounds();
   const wa = ctx.getNearestWorkArea(currentMiniX + size.width / 2, y + size.height / 2);
