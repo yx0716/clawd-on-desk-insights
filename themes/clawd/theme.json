@@ -131,6 +131,11 @@
     "glyphFlips": { "pixel-z": 4, "pixel-z-small": 3 }
   },
 
+  "sounds": {
+    "complete": "complete.mp3",
+    "confirm":  "confirm.mp3"
+  },
+
   "objectScale": {
     "widthRatio":  1.9,
     "heightRatio": 1.3,

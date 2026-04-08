@@ -197,8 +197,10 @@ function playSound(name) {
   if (soundMuted || doNotDisturb) return;
   const now = Date.now();
   if (now - lastSoundTime < SOUND_COOLDOWN_MS) return;
+  const url = themeLoader.getSoundUrl(name);
+  if (!url) return;
   lastSoundTime = now;
-  sendToRenderer("play-sound", name);
+  sendToRenderer("play-sound", url);
 }
 
 // Sync input window position to match render window's hitbox.

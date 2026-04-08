@@ -6,6 +6,11 @@ const { pathToFileURL } = require("url");
 
 // ── Defaults (used when theme.json omits optional fields) ──
 
+const DEFAULT_SOUNDS = {
+  complete: "complete.mp3",
+  confirm:  "confirm.mp3",
+};
+
 const DEFAULT_TIMINGS = {
   minDisplay: {
     attention: 4000, error: 5000, sweeping: 5500,
@@ -62,6 +67,7 @@ const HREF_ATTRS = new Set(["href", "xlink:href", "src", "action", "formaction"]
 let activeTheme = null;
 let builtinThemesDir = null;   // set by init()
 let assetsSvgDir = null;       // assets/svg/ for built-in theme
+let assetsSoundsDir = null;    // assets/sounds/ for built-in theme
 let userDataDir = null;        // app.getPath("userData") — set by init()
 let userThemesDir = null;      // {userData}/themes/
 let themeCacheDir = null;      // {userData}/theme-cache/
@@ -76,6 +82,7 @@ let themeCacheDir = null;      // {userData}/theme-cache/
 function init(appDir, userData) {
   builtinThemesDir = path.join(appDir, "..", "themes");
   assetsSvgDir = path.join(appDir, "..", "assets", "svg");
+  assetsSoundsDir = path.join(appDir, "..", "assets", "sounds");
   if (userData) {
     userDataDir = userData;
     userThemesDir = path.join(userData, "themes");
@@ -538,6 +545,9 @@ function mergeDefaults(raw, themeId, isBuiltin) {
   // displayHintMap
   theme.displayHintMap = raw.displayHintMap || {};
 
+  // sounds
+  theme.sounds = { ...DEFAULT_SOUNDS, ...(raw.sounds || {}) };
+
   // reactions
   theme.reactions = raw.reactions || null;
 
@@ -555,6 +565,32 @@ function mergeDefaults(raw, themeId, isBuiltin) {
   return theme;
 }
 
+/**
+ * Resolve a logical sound name to an absolute file:// URL.
+ * Built-in themes: assets/sounds/. External themes: {themeDir}/sounds/.
+ * @param {string} soundName - logical name (e.g. "complete")
+ * @returns {string|null} file:// URL, or null if sound not defined
+ */
+function getSoundUrl(soundName) {
+  if (!activeTheme || !activeTheme.sounds) return null;
+  const filename = activeTheme.sounds[soundName];
+  if (!filename) return null;
+
+  const absPath = activeTheme._builtin
+    ? path.join(assetsSoundsDir, filename)
+    : path.join(activeTheme._themeDir, "sounds", filename);
+
+  if (fs.existsSync(absPath)) return pathToFileURL(absPath).href;
+
+  // Fallback to built-in sounds for external themes that inherit defaults
+  if (!activeTheme._builtin) {
+    const fallback = path.join(assetsSoundsDir, filename);
+    if (fs.existsSync(fallback)) return pathToFileURL(fallback).href;
+  }
+
+  return null;
+}
+
 module.exports = {
   init,
   discoverThemes,
@@ -570,4 +606,5 @@ module.exports = {
   ensureUserThemesDir,
   validateTheme,
   sanitizeSvg,
+  getSoundUrl,
 };
