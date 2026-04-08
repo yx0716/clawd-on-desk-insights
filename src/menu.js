@@ -13,8 +13,7 @@ const os = require("os");
 const AUTOSTART_DIR = path.join(os.homedir(), ".config", "autostart");
 const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "clawd-on-desk.desktop");
 
-function getLoginItemSettings({ isLinux, isPackaged, openAtLogin, execPath, appPath }) {
-  if (isLinux) return null;
+function getLoginItemSettings({ isPackaged, openAtLogin, execPath, appPath }) {
   if (isPackaged) return { openAtLogin };
   return {
     openAtLogin,
@@ -347,6 +346,7 @@ module.exports = function initMenu(ctx) {
       {
         label: t("startOnLogin"),
         type: "checkbox",
+        // NOTE: path/args must match setLoginItemSettings — see getLoginItemSettings()
         checked: isLinux ? linuxGetOpenAtLogin()
           : app.getLoginItemSettings(
               app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }
@@ -356,7 +356,6 @@ module.exports = function initMenu(ctx) {
             linuxSetOpenAtLogin(menuItem.checked);
           } else {
             app.setLoginItemSettings(getLoginItemSettings({
-              isLinux,
               isPackaged: app.isPackaged,
               openAtLogin: menuItem.checked,
               execPath: process.execPath,

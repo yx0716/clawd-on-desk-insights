@@ -6,7 +6,6 @@ const { __test } = require("../src/menu");
 describe("login item settings", () => {
   it("includes the app path when enabling login items for an unpackaged Windows app", () => {
     const settings = __test.getLoginItemSettings({
-      isLinux: false,
       isPackaged: false,
       openAtLogin: true,
       execPath: "D:\\clawd-on-desk\\node_modules\\electron\\dist\\electron.exe",
@@ -22,7 +21,6 @@ describe("login item settings", () => {
 
   it("uses the default packaged login item settings", () => {
     const settings = __test.getLoginItemSettings({
-      isLinux: false,
       isPackaged: true,
       openAtLogin: true,
       execPath: "C:\\Program Files\\Clawd on Desk\\Clawd on Desk.exe",
@@ -34,7 +32,6 @@ describe("login item settings", () => {
 
   it("includes the app path when disabling login items for an unpackaged app", () => {
     const settings = __test.getLoginItemSettings({
-      isLinux: false,
       isPackaged: false,
       openAtLogin: false,
       execPath: "D:\\clawd-on-desk\\node_modules\\electron\\dist\\electron.exe",
@@ -48,13 +45,4 @@ describe("login item settings", () => {
     });
   });
 
-  it("returns null for Linux (uses .desktop file instead)", () => {
-    const settings = __test.getLoginItemSettings({
-      isLinux: true,
-      isPackaged: false,
-      openAtLogin: true,
-    });
-
-    assert.strictEqual(settings, null);
-  });
 });

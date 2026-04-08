@@ -30,6 +30,7 @@ function restoreFrontApp(appName) {
   ], { timeout: 1000 }, () => {});
 }
 
+const RESTORE_FOCUS_DELAY_MS = 300;
 const WIN_TOPMOST_LEVEL = "pop-up-menu";
 const LINUX_WINDOW_TYPE = "toolbar";
 
@@ -77,10 +78,10 @@ function hotkeyResolve(behavior, message) {
   captureFrontApp((appName) => {
     resolvePermissionEntry(perm, behavior, message);
     if (appName) {
-      setTimeout(() => restoreFrontApp(appName), 300);
+      setTimeout(() => restoreFrontApp(appName), RESTORE_FOCUS_DELAY_MS);
     } else if (isMac) {
       // macOS only: osascript failed — fall back to terminal focus
-      setTimeout(() => ctx.focusTerminalForSession(perm.sessionId), 300);
+      setTimeout(() => ctx.focusTerminalForSession(perm.sessionId), RESTORE_FOCUS_DELAY_MS);
     }
     // non-macOS: no focus change (matches pre-PR behavior)
   });
