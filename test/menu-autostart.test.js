@@ -31,4 +31,30 @@ describe("login item settings", () => {
 
     assert.deepStrictEqual(settings, { openAtLogin: true });
   });
+
+  it("includes the app path when disabling login items for an unpackaged app", () => {
+    const settings = __test.getLoginItemSettings({
+      isLinux: false,
+      isPackaged: false,
+      openAtLogin: false,
+      execPath: "D:\\clawd-on-desk\\node_modules\\electron\\dist\\electron.exe",
+      appPath: "D:\\clawd-on-desk",
+    });
+
+    assert.deepStrictEqual(settings, {
+      openAtLogin: false,
+      path: "D:\\clawd-on-desk\\node_modules\\electron\\dist\\electron.exe",
+      args: ["D:\\clawd-on-desk"],
+    });
+  });
+
+  it("returns null for Linux (uses .desktop file instead)", () => {
+    const settings = __test.getLoginItemSettings({
+      isLinux: true,
+      isPackaged: false,
+      openAtLogin: true,
+    });
+
+    assert.strictEqual(settings, null);
+  });
 });

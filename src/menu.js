@@ -347,7 +347,10 @@ module.exports = function initMenu(ctx) {
       {
         label: t("startOnLogin"),
         type: "checkbox",
-        checked: isLinux ? linuxGetOpenAtLogin() : app.getLoginItemSettings().openAtLogin,
+        checked: isLinux ? linuxGetOpenAtLogin()
+          : app.getLoginItemSettings(
+              app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }
+            ).openAtLogin,
         click: (menuItem) => {
           if (isLinux) {
             linuxSetOpenAtLogin(menuItem.checked);
