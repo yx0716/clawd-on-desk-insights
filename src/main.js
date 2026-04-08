@@ -151,6 +151,7 @@ function togglePetVisibility() {
         if (isLinux) perm.bubble.setSkipTaskbar(true);
       }
     }
+    syncUpdateBubbleVisibility();
     reapplyMacVisibility();
     petHidden = false;
   } else {
@@ -160,6 +161,7 @@ function togglePetVisibility() {
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed()) perm.bubble.hide();
     }
+    hideUpdateBubble();
     petHidden = true;
   }
   syncPermissionShortcuts();
@@ -198,6 +200,10 @@ function playSound(name) {
   if (now - lastSoundTime < SOUND_COOLDOWN_MS) return;
   lastSoundTime = now;
   sendToRenderer("play-sound", name);
+}
+
+function resetSoundCooldown() {
+  lastSoundTime = 0;
 }
 
 // Sync input window position to match render window's hitbox.
@@ -255,6 +261,31 @@ const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
 let updateDebugLog = null; // set after app.whenReady()
 
+const _updateBubbleCtx = {
+  get win() { return win; },
+  get bubbleFollowPet() { return bubbleFollowPet; },
+  get petHidden() { return petHidden; },
+  getPendingPermissions: () => pendingPermissions,
+  getNearestWorkArea,
+  getHitRectScreen,
+  guardAlwaysOnTop,
+  reapplyMacVisibility,
+};
+const _updateBubble = require("./update-bubble")(_updateBubbleCtx);
+const {
+  showUpdateBubble,
+  hideUpdateBubble,
+  repositionUpdateBubble,
+  handleUpdateBubbleAction,
+  handleUpdateBubbleHeight,
+  syncVisibility: syncUpdateBubbleVisibility,
+} = _updateBubble;
+
+function repositionFloatingBubbles() {
+  if (pendingPermissions.length) repositionBubbles();
+  repositionUpdateBubble();
+}
+
 // ── macOS fullscreen visibility helper ──
 // Re-apply visibleOnAllWorkspaces + alwaysOnTop to all windows after events
 // that may reset NSWindowCollectionBehavior (showInactive, dock.hide, etc.)
@@ -271,6 +302,7 @@ function reapplyMacVisibility() {
   apply(win);
   apply(hitWin);
   for (const perm of pendingPermissions) apply(perm.bubble);
+  apply(_updateBubble.getBubbleWindow());
   apply(contextMenuOwner);
 }
 
@@ -443,6 +475,10 @@ function startTopmostWatchdog() {
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed() && perm.bubble.isVisible()) perm.bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     }
+    const updateBubbleWin = _updateBubble.getBubbleWindow();
+    if (updateBubbleWin && !updateBubbleWin.isDestroyed() && updateBubbleWin.isVisible()) {
+      updateBubbleWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+    }
   }, TOPMOST_WATCHDOG_MS);
 }
 
@@ -480,7 +516,7 @@ const _menuCtx = {
   get soundMuted() { return soundMuted; },
   set soundMuted(v) { soundMuted = v; },
   get pendingPermissions() { return pendingPermissions; },
-  repositionBubbles: () => repositionBubbles(),
+  repositionBubbles: () => repositionFloatingBubbles(),
   get petHidden() { return petHidden; },
   togglePetVisibility: () => togglePetVisibility(),
   get isQuitting() { return isQuitting; },
@@ -527,7 +563,15 @@ const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
 const _updaterCtx = {
   get doNotDisturb() { return doNotDisturb; },
   get miniMode() { return _mini.getMiniMode(); },
+  get lang() { return lang; },
   t, rebuildAllMenus, updateLog,
+  showUpdateBubble: (payload) => showUpdateBubble(payload),
+  hideUpdateBubble: () => hideUpdateBubble(),
+  setUpdateVisualState: (kind) => _state.setUpdateVisualState(kind),
+  applyState: (state, svgOverride) => applyState(state, svgOverride),
+  resolveDisplayState: () => resolveDisplayState(),
+  getSvgOverride: (state) => getSvgOverride(state),
+  resetSoundCooldown: () => resetSoundCooldown(),
 };
 const _updater = require("./updater")(_updaterCtx);
 const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel } = _updater;
@@ -692,8 +736,13 @@ function createWindow() {
     if (isWin) guardAlwaysOnTop(hitWin);
 
     // Event-level safety net for position sync
-    win.on("move", syncHitWin);
-    win.on("resize", syncHitWin);
+    const syncFloatingWindows = () => {
+      syncHitWin();
+      if (bubbleFollowPet) repositionFloatingBubbles();
+      else repositionUpdateBubble();
+    };
+    win.on("move", syncFloatingWindows);
+    win.on("resize", syncFloatingWindows);
 
     // Send initial state to hitWin once it's ready
     hitWin.webContents.on("did-finish-load", () => {
@@ -721,7 +770,7 @@ function createWindow() {
     const looseClamped = looseClampToDisplays(newX, newY, size.width, size.height);
     win.setBounds({ ...looseClamped, width: size.width, height: size.height });
     syncHitWin();
-    if (bubbleFollowPet && pendingPermissions.length) repositionBubbles();
+    if (bubbleFollowPet) repositionFloatingBubbles();
   });
 
   ipcMain.on("pause-cursor-polling", () => { idlePaused = true; });
@@ -754,6 +803,7 @@ function createWindow() {
         const clamped = clampToScreen(x, y, size.width, size.height);
         win.setBounds({ ...clamped, width: size.width, height: size.height });
         syncHitWin();
+        repositionUpdateBubble();
       }
     }
   });
@@ -783,6 +833,8 @@ function createWindow() {
 
   ipcMain.on("bubble-height", (event, height) => _perm.handleBubbleHeight(event, height));
   ipcMain.on("permission-decide", (event, behavior) => _perm.handleDecide(event, behavior));
+  ipcMain.on("update-bubble-height", (event, height) => handleUpdateBubbleHeight(event, height));
+  ipcMain.on("update-bubble-action", (event, actionId) => handleUpdateBubbleAction(event, actionId));
 
   initFocusHelper();
   startMainTick();
@@ -852,6 +904,7 @@ function createWindow() {
     if (isProportionalMode() || clamped.x !== x || clamped.y !== y) {
       win.setBounds({ ...clamped, width: size.width, height: size.height });
       syncHitWin();
+      repositionUpdateBubble();
     }
   });
   screen.on("display-removed", () => {
@@ -866,9 +919,11 @@ function createWindow() {
     const clamped = clampToScreen(x, y, size.width, size.height);
     win.setBounds({ ...clamped, width: size.width, height: size.height });
     syncHitWin();
+    repositionUpdateBubble();
   });
   screen.on("display-added", () => {
     reapplyMacVisibility();
+    repositionUpdateBubble();
   });
 }
 
@@ -938,7 +993,7 @@ const _miniCtx = {
   getNearestWorkArea,
   get bubbleFollowPet() { return bubbleFollowPet; },
   get pendingPermissions() { return pendingPermissions; },
-  repositionBubbles: () => repositionBubbles(),
+  repositionBubbles: () => repositionFloatingBubbles(),
   buildContextMenu: () => buildContextMenu(),
   buildTrayMenu: () => buildTrayMenu(),
 };
@@ -1133,6 +1188,7 @@ if (!gotTheLock) {
     globalShortcut.unregisterAll();
     _perm.cleanup();
     _server.cleanup();
+    _updateBubble.cleanup();
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();

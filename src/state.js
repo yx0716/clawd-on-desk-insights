@@ -78,6 +78,16 @@ let pendingTimer = null;
 let autoReturnTimer = null;
 let pendingState = null;
 let eyeResendTimer = null;
+let updateVisualState = null;
+let updateVisualSvgOverride = null;
+
+const UPDATE_VISUAL_STATE_MAP = {
+  checking: "sweeping",
+  downloading: "carrying",
+};
+const UPDATE_VISUAL_SVG_MAP = {
+  checking: "clawd-working-debugger.svg",
+};
 
 // ── Wake poll ──
 let wakePollTimer = null;
@@ -470,6 +480,7 @@ function stopStaleCleanup() {
 }
 
 function resolveDisplayState() {
+  if (updateVisualState) return updateVisualState;
   if (sessions.size === 0) return "idle";
   let best = "sleeping";
   let hasNonHeadless = false;
@@ -480,6 +491,17 @@ function resolveDisplayState() {
   }
   if (!hasNonHeadless) return "idle";
   return best;
+}
+
+function setUpdateVisualState(kind) {
+  if (!kind) {
+    updateVisualState = null;
+    updateVisualSvgOverride = null;
+    return null;
+  }
+  updateVisualState = UPDATE_VISUAL_STATE_MAP[kind] || kind;
+  updateVisualSvgOverride = UPDATE_VISUAL_SVG_MAP[kind] || null;
+  return updateVisualState;
 }
 
 function getActiveWorkingCount() {
@@ -517,6 +539,9 @@ function getWinningSessionDisplayHint(targetState) {
 }
 
 function getSvgOverride(state) {
+  if (updateVisualState && state === updateVisualState && updateVisualSvgOverride) {
+    return updateVisualSvgOverride;
+  }
   if (state === "idle") return SVG_IDLE_FOLLOW;
   if (state === "working") {
     const hinted = getWinningSessionDisplayHint("working");
@@ -675,7 +700,7 @@ function cleanup() {
 }
 
 return {
-  setState, applyState, updateSession, resolveDisplayState,
+  setState, applyState, updateSession, resolveDisplayState, setUpdateVisualState,
   enableDoNotDisturb, disableDoNotDisturb,
   startStaleCleanup, stopStaleCleanup, startWakePoll, stopWakePoll,
   getSvgOverride, cleanStaleSessions, startStartupRecovery,

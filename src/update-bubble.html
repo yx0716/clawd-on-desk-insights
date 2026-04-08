@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+body { padding: 6px; }
+
+:root {
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --card-inset: none;
+  --text-main: #18181b;
+  --text-muted: #71717a;
+  --header-color: #374151;
+  --cmd-bg: #f4f4f5;
+  --cmd-border: rgba(0, 0, 0, 0.06);
+  --cmd-color: #374151;
+  --cmd-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+  --scroll-thumb: rgba(0, 0, 0, 0.15);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
+  --deny-bg: #ffffff;
+  --deny-color: #52525b;
+  --deny-border: #d1d5db;
+  --deny-hover-bg: #f9fafb;
+  --deny-hover-border: #9ca3af;
+  --primary-bg: #d97757;
+  --primary-hover-bg: #c4684a;
+  --danger-bg: #dc2626;
+  --danger-hover-bg: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card-bg: #18181b;
+    --card-border: rgba(255, 255, 255, 0.1);
+    --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --header-color: #e4e4e7;
+    --cmd-bg: #09090b;
+    --cmd-border: rgba(255, 255, 255, 0.06);
+    --cmd-color: #a1a1aa;
+    --cmd-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    --scroll-thumb: rgba(255, 255, 255, 0.1);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
+    --deny-bg: rgba(255, 255, 255, 0.05);
+    --deny-color: #e4e4e7;
+    --deny-border: rgba(255, 255, 255, 0.1);
+    --deny-hover-bg: rgba(255, 255, 255, 0.1);
+    --deny-hover-border: rgba(255, 255, 255, 0.15);
+    --primary-bg: #d97757;
+    --primary-hover-bg: #c4684a;
+    --danger-bg: #ef4444;
+    --danger-hover-bg: #dc2626;
+  }
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow), var(--card-inset, none);
+  color: var(--text-main);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  transform: translateX(60px);
+  transition: opacity 0.35s var(--ease-spring), transform 0.4s var(--ease-spring);
+  overflow: hidden;
+}
+.card[data-mode="checking"],
+.card[data-mode="available"] {
+  min-height: 134px;
+}
+.card.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.card.hiding {
+  opacity: 0;
+  transform: translateX(60px);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--header-color);
+  letter-spacing: 0.02em;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #52525b;
+}
+.pill[data-mode="checking"] { background: #5a9eab; }
+.pill[data-mode="available"] { background: #5b8dd9; }
+.pill[data-mode="downloading"] { background: #d97757; }
+.pill[data-mode="ready"] { background: #5a9e6f; }
+.pill[data-mode="error"] { background: #d15a5a; }
+
+.message {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-main);
+  white-space: pre-wrap;
+}
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card[data-mode="checking"] .summary,
+.card[data-mode="available"] .summary {
+  min-height: 56px;
+  padding: 12px;
+  background: var(--cmd-bg);
+  border: 1px solid var(--cmd-border);
+  border-radius: 10px;
+  box-shadow: var(--cmd-shadow);
+  justify-content: center;
+}
+.version {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.detail {
+  display: none;
+  max-height: 112px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--cmd-bg);
+  border: 1px solid var(--cmd-border);
+  border-radius: 10px;
+  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--cmd-color);
+  box-shadow: var(--cmd-shadow);
+}
+.detail::-webkit-scrollbar { width: 6px; }
+.detail::-webkit-scrollbar-track { background: transparent; }
+.detail::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
+.detail::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.actions:empty {
+  display: none;
+}
+.btn {
+  flex: 1;
+  min-height: 0;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-spring);
+  outline: none;
+}
+.btn:active:not(:disabled) { transform: scale(0.96); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+  background: #d97757;
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover-bg);
+}
+.btn-secondary {
+  background: var(--deny-bg);
+  color: var(--deny-color);
+  border-color: var(--deny-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--deny-hover-bg);
+  border-color: var(--deny-hover-border);
+}
+.btn-danger {
+  background: var(--danger-bg);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover-bg);
+}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="header">
+    <div class="title" id="title"></div>
+    <div class="pill" id="modePill"></div>
+  </div>
+  <div class="summary" id="summary">
+    <div class="message" id="message"></div>
+    <div class="version" id="version"></div>
+  </div>
+  <div class="detail" id="detail"></div>
+  <div class="actions" id="actions"></div>
+</div>
+<script>
+const card = document.getElementById("card");
+const titleEl = document.getElementById("title");
+const modePillEl = document.getElementById("modePill");
+const messageEl = document.getElementById("message");
+const versionEl = document.getElementById("version");
+const detailEl = document.getElementById("detail");
+const actionsEl = document.getElementById("actions");
+
+function modeLabel(mode, lang) {
+  const zh = {
+    checking: "检查中",
+    available: "可更新",
+    downloading: "下载中",
+    ready: "已就绪",
+    "up-to-date": "最新版本",
+    error: "失败",
+  };
+  const en = {
+    checking: "Checking",
+    available: "Available",
+    downloading: "Downloading",
+    ready: "Ready",
+    "up-to-date": "Latest",
+    error: "Error",
+  };
+  return ((lang === "zh" ? zh : en)[mode]) || mode;
+}
+
+function reportHeight() {
+  requestAnimationFrame(() => {
+    window.updateBubbleAPI.reportHeight(card.offsetHeight + 16);
+  });
+}
+
+function disableButtons() {
+  for (const btn of actionsEl.querySelectorAll("button")) btn.disabled = true;
+}
+
+function show(payload) {
+  const mode = payload.mode || "checking";
+
+  titleEl.textContent = payload.title || "";
+  messageEl.textContent = payload.message || "";
+  versionEl.textContent = payload.version ? `v${String(payload.version).replace(/^v/, "")}` : "";
+  versionEl.style.display = payload.version ? "" : "none";
+  detailEl.textContent = payload.detail || "";
+  detailEl.style.display = payload.detail ? "block" : "none";
+
+  modePillEl.textContent = modeLabel(mode, payload.lang || "en");
+  modePillEl.dataset.mode = mode;
+  card.dataset.mode = mode;
+
+  actionsEl.innerHTML = "";
+  for (const action of payload.actions || []) {
+    const btn = document.createElement("button");
+    const variant = action.variant || "secondary";
+    btn.className = `btn btn-${variant}`;
+    btn.textContent = action.label;
+    btn.addEventListener("click", () => {
+      disableButtons();
+      window.updateBubbleAPI.choose(action.id);
+    });
+    actionsEl.appendChild(btn);
+  }
+
+  card.classList.remove("hiding");
+  card.classList.add("visible");
+  reportHeight();
+}
+
+function hide() {
+  card.classList.remove("visible");
+  card.classList.add("hiding");
+}
+
+window.updateBubbleAPI.onShow(show);
+window.updateBubbleAPI.onHide(hide);
+</script>
+</body>
+</html>

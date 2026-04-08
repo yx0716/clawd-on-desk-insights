@@ -1,0 +1,279 @@
+const { BrowserWindow } = require("electron");
+const path = require("path");
+
+const isLinux = process.platform === "linux";
+const isMac = process.platform === "darwin";
+const isWin = process.platform === "win32";
+const WIN_TOPMOST_LEVEL = "pop-up-menu";
+const LINUX_WINDOW_TYPE = "toolbar";
+const WIDTH = 340;
+const EDGE_MARGIN = 8;
+const GAP = 6;
+
+function estimateHeight(payload) {
+  let height = payload && payload.mode === "error" ? 220 : 150;
+  if (payload && payload.message) {
+    const messageLines = String(payload.message).split(/\r?\n/).length;
+    height += Math.max(0, messageLines - 1) * 16;
+  }
+  if (payload && payload.detail) {
+    const detailText = String(payload.detail);
+    const detailLines = detailText.split(/\r?\n/).length;
+    const wrappedLines = Math.ceil(detailText.length / 72);
+    height += Math.min(220, 32 + detailLines * 16 + wrappedLines * 6);
+  }
+  if (payload && Array.isArray(payload.actions) && payload.actions.length) height += 44;
+  return height;
+}
+
+function computeUpdateBubbleBounds({
+  bubbleFollowPet,
+  width,
+  edgeMargin,
+  gap,
+  height,
+  reservedHeight,
+  workArea,
+  petBounds,
+  hitRect,
+}) {
+  let x = workArea.x + workArea.width - width - edgeMargin;
+  let y = workArea.y + workArea.height - edgeMargin - height - reservedHeight;
+
+  if (bubbleFollowPet && petBounds && hitRect) {
+    const hitTop = Math.round(hitRect.top);
+    const hitBottom = Math.round(hitRect.bottom);
+    const hitCx = Math.round((hitRect.left + hitRect.right) / 2);
+    const underPetY = hitBottom;
+    const abovePetY = hitTop - height;
+    const followBottom = workArea.y + workArea.height - edgeMargin;
+    const maxY = followBottom - height;
+
+    if (underPetY + height <= followBottom) {
+      x = Math.max(workArea.x, Math.min(hitCx - Math.round(width / 2), workArea.x + workArea.width - width));
+      y = underPetY;
+    } else if (abovePetY >= workArea.y + edgeMargin) {
+      x = Math.max(workArea.x, Math.min(hitCx - Math.round(width / 2), workArea.x + workArea.width - width));
+      y = abovePetY;
+    } else {
+      const hitRight = Math.round(hitRect.right);
+      const hitLeft = Math.round(hitRect.left);
+      const hitCy = Math.round((hitRect.top + hitRect.bottom) / 2);
+      const spaceRight = workArea.x + workArea.width - hitRight;
+      const spaceLeft = hitLeft - workArea.x;
+      if (spaceRight >= width || spaceRight >= spaceLeft) {
+        x = Math.min(hitRight + gap, workArea.x + workArea.width - width);
+      } else {
+        x = Math.max(workArea.x, hitLeft - gap - width);
+      }
+      y = Math.max(
+        workArea.y + edgeMargin,
+        Math.min(hitCy - Math.round(height / 2), maxY)
+      );
+    }
+  }
+
+  y = Math.max(workArea.y + edgeMargin, y);
+  return { x, y, width, height };
+}
+
+module.exports = function initUpdateBubble(ctx) {
+  let bubble = null;
+  let measuredHeight = 0;
+  let activePayload = null;
+  let resolveAction = null;
+  let hideTimer = null;
+
+  function getPermissionStackHeight() {
+    const pending = typeof ctx.getPendingPermissions === "function" ? ctx.getPendingPermissions() : [];
+    let total = 0;
+    for (const perm of pending) {
+      if (!perm || !perm.bubble || perm.bubble.isDestroyed() || !perm.bubble.isVisible()) continue;
+      total += perm.measuredHeight || 200;
+      total += GAP;
+    }
+    return total;
+  }
+
+  function ensureBubble() {
+    if (bubble && !bubble.isDestroyed()) return bubble;
+
+    bubble = new BrowserWindow({
+      width: WIDTH,
+      height: estimateHeight(activePayload),
+      show: false,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      focusable: false,
+      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
+      webPreferences: {
+        preload: path.join(__dirname, "preload-update-bubble.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    if (isWin) bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
+
+    bubble.loadFile(path.join(__dirname, "update-bubble.html"));
+    bubble.on("closed", () => {
+      bubble = null;
+      measuredHeight = 0;
+      if (resolveAction) {
+        const fallback = activePayload && activePayload.defaultAction != null ? activePayload.defaultAction : null;
+        const resolver = resolveAction;
+        resolveAction = null;
+        resolver(fallback);
+      }
+    });
+
+    bubble.webContents.once("did-finish-load", () => {
+      if (activePayload) bubble.webContents.send("update-bubble-show", activePayload);
+    });
+
+    if (typeof ctx.guardAlwaysOnTop === "function") ctx.guardAlwaysOnTop(bubble);
+    return bubble;
+  }
+
+  function computeBounds() {
+    if (!ctx.win || ctx.win.isDestroyed()) return null;
+    const petBounds = ctx.win.getBounds();
+    const cx = petBounds.x + petBounds.width / 2;
+    const cy = petBounds.y + petBounds.height / 2;
+    const wa = ctx.getNearestWorkArea(cx, cy);
+    const height = measuredHeight || estimateHeight(activePayload);
+    const reservedHeight = getPermissionStackHeight();
+    const hitRect = ctx.bubbleFollowPet ? ctx.getHitRectScreen(petBounds) : null;
+
+    return computeUpdateBubbleBounds({
+      bubbleFollowPet: ctx.bubbleFollowPet,
+      width: WIDTH,
+      edgeMargin: EDGE_MARGIN,
+      gap: GAP,
+      height,
+      reservedHeight,
+      workArea: wa,
+      petBounds,
+      hitRect,
+    });
+  }
+
+  function repositionUpdateBubble() {
+    if (!bubble || bubble.isDestroyed()) return;
+    const bounds = computeBounds();
+    if (bounds) bubble.setBounds(bounds);
+  }
+
+  function syncVisibility() {
+    if (!bubble || bubble.isDestroyed()) return;
+    if (ctx.petHidden) {
+      bubble.hide();
+      return;
+    }
+    bubble.showInactive();
+    if (isLinux) bubble.setSkipTaskbar(true);
+    if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
+  }
+
+  function settlePrevious(actionId) {
+    if (!resolveAction) return;
+    const resolver = resolveAction;
+    resolveAction = null;
+    resolver(actionId);
+  }
+
+  function showUpdateBubble(payload) {
+    activePayload = payload;
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+    if (resolveAction) {
+      settlePrevious(payload.defaultAction != null ? payload.defaultAction : null);
+    }
+    const win = ensureBubble();
+
+    const send = () => {
+      measuredHeight = 0;
+      repositionUpdateBubble();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("update-bubble-show", payload);
+        syncVisibility();
+      }
+    };
+
+    if (win.webContents.isLoading()) {
+      win.webContents.once("did-finish-load", send);
+    } else {
+      send();
+    }
+
+    if (!payload.requireAction) {
+      resolveAction = null;
+      return Promise.resolve(payload.defaultAction != null ? payload.defaultAction : null);
+    }
+
+    return new Promise((resolve) => {
+      resolveAction = resolve;
+    });
+  }
+
+  function hideUpdateBubble() {
+    if (!bubble || bubble.isDestroyed()) return;
+    bubble.webContents.send("update-bubble-hide");
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      if (bubble && !bubble.isDestroyed()) bubble.hide();
+    }, 250);
+  }
+
+  function resolveCurrentAction(actionId) {
+    if (!resolveAction) return;
+    const resolver = resolveAction;
+    resolveAction = null;
+    resolver(actionId);
+  }
+
+  function handleUpdateBubbleAction(event, actionId) {
+    const senderWin = BrowserWindow.fromWebContents(event.sender);
+    if (!bubble || senderWin !== bubble) return;
+    hideUpdateBubble();
+    resolveCurrentAction(actionId);
+  }
+
+  function handleUpdateBubbleHeight(event, height) {
+    const senderWin = BrowserWindow.fromWebContents(event.sender);
+    if (!bubble || senderWin !== bubble) return;
+    if (typeof height === "number" && height > 0) {
+      measuredHeight = Math.ceil(height);
+      repositionUpdateBubble();
+    }
+  }
+
+  function cleanup() {
+    if (hideTimer) clearTimeout(hideTimer);
+    settlePrevious(activePayload && activePayload.defaultAction != null ? activePayload.defaultAction : null);
+    if (bubble && !bubble.isDestroyed()) bubble.destroy();
+    bubble = null;
+  }
+
+  return {
+    showUpdateBubble,
+    hideUpdateBubble,
+    repositionUpdateBubble,
+    handleUpdateBubbleAction,
+    handleUpdateBubbleHeight,
+    syncVisibility,
+    cleanup,
+    getBubbleWindow: () => bubble,
+  };
+};
+
+module.exports.__test = {
+  computeUpdateBubbleBounds,
+  estimateHeight,
+};

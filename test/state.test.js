@@ -126,6 +126,18 @@ describe("resolveDisplayState()", () => {
       assert.ok(rePri >= hiPri, `expected ${high}(${hiPri}) to win over ${low}, got ${result}(${rePri})`);
     }
   });
+
+  it("update visual overlay wins over session display state until cleared", () => {
+    api.sessions.set("s1", rawSession("working"));
+    assert.strictEqual(api.resolveDisplayState(), "working");
+
+    api.setUpdateVisualState("checking");
+    assert.strictEqual(api.resolveDisplayState(), "sweeping");
+    assert.strictEqual(api.getSvgOverride("sweeping"), "clawd-working-debugger.svg");
+
+    api.setUpdateVisualState(null);
+    assert.strictEqual(api.resolveDisplayState(), "working");
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

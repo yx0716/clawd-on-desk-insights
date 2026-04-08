@@ -101,9 +101,12 @@ const i18n = {
     updateDirtyMsg: "Local files have been modified. Please commit or stash your changes before updating.",
     updateNow: "Update Now",
     updating: "Updating…",
+    gitUpdateRestarting: "Update complete. Restarting Clawd now...",
+    macUpdateOpened: "Opened the latest download page in your browser.",
     restartNow: "Restart Now",
     restartLater: "Later",
     download: "Download",
+    dismiss: "Dismiss",
     bubbleFollow: "Bubble Follow Pet",
     hideBubbles: "Hide Bubbles",
     showSessionId: "Show Session ID",
@@ -164,9 +167,12 @@ const i18n = {
     updateDirtyMsg: "本地文件有未提交的修改，请先 commit 或 stash 后再更新。",
     updateNow: "立即更新",
     updating: "正在更新…",
+    gitUpdateRestarting: "更新已完成，Clawd 即将重新启动。",
+    macUpdateOpened: "已在浏览器中打开最新下载页面。",
     restartNow: "立即重启",
     restartLater: "稍后",
     download: "下载",
+    dismiss: "关闭",
     bubbleFollow: "气泡跟随宠物",
     hideBubbles: "隐藏气泡",
     showSessionId: "显示会话编号",
@@ -298,7 +304,7 @@ module.exports = function initMenu(ctx) {
         checked: ctx.bubbleFollowPet,
         click: (menuItem) => {
           ctx.bubbleFollowPet = menuItem.checked;
-          if (ctx.pendingPermissions.length) ctx.repositionBubbles();
+          ctx.repositionBubbles();
           buildContextMenu();
           buildTrayMenu();
           ctx.savePrefs();
@@ -626,7 +632,7 @@ module.exports = function initMenu(ctx) {
       ctx.win.setBounds({ x, y, width: size.width, height: size.height });
     }
     ctx.syncHitWin();
-    if (ctx.bubbleFollowPet && ctx.pendingPermissions.length) ctx.repositionBubbles();
+    if (ctx.bubbleFollowPet) ctx.repositionBubbles();
     ctx.savePrefs();
   }
 
@@ -718,7 +724,7 @@ module.exports = function initMenu(ctx) {
         ctx.syncHitWin();
       }
     }
-    if (ctx.bubbleFollowPet && ctx.pendingPermissions.length) ctx.repositionBubbles();
+    if (ctx.bubbleFollowPet) ctx.repositionBubbles();
     buildContextMenu();
     ctx.savePrefs();
   }
