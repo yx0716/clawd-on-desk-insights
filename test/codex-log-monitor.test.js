@@ -361,6 +361,11 @@ describe("CodexLogMonitor", () => {
       monitor._extractShellCommand({ name: "shell_command", arguments: { command: "git status" } }),
       "git status"
     );
+    // exec_command with cmd field
+    assert.strictEqual(
+      monitor._extractShellCommand({ name: "exec_command", arguments: '{"cmd":"ls -la"}' }),
+      "ls -la"
+    );
     // Non-shell function
     assert.strictEqual(
       monitor._extractShellCommand({ name: "web_search", arguments: '{"query":"test"}' }),
@@ -369,5 +374,58 @@ describe("CodexLogMonitor", () => {
     // null/empty
     assert.strictEqual(monitor._extractShellCommand(null), "");
     assert.strictEqual(monitor._extractShellCommand({}), "");
+  });
+
+  it("should emit codex-permission for exec_command function calls", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/projects/foo"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"git status\\"}"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
+      if (state === "codex-permission") {
+        assert.strictEqual(extra.permissionDetail.command, "git status");
+        done();
+      }
+    });
+    monitor.start();
+  });
+
+  it("should emit codex-permission immediately for explicit escalated requests", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/projects/foo"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"git push\\",\\"sandbox_permissions\\":\\"require_escalated\\",\\"justification\\":\\"needs network\\"}"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const startedAt = Date.now();
+    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
+      if (state === "codex-permission") {
+        const elapsed = Date.now() - startedAt;
+        // Should fire immediately (well under the 2s heuristic timer)
+        assert.ok(elapsed < 1500, `expected immediate permission signal, got ${elapsed}ms`);
+        assert.strictEqual(extra.permissionDetail.command, "git push");
+        done();
+      }
+    });
+    monitor.start();
+  });
+
+  it("should process recent existing day dirs even if not today/yesterday", (_, done) => {
+    const oldDateDir = path.join(tmpDir, "2024", "01", "02");
+    fs.mkdirSync(oldDateDir, { recursive: true });
+    const testFile = path.join(oldDateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/tmp"}}\n');
+
+    const config = makeConfig(tmpDir);
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      assert.strictEqual(sid, EXPECTED_SID);
+      assert.strictEqual(state, "idle");
+      done();
+    });
+    monitor.start();
   });
 });
