@@ -1,31 +1,47 @@
-<!-- <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd Insights">
-</p> -->
-<h1 align="center">clawd-on-desk-insights</h1>
-<p align="center">
-  Among all the bubbles you've shared with your Agent,<br>
-  <strong>what's surfacing?</strong>
-</p>
-<p align="center">
+<div align="center">
+
+# clawd-on-desk-insights
+## A local-first analytics dashboard for your AI coding sessions
+
+> "Among all the bubbles you've shared with your Agent — what's surfacing?"
+
+[![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#why-it-exists)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111827)](#getting-started)
+[![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#getting-started)
+[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#about-the-fork)
+
+<p>
+  <a href="#why-it-exists">Why</a> ·
+  <a href="#what-the-dashboard-does">Features</a> ·
+  <a href="#getting-started">Quick Start</a> ·
+  <a href="#faq">FAQ</a> ·
   <a href="README.zh-CN.md">中文版</a>
 </p>
 
+</div>
 
-**A local-first analytics dashboard for your AI coding sessions.** It scans the conversations you've already had with Claude Code, Codex CLI, Cursor and other agents, and turns them into a timeline plus AI-generated session summaries — so you can finally **see your Vibe Coding journey clearly**.
+<table align="center">
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/screenshot-timeline-1.png" alt="时间线面板" />
+      <br /><sub><b>时间线视图</b> —— 每段会话的轨迹</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/screenshot-ai-analysis.png" alt="AI 会话分析" />
+      <br /><sub><b>AI 会话复盘</b> —— 你的尝试和收获</sub>
+    </td>
+  </tr>
+</table>
+
+
+**Clawd-on-desk-insights automatically scans the conversations you've already had with Claude Code, Codex CLI, Cursor and other agents, and turns them into a timeline plus AI-generated session summaries.** No more scrolling through endless chat history — it builds the knowledge cards for you.
 
 Every conversation leaves an **imprint**. No idea you tried, no bug you wrestled with, no decision you made together with the Agent is ever wasted — they all come back into view in the **Analytics Dashboard**.
 
-All data stays on your machine. AI analysis runs through your own local `claude code` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
+All data stays on your machine. AI analysis runs through your own local `claude` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js.
-
-<p align="center">
-  <img src="assets/screenshot-timeline.png" width="800" alt="Timeline Dashboard">
-</p>
-
-<p align="center">
-  <img src="assets/screenshot-analysis.png" width="800" alt="AI Session Analysis">
-</p>
 
 ## Why it exists
 
@@ -48,6 +64,29 @@ Next time you want to recall *"what did I actually do today"*, *"which session h
 | **Batch pre-analysis** | Pre-compute summaries for recent sessions and reuse provider-aware cached results |
 | **Cost tracking** | See token usage and cost per analysis run |
 | **Quick access** | Open from the tray menu, the right-click menu on the pet, or a global shortcut |
+
+### See it in action
+
+<table align="center">
+  <tr>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-dashboard-menu.gif" alt="Open the dashboard" />
+      <br /><sub><b>① Open</b><br/>right-click → Dashboard</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screen-shot-select-AI-provider.gif" alt="Pick a provider" />
+      <br /><sub><b>② Pick a provider</b><br/>Local CLI / API / Ollama</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-ai-provider-settings.gif" alt="Tweak settings" />
+      <br /><sub><b>③ Tweak settings</b><br/>gear ⚙ → AI Provider</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-ai-analysis.gif" alt="Run analysis" />
+      <br /><sub><b>④ Run analysis</b><br/>batch or per-session</sub>
+    </td>
+  </tr>
+</table>
 
 ## Getting Started
 

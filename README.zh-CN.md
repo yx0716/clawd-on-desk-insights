@@ -1,31 +1,49 @@
-<!-- <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd Insights">
-</p> -->
-<h1 align="center">clawd-on-desk-insights</h1>
-<p align="center">
-  在你和 Agent 的对话泡泡中,<br>
-  <strong>什么正在浮现？</strong>
-</p>
-<p align="center">
+<div align="center">
+
+# clawd-on-desk-insights
+## 本地优先的 AI 编程会话分析面板
+
+> "在你和 Agent 的对话中——什么正在浮现?"
+
+[![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#为什么需要它)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111827)](#上手指南)
+[![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#上手指南)
+[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#关于-fork-仓的说明)
+
+<p>
+  <a href="#为什么需要它">为什么</a> ·
+  <a href="#洞察面板能做什么">能力</a> ·
+  <a href="#上手指南">上手</a> ·
+  <a href="#常见问题">FAQ</a> ·
   <a href="README.md">English</a>
 </p>
 
+</div>
 
-**这是一个本地优先的 AI 会话分析面板。** 它将扫描你和 Claude Code、Codex CLI、Cursor 等 Agent 已经进行的对话,生成时间线和会话智能分析摘要——让你的 **Vibe Coding 之路清晰显现**。
+<table align="center">
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/screenshot-timeline-1.png" alt="时间线面板" />
+      <br /><sub><b>时间线视图</b> —— 每段会话的轨迹</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/screenshot-ai-analysis.png" alt="AI 会话分析" />
+      <br /><sub><b>AI 会话复盘</b> —— 你的尝试和收获</sub>
+    </td>
+  </tr>
+</table>
 
-每一段对话都留下了**痕迹**,没有一段尝试和探索是徒劳无功——所有你尝试的想法、解决的 bug、和 Agent 讨论做出的决定,都将在 **Analytics Dashboard** 中一一显现。
+
+**这是Agent会话分析面板。** 它将自动扫描你和 Claude Code、Codex、Cursor 等 Agent 已经进行的对话,生成时间线和会话智能分析摘要。再也不用翻漫长的对话历史,clawd-on-desk-insights 将帮你快速整理知识卡片。
+
+每一段对话都留下了**痕迹**,所有你尝试的想法、解决的 bug、和 Agent 讨论做出的决定,都将在 **Analytics Dashboard** 中一一呈现。
 
 数据全部留在本地。AI 分析通过你自己的本地 `claude` / `codex` CLI(或者你配置的 API / Ollama 后端)完成,你的对话不被第三方获取。
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。
 
-<p align="center">
-  <img src="assets/screenshot-timeline.png" width="800" alt="时间线面板">
-</p>
 
-<p align="center">
-  <img src="assets/screenshot-analysis.png" width="800" alt="AI 会话分析">
-</p>
 
 ## 为什么需要它
 
@@ -46,6 +64,29 @@ Vibe Coding 的一天 —— 你开了五个 session,改了三个项目,跟 Agen
 | **批量预分析** | 对最近会话批量预生成摘要,按 provider 隔离的缓存可复用 |
 | **成本追踪** | 显示每次 AI 分析的 token 用量与费用 |
 | **快捷入口** | 托盘菜单、右键桌宠或快捷键一键打开 |
+
+### 看它实际跑起来
+
+<table align="center">
+  <tr>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-dashboard-menu.gif" alt="打开 Dashboard" />
+      <br /><sub><b>① 打开</b><br/>右键 → Dashboard</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screen-shot-select-AI-provider.gif" alt="选 Provider" />
+      <br /><sub><b>② 选 Provider</b><br/>本地 CLI / API / Ollama</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-ai-provider-settings.gif" alt="改设置" />
+      <br /><sub><b>③ 改设置</b><br/>齿轮 ⚙ → AI Provider</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="assets/screenshot-ai-analysis.gif" alt="跑分析" />
+      <br /><sub><b>④ 跑分析</b><br/>批量或按需点单条</sub>
+    </td>
+  </tr>
+</table>
 
 ## 上手指南
 
