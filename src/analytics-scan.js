@@ -568,6 +568,43 @@ module.exports = function initAnalyticsScan(ctx) {
     return scanRange(startOfWeek, endOfDay);
   }
 
+  // Scan a specific calendar month. `month` is 1-indexed (1..12) for IPC
+  // ergonomics — humans pick "April" not "month index 3".
+  function scanMonthOf(year, month) {
+    const start = new Date(year, month - 1, 1).getTime();
+    const end = new Date(year, month, 1).getTime(); // first of next month (exclusive)
+    return scanRange(start, end);
+  }
+
+  // Returns months that contain at least one session, most recent first.
+  // Used to populate the Month-tab dropdown — we don't want to surface months
+  // with no data and force the user to wade through empty charts.
+  //
+  // Implementation reuses scanRange() over a 2-year window. scanRange() has
+  // its own CACHE_TTL so repeated dropdown opens hit the cache. If perf becomes
+  // an issue we can later add a metadata-only scan that skips message parsing,
+  // but for typical histories the 2-year window is fine.
+  function getAvailableMonths() {
+    const now = new Date();
+    const start = new Date(now.getFullYear() - 2, now.getMonth(), 1).getTime();
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const data = scanRange(start, end);
+    const buckets = new Map(); // key="YYYY-MM" → { year, month, count }
+    for (const s of (data && data.sessions) || []) {
+      const ts = s.firstTs || s.lastTs;
+      if (!ts) continue;
+      const d = new Date(ts);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      if (!buckets.has(key)) buckets.set(key, { year: y, month: m, count: 0 });
+      buckets.get(key).count++;
+    }
+    return [...buckets.values()].sort((a, b) =>
+      b.year !== a.year ? b.year - a.year : b.month - a.month
+    );
+  }
+
   // ── Session Detail (for AI analysis) ──
 
   function findSessionFile(sessionId, agent) {
@@ -718,5 +755,5 @@ module.exports = function initAnalyticsScan(ctx) {
     return detail;
   }
 
-  return { scanRange, scanToday, scan3Days, scanWeek, getSessionDetail };
+  return { scanRange, scanToday, scan3Days, scanWeek, scanMonthOf, getAvailableMonths, getSessionDetail };
 };

@@ -43,6 +43,11 @@ module.exports = function initAnalyticsAI(ctx) {
   // further down in the file are executed.
   let cachedClaudePath = undefined; // undefined = not searched, null = not found
   let cachedCodexPath = undefined;
+  // Per-binary CLI capability cache (Map<binaryPath, Set<flag>>). Populated
+  // lazily by getCliCapabilities() the first time a CLI is invoked, so we can
+  // skip flags the user's installed version doesn't recognize. Cleared by
+  // invalidateCliCaches() when the user re-points a custom CLI path.
+  const cliCapabilitiesCache = new Map();
   const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
   const PROVIDER_COOLDOWN_MS = 5 * 60 * 1000;
   const providerCooldowns = new Map();
@@ -522,11 +527,11 @@ module.exports = function initAnalyticsAI(ctx) {
 
       if (!text) return null;
 
-      // Parse JSON from response (might be wrapped in markdown code block)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { summary: text.slice(0, 200), highlights: [], suggestions: [] };
-
-      const insights = JSON.parse(jsonMatch[0]);
+      // Parse JSON from response (might be wrapped in markdown code block).
+      // Use balanced-brace extractor instead of greedy regex — see comment on
+      // extractFirstJsonObject() for why the old regex was broken.
+      const insights = extractFirstJsonObject(text);
+      if (!insights) return { summary: text.slice(0, 200), highlights: [], suggestions: [] };
       cachedInsights = insights;
       cacheExpiry = Date.now() + CACHE_TTL;
       return insights;
@@ -559,6 +564,9 @@ module.exports = function initAnalyticsAI(ctx) {
   function invalidateCliCaches() {
     cachedClaudePath = undefined;
     cachedCodexPath = undefined;
+    // Drop the capability cache too — when the user re-points a CLI, the new
+    // binary might be a totally different version with a different flag set.
+    cliCapabilitiesCache.clear();
   }
 
   function findClaudeBinary() {
@@ -664,6 +672,45 @@ module.exports = function initAnalyticsAI(ctx) {
     return cachedCodexPath;
   }
 
+  // Probe a CLI binary for the long-flags it accepts on a given subcommand.
+  // Used to skip version-gated flags (e.g. --ephemeral on codex < 0.118,
+  // --output-schema on codex < 0.118, --tools "" on older claude versions)
+  // that would otherwise hard-fail with `error: unexpected argument`.
+  //
+  // Result is a Set<string> of flag names including the leading `--`. An
+  // empty set means probing failed — callers must treat that as "I don't know,
+  // omit any version-gated flag" rather than "no flags supported", since
+  // forcing the legacy minimal arg set always works.
+  function getCliCapabilities(binaryPath, subcommand) {
+    const cacheKey = `${binaryPath}::${subcommand || ""}`;
+    if (cliCapabilitiesCache.has(cacheKey)) return cliCapabilitiesCache.get(cacheKey);
+    const supported = new Set();
+    try {
+      const args = subcommand ? [subcommand, "--help"] : ["--help"];
+      const output = execFileSync(binaryPath, args, {
+        encoding: "utf8",
+        timeout: 5000,
+        env: buildCliEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 1024 * 1024,
+      });
+      // Match `--flag-name` at the start of help lines (optionally preceded by
+      // `-x, ` short alias). Walks both `--help` body and any "Options:" block.
+      for (const m of String(output || "").matchAll(/^\s*(?:-\w[, ]+)?(--[a-z][a-z0-9-]*)/gim)) {
+        supported.add(m[1]);
+      }
+    } catch (err) {
+      // Don't spam — log once per binary
+      const logKey = `caps:${cacheKey}`;
+      if (!loggedCliBinaries.has(logKey)) {
+        loggedCliBinaries.add(logKey);
+        console.warn(`Clawd analytics: failed to probe ${binaryPath} ${subcommand || ""} --help:`, err.message);
+      }
+    }
+    cliCapabilitiesCache.set(cacheKey, supported);
+    return supported;
+  }
+
   function getProviderCooldown(providerId) {
     const cooldown = providerCooldowns.get(providerId);
     if (!cooldown) return null;
@@ -698,12 +745,35 @@ module.exports = function initAnalyticsAI(ctx) {
     ].some(re => re.test(text));
   }
 
+  // Detect "you need to log in again" style errors. Both Claude and Codex CLIs
+  // surface these via different wording depending on version, so be inclusive.
+  // When matched, friendlyCliError returns an actionable hint instead of the
+  // raw upstream message — fixing the bad UX where `code 1` left users guessing.
+  function isLikelyCliAuthFailure(message) {
+    const text = String(message || "");
+    return [
+      /not (?:authenticated|logged in|signed in)/i,
+      /please (?:log ?in|sign ?in|authenticate)/i,
+      /(?:login|session|token|credential|auth(?:entication)?)\s+(?:expired|invalid|missing|required)/i,
+      /(?:invalid|missing|expired|revoked)\s+(?:api[\s_-]?key|token|credential)/i,
+      /authentication\s+(?:failed|required|error)/i,
+      /unauthori[sz]ed/i,
+      /401\b/,
+      /OAuth\s+token/i,
+      /run\s+`?claude(?:\s+login)?`?\s+to/i,
+    ].some(re => re.test(text));
+  }
+
   function friendlyCliError(cliName, message) {
     const text = String(message || "").trim();
     const proxyTarget = text.match(/\b(?:127\.0\.0\.1|localhost|\[::1\]|::1):(\d+)\b/i);
     if (proxyTarget && /connection refused/i.test(text)) {
       const host = proxyTarget[0].replace(/^\[|\]$/g, "");
       return `${cliName} 无法连接本地代理 ${host}。请确认代理已启动，或关闭该代理配置后重试。`;
+    }
+    if (isLikelyCliAuthFailure(text)) {
+      const cmd = /codex/i.test(cliName) ? "codex login" : "claude";
+      return `${cliName} 登录态失效或未认证。请在终端运行 \`${cmd}\` 重新登录后再试。`;
     }
     if (isLikelyCliNetworkFailure(text)) {
       return `${cliName} 网络初始化失败。请检查代理、登录状态或外网连通性后重试。`;
@@ -753,6 +823,110 @@ module.exports = function initAnalyticsAI(ctx) {
     const prioritized = cleaned.filter(line => important.some(re => re.test(line)));
     const selected = (prioritized.length ? prioritized : cleaned).slice(0, 6).join(" | ");
     return selected || fallback || "Codex CLI failed";
+  }
+
+  // Best-effort error extraction from Claude CLI's stream-json output. Claude
+  // streams everything to stdout as NDJSON (including failures), so when exit
+  // code != 0 the real cause is usually buried in a `result` event with
+  // `is_error: true` while stderr is empty. This walks the NDJSON, surfaces the
+  // most informative error string we can find, and falls back to a stdout tail
+  // so users at least see *something* instead of the bare `code 1`.
+  function summarizeClaudeError(stdout, stderr, fallback) {
+    const stderrTrim = String(stderr || "").trim();
+    const stdoutText = String(stdout || "");
+
+    // Pass 1: scan NDJSON for error-bearing events.
+    const errorMessages = [];
+    const lines = stdoutText.split("\n").filter(Boolean);
+    for (const line of lines) {
+      let obj;
+      try { obj = JSON.parse(line); } catch { continue; }
+      if (!obj || typeof obj !== "object") continue;
+
+      // result event flagged as error (most common path)
+      if (obj.type === "result" && (obj.is_error === true || /error/i.test(obj.subtype || ""))) {
+        const msg = obj.result || obj.error || obj.message;
+        if (typeof msg === "string" && msg.trim()) errorMessages.push(msg.trim());
+      }
+      // system / init events with subtype=error (rare but possible)
+      if (obj.type === "system" && /error/i.test(obj.subtype || "")) {
+        const msg = obj.error || obj.message || obj.result;
+        if (typeof msg === "string" && msg.trim()) errorMessages.push(msg.trim());
+      }
+      // assistant message with is_error flag
+      if (obj.type === "assistant" && obj.is_error === true && obj.message) {
+        const content = obj.message.content;
+        if (Array.isArray(content)) {
+          for (const c of content) {
+            if (c && c.type === "text" && typeof c.text === "string") errorMessages.push(c.text.trim());
+          }
+        }
+      }
+      // top-level error field on any event
+      if (typeof obj.error === "string" && obj.error.trim() && !errorMessages.includes(obj.error.trim())) {
+        errorMessages.push(obj.error.trim());
+      }
+    }
+    if (errorMessages.length) {
+      return errorMessages.slice(0, 2).join(" | ").slice(0, 400);
+    }
+
+    // Pass 2: stderr (in case claude wrote anything there)
+    if (stderrTrim) return stderrTrim.slice(0, 400);
+
+    // Pass 3: stdout tail — strips JSON noise, keeps the last ~200 visible chars
+    const tail = stdoutText.replace(/\s+/g, " ").trim().slice(-200);
+    if (tail) return `${fallback || "claude exec failed"} (stdout tail: ${tail})`;
+
+    return fallback || "claude exec failed";
+  }
+
+  // Extract and parse the first complete top-level JSON object from a free-form
+  // text blob. The previous implementation used a greedy `/\{[\s\S]*\}/` regex
+  // that grabbed from the FIRST `{` to the LAST `}`, which broke whenever the
+  // model wrapped its JSON in markdown explanation that contained any other
+  // `}` (think "outcomes": [{...}], or trailing "Note: see {related}").
+  //
+  // Strategy: walk char-by-char tracking string state and brace depth. Skip
+  // until the first unquoted `{`, then read until the matching `}`. Try to
+  // JSON.parse — if that succeeds, return the object; if it fails, continue
+  // scanning past that block in case there's a *better* candidate later. On
+  // total failure return null so callers fall through to a text-summary.
+  function extractFirstJsonObject(text) {
+    const s = String(text || "");
+    let i = 0;
+    while (i < s.length) {
+      // Skip until next opening brace at depth 0
+      while (i < s.length && s[i] !== "{") i++;
+      if (i >= s.length) return null;
+      const start = i;
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (; i < s.length; i++) {
+        const ch = s[i];
+        if (escape) { escape = false; continue; }
+        if (inString) {
+          if (ch === "\\") escape = true;
+          else if (ch === '"') inString = false;
+          continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            const candidate = s.slice(start, i + 1);
+            try { return JSON.parse(candidate); }
+            catch { /* malformed candidate — keep scanning */ }
+            i++; // step past this `}` and look for the next `{`
+            break;
+          }
+        }
+      }
+      if (depth !== 0) return null; // unterminated object — bail out
+    }
+    return null;
   }
 
   function resolveCodexWorkingDir(preferredCwd) {
@@ -806,6 +980,11 @@ module.exports = function initAnalyticsAI(ctx) {
       const outputFile = path.join(tmpDir, "last-message.txt");
       const schemaFile = path.join(tmpDir, "output-schema.json");
       try { fs.writeFileSync(schemaFile, JSON.stringify(ANALYSIS_OUTPUT_SCHEMA)); } catch { /* ignore */ }
+      // Probe the installed codex once for the long-flags it supports — older
+      // codex (≤ 0.117) doesn't recognize --ephemeral or --output-schema and
+      // hard-fails with "error: unexpected argument" if we hand it the
+      // 0.118+ arg set unconditionally.
+      const caps = getCliCapabilities(codexPath, "exec");
       // Phase 0 cost/speed optimization (2026-04-07): force codex into fast
       // analysis mode. Without these, gpt-5.4 with `xhigh` reasoning_effort
       // routinely takes 90+ seconds. With them, the same task finishes in ~10s.
@@ -813,14 +992,23 @@ module.exports = function initAnalyticsAI(ctx) {
         "exec",
         "--skip-git-repo-check",
         "--json",
-        "--ephemeral",                           // don't persist session to disk
+      ];
+      // codex 0.118+ only — without it codex writes a session file to
+      // ~/.codex/sessions/ which is harmless (codex JSONL monitor is fine
+      // with extra entries), so degrading silently is acceptable.
+      if (caps.has("--ephemeral")) args.push("--ephemeral");
+      args.push(
         "--sandbox", "read-only",                // forbid any writes
         "-c", "model_reasoning_effort=low",      // gpt-5.4 default is xhigh — way too deep for analysis
         "-c", "tools.web_search=false",          // also avoids 'minimal' incompat error
-        "--output-schema", schemaFile,           // strict JSON output, suppresses chain-of-thought text
+      );
+      // codex 0.118+ only — without strict schema we rely on the prompt
+      // wording + extractFirstJsonObject() fallback to recover usable JSON.
+      if (caps.has("--output-schema")) args.push("--output-schema", schemaFile);
+      args.push(
         "-o", outputFile,
         "-",
-      ];
+      );
       const child = spawnCli(codexPath, args, {
         cwd: resolveCodexWorkingDir(options.cwd),
         env,
@@ -1281,7 +1469,10 @@ module.exports = function initAnalyticsAI(ctx) {
 
       const timer = setTimeout(() => {
         try { child.kill("SIGTERM"); } catch { /* ignore */ }
-        fail(stderr.trim() || `claude exec 超时（${Math.round(timeoutMs / 1000)}s）`, { stdout, stderr, timedOut: true });
+        fail(
+          summarizeClaudeError(stdout, stderr, `claude exec 超时（${Math.round(timeoutMs / 1000)}s）`),
+          { stdout, stderr, timedOut: true }
+        );
       }, timeoutMs);
 
       child.on("error", (err) => {
@@ -1309,7 +1500,11 @@ module.exports = function initAnalyticsAI(ctx) {
         if (settled) return;
         clearTimeout(timer);
         if (code !== 0) {
-          return fail(stderr.trim() || `claude exec 退出异常${code !== null ? `（code ${code}）` : signal ? `（signal ${signal}）` : ""}`, { stdout, stderr, code, signal });
+          const fallbackMsg = `claude exec 退出异常${code !== null ? `（code ${code}）` : signal ? `（signal ${signal}）` : ""}`;
+          return fail(
+            summarizeClaudeError(stdout, stderr, fallbackMsg),
+            { stdout, stderr, code, signal }
+          );
         }
 
         // stream-json outputs one JSON object per line (NDJSON)
@@ -1467,11 +1662,20 @@ module.exports = function initAnalyticsAI(ctx) {
           return obj;
         };
         if (text) {
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const result = attachMeta(JSON.parse(jsonMatch[0]));
+          // Try to extract a usable JSON object. extractFirstJsonObject() walks
+          // balanced braces and tries JSON.parse on each candidate, returning
+          // null if nothing parses. Critically, it does NOT throw — that means
+          // a malformed-JSON response no longer gets misattributed as
+          // "claude-cli failed" by the outer catch block.
+          const parsed = extractFirstJsonObject(text);
+          if (parsed) {
+            const result = attachMeta(parsed);
             return maybeCacheAnalysisResult(cacheKey, result);
           }
+          // Parse failed (or model returned no JSON at all). Log a clear,
+          // non-misleading warning and fall back to a text-summary so the user
+          // still sees *something* in the dashboard.
+          console.warn(`Clawd analytics: ${cliName} returned unparseable JSON, falling back to text summary`);
           const fallback = attachMeta({ summary: text.trim().slice(0, 300), keyTopics: [], outcomes: [], timeBreakdown: [], suggestions: [] });
           return maybeCacheAnalysisResult(cacheKey, fallback);
         }
@@ -1516,12 +1720,14 @@ module.exports = function initAnalyticsAI(ctx) {
       }
 
       if (!text) return null;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        const result = { summary: text.slice(0, 300), timeBreakdown: [], insights: [], suggestions: [], _msgCount: (detail.userMessages || []).length, _analysisMs: Date.now() - startTime };
-        return maybeCacheAnalysisResult(cacheKey, result);
+      // Use balanced-brace extractor; falls back to text summary on parse failure
+      // instead of throwing into the outer catch (which would otherwise hide the
+      // real reason behind a generic "分析失败" message).
+      const result = extractFirstJsonObject(text);
+      if (!result) {
+        const fallback = { summary: text.slice(0, 300), timeBreakdown: [], insights: [], suggestions: [], _msgCount: (detail.userMessages || []).length, _analysisMs: Date.now() - startTime };
+        return maybeCacheAnalysisResult(cacheKey, fallback);
       }
-      const result = JSON.parse(jsonMatch[0]);
       result._msgCount = (detail.userMessages || []).length;
       result._analysisMs = Date.now() - startTime;
       return maybeCacheAnalysisResult(cacheKey, result);

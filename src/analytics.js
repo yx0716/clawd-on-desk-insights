@@ -124,11 +124,25 @@ module.exports = function initAnalytics(ctx) {
     return ctx.analyticsScan.scanToday();
   });
 
-  ipcMain.handle("analytics-get-timeline", async (_event, range) => {
+  ipcMain.handle("analytics-get-timeline", async (_event, range, year, month) => {
     if (!ctx.analyticsScan) return null;
+    // Month tab passes year + month (1-indexed). Extra args are backward-
+    // compatible — old callers passing only `range` still hit the existing
+    // branches below.
+    if (range === "month" && year && month && ctx.analyticsScan.scanMonthOf) {
+      return ctx.analyticsScan.scanMonthOf(year, month);
+    }
     if (range === "week") return ctx.analyticsScan.scanWeek();
     if (range === "3days") return ctx.analyticsScan.scan3Days();
     return ctx.analyticsScan.scanToday();
+  });
+
+  // Returns the list of months that have at least one session, most recent
+  // first. Used by the Month-tab dropdown so the picker only shows months
+  // that contain data.
+  ipcMain.handle("analytics-get-available-months", async () => {
+    if (!ctx.analyticsScan || !ctx.analyticsScan.getAvailableMonths) return [];
+    return ctx.analyticsScan.getAvailableMonths();
   });
 
   ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider) => {

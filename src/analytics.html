@@ -271,9 +271,11 @@ body * { -webkit-app-region:no-drag; }
       <button class="tab" data-range="today">Today</button>
       <button class="tab" data-range="3days">3 Days</button>
       <button class="tab active" data-range="week">Week</button>
+      <button class="tab" data-range="month">Month</button>
     </div>
     <div class="tabs-spacer"></div>
     <div class="date-label" id="dateLabel"></div>
+    <select id="monthPicker" style="display:none;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);cursor:pointer"></select>
   </div>
 
   <!-- Timeline -->
@@ -382,6 +384,18 @@ body * { -webkit-app-region:no-drag; }
       </div>
     </div>
 
+    <!-- Section 3: Default Analysis Provider -->
+    <div class="settings-section">
+      <h3>Default Analysis Provider</h3>
+      <div class="settings-field">
+        <label for="settingsDefaultAnalysisProvider">Provider for Pre-analyze modal</label>
+        <select id="settingsDefaultAnalysisProvider">
+          <option value="">(use first available)</option>
+        </select>
+        <div class="field-hint">Pre-fills the Pre-analyze Sessions dropdown so you don't have to pick every time. Updated automatically when you click Start in the modal.</div>
+      </div>
+    </div>
+
     <div class="settings-btns">
       <button class="btn-clear" id="settingsClearBtn" type="button">Clear</button>
       <button class="btn-cancel" id="settingsCancelBtn" type="button">Cancel</button>
@@ -399,6 +413,10 @@ const BREAKDOWN_COLORS = ["#E8734A","#5B8DEF","#9F7AEA","#48BB78","#F56565","#EC
 
 let currentRange = "week", currentData = null, selectedSessionId = null;
 let analysisConsented = false, analysisProvider = null, selectedAnalysisAgent = "claude-code";
+// Month tab state — null when not on the Month tab. Lazy-loaded on first
+// Month-tab click via getAvailableMonths(), then cached for the session.
+let selectedMonth = null; // {year, month} (1-indexed) when Month tab is active
+let availableMonths = null; // cached list from getAvailableMonths()
 let analysisOptions = [];
 let projectColorMap = {};
 const batchCache = {}; // `${provider}:${sessionId}` → analysis result
@@ -1007,15 +1025,70 @@ function renderAnalysis(r){
 function refreshSel(){document.querySelectorAll(".time-block,.evt-card").forEach(el=>{el.classList.toggle("selected",el.dataset.sid===selectedSessionId);});}
 
 // ── Tabs ──
-document.querySelectorAll(".tab").forEach(tab=>{tab.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));tab.classList.add("active");currentRange=tab.dataset.range;selectedSessionId=null;document.getElementById("analysisPanel").classList.remove("visible");loadData();});});
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", async () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentRange = tab.dataset.range;
+    selectedSessionId = null;
+    document.getElementById("analysisPanel").classList.remove("visible");
+    const picker = document.getElementById("monthPicker");
+    const dateLabel = document.getElementById("dateLabel");
+    if (currentRange === "month") {
+      // Lazy-load the available-months list on first Month-tab click. Cached
+      // for the rest of the session — switching between tabs reuses it.
+      if (!availableMonths) {
+        try { availableMonths = await window.analyticsAPI.getAvailableMonths(); }
+        catch { availableMonths = []; }
+      }
+      if (!availableMonths.length) {
+        // No data anywhere — fall back to current month so the tab doesn't
+        // dead-end. Charts will render empty but the UI stays usable.
+        const now = new Date();
+        availableMonths = [{ year: now.getFullYear(), month: now.getMonth() + 1, count: 0 }];
+      }
+      picker.innerHTML = availableMonths.map(m =>
+        `<option value="${m.year}-${m.month}">${m.year}-${String(m.month).padStart(2, "0")} (${m.count})</option>`
+      ).join("");
+      // Default to most recent month with data (first item, since the list is
+      // already sorted desc by year+month).
+      selectedMonth = { year: availableMonths[0].year, month: availableMonths[0].month };
+      picker.value = `${selectedMonth.year}-${selectedMonth.month}`;
+      picker.style.display = "";
+      dateLabel.style.display = "none";
+    } else {
+      picker.style.display = "none";
+      dateLabel.style.display = "";
+      selectedMonth = null;
+    }
+    loadData();
+  });
+});
+
+// Month picker change — re-fetch with the newly chosen month.
+document.getElementById("monthPicker").addEventListener("change", function () {
+  const [y, m] = this.value.split("-").map(Number);
+  selectedMonth = { year: y, month: m };
+  loadData();
+});
 
 // ── Load ──
 async function loadData(){
   try{
-    const data=await window.analyticsAPI.getTimeline(currentRange);
+    let data;
+    if (currentRange === "month" && selectedMonth) {
+      data = await window.analyticsAPI.getTimeline("month", selectedMonth.year, selectedMonth.month);
+    } else {
+      data = await window.analyticsAPI.getTimeline(currentRange);
+    }
     if(!data)return;currentData=data;
     const now=new Date();
-    const rangeLabels={today:`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`,"3days":"Past 3 days",week:"Past 7 days"};
+    const rangeLabels={
+      today:`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`,
+      "3days":"Past 3 days",
+      week:"Past 7 days",
+      month: selectedMonth ? `${selectedMonth.year}-${String(selectedMonth.month).padStart(2,"0")}` : "",
+    };
     document.getElementById("dateLabel").textContent=rangeLabels[currentRange]||"";
     renderStats(data);renderTimeAxis();renderTimeline(data);
     renderDistribution(data);renderTrend(data);renderEvents(data);
@@ -1098,6 +1171,23 @@ async function openSettings() {
   } else {
     apiKeyEl.placeholder = "sk-...";
   }
+  // Populate the "Default Analysis Provider" dropdown with currently
+  // available providers, then set the saved value (if any). We refresh
+  // analysisOptions first so users see freshly-detected CLIs without
+  // closing/reopening Settings.
+  try {
+    if (!analysisOptions || !analysisOptions.length) await refreshAnalysisOptions();
+    const defaultSelect = document.getElementById("settingsDefaultAnalysisProvider");
+    const opts = ['<option value="">(use first available)</option>'].concat(
+      (analysisOptions || []).map(opt => {
+        const id = opt.id || opt.provider;
+        return `<option value="${id}">${formatAnalysisProvider(opt)}</option>`;
+      })
+    );
+    defaultSelect.innerHTML = opts.join("");
+    defaultSelect.value = (cfg && cfg.defaultAnalysisProvider) || "";
+  } catch (e) { console.warn("populate default-provider dropdown failed", e); }
+
   document.getElementById("settingsOverlay").style.display = "flex";
   // Kick off the diagnostic load (non-blocking — UI shows "Loading…" until done)
   loadCliDiagnostics();
@@ -1234,6 +1324,12 @@ async function saveSettings() {
   payload.customCliPaths = {};
   if (claudePath) payload.customCliPaths.claude = claudePath;
   if (codexPath) payload.customCliPaths.codex = codexPath;
+
+  // Default analysis provider for the Pre-analyze modal. Empty string =
+  // "(use first available)" — store as null so the read path falls back
+  // to the auto-pick behavior. Otherwise persist the chosen provider id.
+  const defaultAnalysisProvider = document.getElementById("settingsDefaultAnalysisProvider").value;
+  payload.defaultAnalysisProvider = defaultAnalysisProvider || null;
 
   try {
     await window.analyticsAPI.saveAIConfig(payload);
@@ -1420,6 +1516,16 @@ async function offerBatchAnalysis() {
     try { analysisProvider = await window.analyticsAPI.getAnalysisProvider(); } catch {}
   }
   if ((!analysisOptions || !analysisOptions.length) && !analysisProvider) return;
+  // Pre-fill the modal with the user's saved default provider (if any). This
+  // is the per-user "remember my choice" behavior — set once via the modal's
+  // Start button or the Settings dialog, persisted in aiConfig.
+  try {
+    const cfg = await window.analyticsAPI.getAIConfig();
+    const saved = cfg && cfg.defaultAnalysisProvider;
+    if (saved && analysisOptions.some(opt => opt.id === saved)) {
+      selectedAnalysisAgent = saved;
+    }
+  } catch {}
   if (analysisOptions.length && !analysisOptions.some(opt => opt.id === selectedAnalysisAgent)) {
     selectedAnalysisAgent = analysisOptions[0].id;
   }
@@ -1477,6 +1583,12 @@ async function offerBatchAnalysis() {
   if (!choice) return;
 
   selectedAnalysisAgent = choice.provider;
+  // Persist the picked provider as the new default — partial save, the
+  // backend merges with existing aiConfig so apiKey/customCliPaths/etc are
+  // preserved. Non-fatal if it fails (modal still proceeds).
+  try {
+    await window.analyticsAPI.saveAIConfig({ defaultAnalysisProvider: choice.provider });
+  } catch {}
   analysisConsented = true;
   renderEvents(currentData);
 
