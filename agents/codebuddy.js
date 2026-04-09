@@ -11,7 +11,6 @@ module.exports = {
     mac: ["CodeBuddy"],
     linux: ["codebuddy", "CodeBuddy"],
   },
-  nodeCommandPatterns: ["codebuddy"],
   eventSource: "hook",
   // PascalCase event names — identical to Claude Code hook system
   eventMap: {

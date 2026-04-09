@@ -9,7 +9,6 @@ module.exports = {
     mac: ["Cursor"],
     linux: ["cursor", "Cursor"],
   },
-  nodeCommandPatterns: [],
   eventSource: "hook",
   eventMap: {
     sessionStart: "idle",

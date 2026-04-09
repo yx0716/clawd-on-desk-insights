@@ -100,7 +100,7 @@ function createPidResolver(options) {
   return function resolve() {
     if (_cached) return _cached;
 
-    const { execSync } = require("child_process");
+    const { execFileSync } = require("child_process");
     let pid = startPid;
     let lastGoodPid = pid;
     let terminalPid = null;
@@ -112,8 +112,8 @@ function createPidResolver(options) {
       let name, parentPid;
       try {
         if (isWin) {
-          const out = execSync(
-            `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
+          const out = execFileSync(
+            "wmic", ["process", "where", `ProcessId=${pid}`, "get", "Name,ParentProcessId", "/format:csv"],
             { encoding: "utf8", timeout: 1500, windowsHide: true }
           );
           const lines = out.trim().split("\n").filter(l => l.includes(","));
@@ -122,9 +122,8 @@ function createPidResolver(options) {
           name = (parts[1] || "").trim().toLowerCase();
           parentPid = parseInt(parts[2], 10);
         } else {
-          const cp = require("child_process");
-          const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
-          const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
+          const ppidOut = execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
+          const commOut = execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
           name = require("path").basename(commOut).toLowerCase();
           if (!detectedEditor) {
             const fullLower = commOut.toLowerCase();
@@ -146,9 +145,9 @@ function createPidResolver(options) {
         } else if (agentCmdlineCheck && (name === "node.exe" || name === "node")) {
           try {
             const cmdOut = isWin
-              ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
+              ? execFileSync("wmic", ["process", "where", `ProcessId=${pid}`, "get", "CommandLine", "/format:csv"],
                   { encoding: "utf8", timeout: 500, windowsHide: true })
-              : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
+              : execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 500 });
             if (agentCmdlineCheck(cmdOut)) agentPid = pid;
           } catch {}
         }

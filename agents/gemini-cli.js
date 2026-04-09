@@ -5,7 +5,6 @@ module.exports = {
   id: "gemini-cli",
   name: "Gemini CLI",
   processNames: { win: ["gemini.exe"], mac: ["gemini"], linux: ["gemini"] },
-  nodeCommandPatterns: [],
   eventSource: "log-poll",
   // PascalCase event names — matches Gemini CLI hook system (retained for future use)
   eventMap: {

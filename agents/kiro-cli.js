@@ -6,7 +6,6 @@ module.exports = {
   id: "kiro-cli",
   name: "Kiro CLI",
   processNames: { win: ["kiro.exe"], mac: ["kiro"], linux: ["kiro"] },
-  nodeCommandPatterns: ["@kiro"],
   eventSource: "hook",
   // camelCase event names — matches Kiro CLI hook system
   eventMap: {

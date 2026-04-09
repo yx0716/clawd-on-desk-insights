@@ -60,11 +60,12 @@ const REQUIRED_STATES = ["idle", "working", "thinking", "sleeping", "waking"];
 
 // ── SVG sanitization config ──
 const DANGEROUS_TAGS = new Set([
-  "script", "foreignobject", "iframe", "embed", "object", "applet",
+  "script", "style", "foreignobject", "iframe", "embed", "object", "applet",
   "meta", "link", "base", "form", "input", "textarea", "button",
 ]);
 const DANGEROUS_ATTR_RE = /^on/i;
 const DANGEROUS_HREF_RE = /^\s*javascript\s*:/i;
+const EXTERNAL_RESOURCE_RE = /^\s*(https?|data|file|ftp)\s*:/i;
 const HREF_ATTRS = new Set(["href", "xlink:href", "src", "action", "formaction"]);
 
 // ── State ──
@@ -109,7 +110,7 @@ function discoverThemes() {
     _scanThemesDir(builtinThemesDir, true, themes, seen);
   }
 
-  // User-installed themes (override built-in if same id)
+  // User-installed themes (same id as built-in is skipped — built-in takes priority)
   if (userThemesDir) {
     _scanThemesDir(userThemesDir, false, themes, seen);
   }
@@ -327,9 +328,12 @@ function _sanitizeNode(node) {
           delete child.attribs[key];
           continue;
         }
-        // Remove javascript: URLs
-        if (HREF_ATTRS.has(key.toLowerCase()) && DANGEROUS_HREF_RE.test(child.attribs[key])) {
-          delete child.attribs[key];
+        // Remove javascript: URLs and external resource references
+        if (HREF_ATTRS.has(key.toLowerCase())) {
+          const val = child.attribs[key];
+          if (DANGEROUS_HREF_RE.test(val) || EXTERNAL_RESOURCE_RE.test(val)) {
+            delete child.attribs[key];
+          }
         }
       }
     }
@@ -361,12 +365,6 @@ function resolveHint(hookFilename) {
  * Built-in: assets/svg/. External: theme-cache for SVGs, theme dir for non-SVGs.
  * @returns {string} absolute directory path
  */
-function getAssetsDir() {
-  if (!activeTheme) return assetsSvgDir;
-  if (activeTheme._builtin) return assetsSvgDir;
-  return activeTheme._assetsDir || assetsSvgDir;
-}
-
 /**
  * Get asset path for a specific file.
  * For external themes: SVGs come from cache, non-SVGs from source theme dir.
@@ -374,6 +372,7 @@ function getAssetsDir() {
  * @returns {string} absolute file path
  */
 function getAssetPath(filename) {
+  filename = path.basename(filename);
   if (!activeTheme) return path.join(assetsSvgDir, filename);
 
   if (activeTheme._builtin) {
@@ -453,6 +452,7 @@ function getRendererConfig() {
     // renderer needs to know which states need eye tracking (for <object> vs <img> decision)
     eyeTrackingStates: t.eyeTracking.enabled ? t.eyeTracking.states : [],
     objectScale: t.objectScale,
+    transitions: t.transitions || {},
   };
 }
 
@@ -595,6 +595,7 @@ function mergeDefaults(raw, themeId, isBuiltin) {
   if (raw.miniMode) {
     theme.miniMode = {
       supported: true,
+      offsetRatio: 0.486,
       ...raw.miniMode,
       timings: {
         minDisplay: {},
@@ -668,14 +669,11 @@ module.exports = {
   loadTheme,
   getActiveTheme,
   resolveHint,
-  getAssetsDir,
   getAssetPath,
   getRendererAssetsPath,
   getRendererSourceAssetsPath,
   getRendererConfig,
   getHitRendererConfig,
   ensureUserThemesDir,
-  validateTheme,
-  sanitizeSvg,
   getSoundUrl,
 };

@@ -5,7 +5,6 @@ module.exports = {
   id: "codex",
   name: "Codex CLI",
   processNames: { win: ["codex.exe"], mac: ["codex"], linux: ["codex"] },
-  nodeCommandPatterns: [], // Rust native binary, not node
   eventSource: "log-poll",
   // JSONL record type:subtype → pet state mapping
   // ⚠️ Also duplicated in hooks/codex-remote-monitor.js (zero-dep requirement) — keep in sync
