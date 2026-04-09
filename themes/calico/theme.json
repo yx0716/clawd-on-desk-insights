@@ -12,8 +12,8 @@
     "contentBox": { "x": 36, "y": 10, "width": 194, "height": 160 },
     "centerX": 133,
     "baselineY": 170,
-    "visibleHeightRatio": 0.58,
-    "baselineBottomRatio": 0.05
+    "visibleHeightRatio": 0.35,
+    "baselineBottomRatio": 0.44
   },
 
   "eyeTracking": {
