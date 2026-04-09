@@ -122,7 +122,15 @@ body * { -webkit-app-region:no-drag; }
 .evt-meta { font-size:10px; color:var(--text-muted); }
 .evt-title { font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:4px; min-width:0; }
 .evt-title-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.evt-title-text[data-source="firstMsg"] { font-weight:500; color:var(--text-secondary); }
+.evt-title-text[data-source="local"] { color:var(--accent); }
 .evt-title .edot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+/* Pencil button for local rename — hidden until card hover to keep cards clean */
+.evt-rename-btn { opacity:0; background:none; border:none; cursor:pointer; font-size:14px; color:var(--text-muted); padding:2px 4px; line-height:1; flex-shrink:0; transition:opacity .15s,color .15s; }
+.evt-card:hover .evt-rename-btn { opacity:0.7; }
+.evt-rename-btn:hover { opacity:1 !important; color:var(--accent); }
+.evt-title-input { font:inherit; font-weight:700; flex:1 1 auto; min-width:0; padding:2px 6px; border:1px solid var(--accent); border-radius:4px; background:var(--bg-card); color:var(--text); outline:none; }
+.evt-title-input::placeholder { font-weight:500; color:var(--text-muted); }
 .evt-dur { font-size:12px; font-weight:700; color:var(--accent); }
 .evt-agent { display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:600; color:var(--text-secondary); padding:4px 8px; border-radius:999px; background:var(--bg-card); border:1px solid var(--border-light); }
 .evt-agent-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -708,7 +716,7 @@ function renderTimeline(data) {
       for(const s of list){
         const b=s._block,st=s._laneStart,en=s._laneEnd;
         const lp=((st-axisStart)/rangeLen)*100,wp=Math.max(((en-st)/rangeLen)*100,.4);
-        const dur=fmtDur(en-st),proj=s.title||s.project||"session";
+        const dur=fmtDur(en-st),proj=resolveTitle(s).text||"session";
         const lbl=wp>14?`${proj} · ${dur}`:wp>8?dur:"";
         const blockDur=en-st;
         const opacity=maxBlockDur>0?0.45+0.55*(blockDur/maxBlockDur):1;
@@ -804,7 +812,10 @@ function renderEvents(data) {
     for(const s of daySessions){
       const dur=sessDur(s);
       const timeRange=s.firstTs&&s.lastTs?`${fmtTime(s.firstTs)}-${fmtTime(s.lastTs)}`:"--";
-      const proj=s.title||s.project||s.id.slice(0,8);
+      // Resolve display title via priority chain — see resolveTitle() comment
+      const resolved=resolveTitle(s);
+      const proj=resolved.text;
+      const titleSource=resolved.source;
       const cached=getCachedAnalysis(s.id);
       const isAnalyzed=!!cached;
       const isAnalyzing=analyzingSessionIds.has(s.id);
@@ -822,7 +833,7 @@ function renderEvents(data) {
           <div class="evt-agent"><span class="evt-agent-dot" style="background:${agentColor(s.agent)}"></span>${escapeHtml(agentLabel(s.agent))}</div>
         </div>
         <div class="evt-main">
-          <div class="evt-title"><span class="edot" style="background:${projColor(s.project||s.title||'unknown')}"></span><span class="evt-title-text">${escapeHtml(proj)}</span>${isAnalyzing?'<span class="evt-tag evt-tag-running">Analyzing…</span>':(isAnalyzed?'<span class="evt-tag">Analyzed</span>':"")}</div>
+          <div class="evt-title"><button class="evt-rename-btn" data-rename-sid="${s.id}" title="Rename (local only)" aria-label="Rename session">✎</button><span class="edot" style="background:${projColor(s.project||s.title||'unknown')}"></span><span class="evt-title-text" data-source="${titleSource}" title="${escapeHtml(titleSource==='local'?'Local rename — click pencil to edit':titleSource==='custom'?'From jsonl custom-title':titleSource==='firstMsg'?'Project + first message (click pencil to set a title)':'Project folder')}">${escapeHtml(proj)}</span>${isAnalyzing?'<span class="evt-tag evt-tag-running">Analyzing…</span>':(isAnalyzed?'<span class="evt-tag">Analyzed</span>':"")}</div>
           <div class="evt-desc" id="desc-${s.id}">${escapeHtml(desc)}</div>
         </div>
       </div>`;
@@ -831,6 +842,113 @@ function renderEvents(data) {
   }
   el.innerHTML=html;
   el.querySelectorAll(".evt-card").forEach(c=>{c.addEventListener("click",onCardClick);});
+  // Pencil rename buttons — stop propagation so the click doesn't also select
+  // the session and open the analysis panel.
+  el.querySelectorAll(".evt-rename-btn").forEach(btn=>{
+    btn.addEventListener("click",(e)=>{
+      e.stopPropagation();
+      const sid=btn.dataset.renameSid;
+      if(sid) beginInlineRename(sid);
+    });
+  });
+}
+
+// Resolve a session's display title via priority chain:
+//   localTitle (clawd rename)  >  title (jsonl custom-title)  >  firstUserMsg (truncated)  >  project (cwd basename)
+// Returns { text, source } — source drives the CSS data-source styling
+// ("local" gets the accent color, "firstMsg" gets a lighter weight).
+// The pencil-button title also reads `source` to explain where the text came from.
+function resolveTitle(s) {
+  if (!s) return { text: "", source: "project" };
+  if (s.localTitle && String(s.localTitle).trim()) return { text: String(s.localTitle).trim(), source: "local" };
+  if (s.title && String(s.title).trim()) return { text: String(s.title).trim(), source: "custom" };
+  // Default: "project · first prompt" — project name gives context, prompt gives intent
+  const proj = s.project || "";
+  let msg = s.firstUserMsg ? String(s.firstUserMsg).trim().replace(/\s+/g, " ") : "";
+  if (proj && msg) {
+    // Budget ~60 chars total: project name + separator + truncated prompt
+    const budget = Math.max(60 - proj.length - 3, 20);
+    if (msg.length > budget) msg = msg.slice(0, budget - 1) + "…";
+    return { text: `${proj} · ${msg}`, source: "firstMsg" };
+  }
+  if (msg) {
+    if (msg.length > 60) msg = msg.slice(0, 57) + "…";
+    return { text: msg, source: "firstMsg" };
+  }
+  return { text: proj || (s.id ? s.id.slice(0, 8) : "session"), source: "project" };
+}
+
+// Turn the title span into an editable input, commit on Enter/blur, cancel on Escape.
+// Empty commit = clear the override (fall back down the priority chain).
+async function beginInlineRename(sid) {
+  const card = document.querySelector(`.evt-card[data-sid="${sid}"]`);
+  if (!card) return;
+  const titleEl = card.querySelector(".evt-title");
+  const span = card.querySelector(".evt-title-text");
+  const pencil = card.querySelector(".evt-rename-btn");
+  if (!titleEl || !span) return;
+  // Save originals for cancel
+  const originalText = span.textContent;
+  const originalSource = span.dataset.source || "project";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "evt-title-input";
+  input.value = originalSource === "firstMsg" || originalSource === "project" ? "" : originalText;
+  input.placeholder = originalText;
+  input.maxLength = 200;
+
+  // Hide the existing span + pencil while editing
+  span.style.display = "none";
+  if (pencil) pencil.style.display = "none";
+  titleEl.insertBefore(input, span);
+  // Tiny tick to let the browser lay out before focusing
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+
+  let settled = false;
+  async function commit(save) {
+    if (settled) return;
+    settled = true;
+    input.removeEventListener("keydown", onKey);
+    input.removeEventListener("blur", onBlur);
+    if (save) {
+      const newTitle = input.value.trim();
+      try {
+        if (newTitle) {
+          await window.analyticsAPI.setLocalTitle(sid, newTitle);
+        } else {
+          // Empty = clear override
+          await window.analyticsAPI.clearLocalTitle(sid);
+        }
+        // Update the session object in currentData so the next refresh reflects it
+        if (currentData && Array.isArray(currentData.sessions)) {
+          const sess = currentData.sessions.find(x => x && x.id === sid);
+          if (sess) {
+            if (newTitle) sess.localTitle = newTitle;
+            else delete sess.localTitle;
+          }
+        }
+        // Re-render events grid + timeline so the renamed title shows everywhere.
+        if (currentData) { renderTimeline(currentData); renderEvents(currentData); }
+        return;
+      } catch (err) {
+        console.warn("setLocalTitle failed:", err);
+      }
+    }
+    // Restore on cancel / error
+    input.remove();
+    span.style.display = "";
+    if (pencil) pencil.style.display = "";
+  }
+
+  function onKey(e) {
+    if (e.key === "Enter") { e.preventDefault(); commit(true); }
+    else if (e.key === "Escape") { e.preventDefault(); commit(false); }
+  }
+  function onBlur() { commit(true); }
+
+  input.addEventListener("keydown", onKey);
+  input.addEventListener("blur", onBlur);
 }
 
 // ── Tooltip ──
