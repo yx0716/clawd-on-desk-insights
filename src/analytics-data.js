@@ -29,7 +29,7 @@ module.exports = function initAnalyticsData(ctx) {
     try {
       if (!fs.existsSync(logPath)) return [];
       const content = fs.readFileSync(logPath, "utf8");
-      const lines = content.trim().split("\n").filter(Boolean);
+      const lines = content.trim().split(/\r?\n/).filter(Boolean);
       const events = [];
       for (const line of lines) {
         try {
