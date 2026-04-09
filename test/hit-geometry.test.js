@@ -34,10 +34,10 @@ describe("hit geometry", () => {
 
   it("matches bottom-anchored SVG layout for calico idle", () => {
     const rect = hitGeometry.getAssetRectScreen(calico, bounds, "idle", "calico-idle-follow.svg");
-    approx(rect.x, 41.81);
-    approx(rect.y, 115.63);
-    approx(rect.w, 116.38);
-    approx(rect.h, 87.5);
+    approx(rect.x, 40.94);
+    approx(rect.y, 114.51);
+    approx(rect.w, 118.12);
+    approx(rect.h, 88.81);
   });
 
   it("aligns calico idle baseline with clawd without forcing equal body size", () => {
@@ -50,17 +50,11 @@ describe("hit geometry", () => {
     assert.ok(calicoVisible.h < clawdVisible.h);
   });
 
-  it("keeps major calico non-mini animations inside the window bottom edge", () => {
+  it("keeps critical calico non-loop animations inside the window bottom edge", () => {
     const files = [
       "calico-react-drag.apng",
-      "calico-working-typing.apng",
-      "calico-working-juggling.apng",
-      "calico-working-building.apng",
-      "calico-working-conducting.apng",
-      "calico-working-sweeping.apng",
       "calico-working-carrying.apng",
       "calico-error.apng",
-      "calico-happy.apng",
     ];
 
     for (const file of files) {

@@ -641,4 +641,16 @@ describe("refreshTheme()", () => {
     mock.timers.tick(5200);
     assert.strictEqual(api.getCurrentState(), "sleeping");
   });
+
+  it("uses the refreshed theme wake duration before returning from waking", () => {
+    ctx.theme = _calicoTheme;
+    api.refreshTheme();
+
+    api.applyState("waking");
+    mock.timers.tick(5799);
+    assert.strictEqual(api.getCurrentState(), "waking");
+
+    mock.timers.tick(1);
+    assert.strictEqual(api.getCurrentState(), "idle");
+  });
 });
