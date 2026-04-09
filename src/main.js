@@ -820,7 +820,7 @@ function createWindow() {
       const resolved = resolveDisplayState();
       applyState(resolved, getSvgOverride(resolved));
     } else {
-      applyState("idle", "clawd-idle-follow.svg");
+      applyState("idle", getSvgOverride("idle"));
       // Startup recovery: delay 5s to let HWND/z-order/drag systems stabilize,
       // then detect running Claude Code processes → suppress sleep sequence
       setTimeout(() => {

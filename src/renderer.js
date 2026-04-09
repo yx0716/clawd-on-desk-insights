@@ -3,6 +3,8 @@
 // Reactions are triggered via IPC from main (relayed from hit window).
 
 const container = document.getElementById("pet-container");
+let clawdEl = document.getElementById("clawd");
+let pendingNext = null;
 
 // ── Theme config (injected via preload.js additionalArguments) ──
 let tc = window.themeConfig || {};
@@ -19,6 +21,26 @@ function initWithConfig(cfg) {
   _dragSvg = tc.dragSvg || "clawd-react-drag.svg";
   _idleFollowSvg = tc.idleFollowSvg || "clawd-idle-follow.svg";
   _glyphFlipDefs = tc.glyphFlips || { "pixel-z": 4, "pixel-z-small": 3 };
+
+  // objectScale — applied via element.style in swapToFile() (CSP blocks <style> injection)
+  const os = tc.objectScale || { widthRatio: 1.9, heightRatio: 1.3, offsetX: -0.45, offsetY: -0.25 };
+  _objectScaleCSS = {
+    width:  `${os.widthRatio * 100}%`,
+    height: `${os.heightRatio * 100}%`,
+    left:   `${os.offsetX * 100}%`,
+    top:    `${os.offsetY * 100}%`,
+  };
+
+  applyObjectScaleStyle(clawdEl);
+  applyObjectScaleStyle(pendingNext);
+}
+
+function applyObjectScaleStyle(el) {
+  if (!el || !_objectScaleCSS) return;
+  el.style.width = _objectScaleCSS.width;
+  el.style.height = _objectScaleCSS.height;
+  el.style.left = _objectScaleCSS.left;
+  el.style.top = _objectScaleCSS.top;
 }
 
 let _assetsPath;
@@ -31,6 +53,7 @@ let _eyeTrackingStates;
 let _dragSvg;
 let _idleFollowSvg;
 let _glyphFlipDefs;
+let _objectScaleCSS;
 initWithConfig(tc);
 
 // Theme switch: reload + IPC push overrides additionalArguments
@@ -193,8 +216,6 @@ function endDragReaction() {
 }
 
 // --- Generic swap function: handles both <object> and <img> channels ---
-let clawdEl = document.getElementById("clawd");
-let pendingNext = null;
 let currentDisplayedSvg = getObjectSvgName(clawdEl);
 currentIdleSvg = currentDisplayedSvg;
 
@@ -220,6 +241,7 @@ function swapToFile(file, state, useObjectChannel) {
     next.type = "image/svg+xml";
     next.id = "clawd";
     next.style.opacity = "0";
+    applyObjectScaleStyle(next);
 
     const swap = () => {
       if (pendingNext !== next) return;
@@ -256,6 +278,7 @@ function swapToFile(file, state, useObjectChannel) {
     next.className = "clawd-img";
     next.id = "clawd";
     next.style.opacity = "0";
+    applyObjectScaleStyle(next);
 
     const swap = () => {
       if (pendingNext !== next) return;
@@ -416,18 +439,8 @@ window.electronAPI.onWakeFromDoze(() => {
   }
 });
 
-// --- Initial frame: set data from theme config (avoids hardcoded path in HTML) ---
-if (clawdEl && clawdEl.tagName === "OBJECT" && !clawdEl.data) {
-  const initialSvg = _idleFollowSvg;
-  const url = getAssetUrl(initialSvg);
-  clawdEl.data = url;
-  currentDisplayedSvg = initialSvg;
-  currentIdleSvg = initialSvg;
-  // Attach eye tracking once loaded
-  clawdEl.addEventListener("load", () => {
-    if (clawdEl && clawdEl.isConnected) {
-      attachEyeTracking(clawdEl);
-      if (miniLeftFlip) applyGlyphFlipCompensation(clawdEl);
-    }
-  }, { once: true });
+// --- Initial frame: always go through swapToFile so the right channel and theme scaling apply ---
+if (!currentDisplayedSvg && _idleFollowSvg) {
+  currentIdleSvg = _idleFollowSvg;
+  swapToFile(_idleFollowSvg, "idle");
 }

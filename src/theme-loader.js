@@ -369,7 +369,14 @@ function getAssetsDir() {
  * @returns {string} absolute file path
  */
 function getAssetPath(filename) {
-  if (!activeTheme || activeTheme._builtin) {
+  if (!activeTheme) return path.join(assetsSvgDir, filename);
+
+  if (activeTheme._builtin) {
+    // Built-in theme with own assets dir (e.g., calico with APNGs)
+    if (!filename.endsWith(".svg")) {
+      const themeAsset = path.join(activeTheme._themeDir, "assets", filename);
+      if (fs.existsSync(themeAsset)) return themeAsset;
+    }
     return path.join(assetsSvgDir, filename);
   }
 
@@ -400,7 +407,15 @@ function getRendererAssetsPath() {
  * @returns {string|null} file:// URL or null for built-in
  */
 function getRendererSourceAssetsPath() {
-  if (!activeTheme || activeTheme._builtin) return null;
+  if (!activeTheme) return null;
+  if (activeTheme._builtin) {
+    // Built-in theme with own assets dir (e.g., calico with APNGs)
+    const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
+    if (fs.existsSync(themeAssetsDir)) {
+      return pathToFileURL(themeAssetsDir).href;
+    }
+    return null;
+  }
   return pathToFileURL(path.join(activeTheme._themeDir, "assets")).href;
 }
 
@@ -421,6 +436,7 @@ function getRendererConfig() {
     idleFollowSvg: t.states.idle[0],
     // renderer needs to know which states need eye tracking (for <object> vs <img> decision)
     eyeTrackingStates: t.eyeTracking.enabled ? t.eyeTracking.states : [],
+    objectScale: t.objectScale,
   };
 }
 
