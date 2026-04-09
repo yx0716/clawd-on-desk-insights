@@ -13,9 +13,33 @@ const os = require("os");
 
 module.exports = function initAnalyticsScan(ctx) {
   const home = os.homedir();
-  const CLAUDE_PROJECTS = path.join(home, ".claude", "projects");
-  const CODEX_SESSIONS = path.join(home, ".codex", "sessions");
-  const CURSOR_PROJECTS = path.join(home, ".cursor", "projects");
+
+  // On Linux, respect XDG Base Directory spec as fallback:
+  // If standard dotfile dir doesn't exist, try $XDG_DATA_HOME / $XDG_CONFIG_HOME
+  function firstExistingDir(...candidates) {
+    for (const d of candidates) {
+      if (!d) continue;
+      try { if (fs.statSync(d).isDirectory()) return d; } catch {}
+    }
+    return candidates[0]; // gracefully fails later in readdirSync try-catch
+  }
+
+  const isLinux = process.platform === "linux";
+  const xdgData = isLinux ? (process.env.XDG_DATA_HOME || path.join(home, ".local", "share")) : null;
+  const xdgConfig = isLinux ? (process.env.XDG_CONFIG_HOME || path.join(home, ".config")) : null;
+
+  const CLAUDE_PROJECTS = firstExistingDir(
+    path.join(home, ".claude", "projects"),
+    xdgConfig ? path.join(xdgConfig, "claude", "projects") : null
+  );
+  const CODEX_SESSIONS = firstExistingDir(
+    path.join(home, ".codex", "sessions"),
+    xdgData ? path.join(xdgData, "codex", "sessions") : null
+  );
+  const CURSOR_PROJECTS = firstExistingDir(
+    path.join(home, ".cursor", "projects"),
+    xdgConfig ? path.join(xdgConfig, "cursor", "projects") : null
+  );
 
   // Cache scan results (expensive I/O)
   let cache = null;
@@ -33,8 +57,16 @@ module.exports = function initAnalyticsScan(ctx) {
   }
 
   function cwdFromDirName(dirName) {
-    // "-Users-jyx-Documents-1-explore" → "/Users/jyx/Documents/1-explore"
-    return dirName.replace(/^-/, "/").replace(/-/g, "/");
+    // Reverse Claude Code's directory encoding: path separators → "-"
+    // macOS/Linux: "-Users-jyx-Documents-1-explore" → "/Users/jyx/Documents/1-explore"
+    // Windows:    "-C-Users-jyx-Documents-proj"     → "C:\Users\jyx\Documents\proj"
+    const stripped = dirName.replace(/^-/, "");
+    const parts = stripped.split("-").filter(Boolean);
+    // Detect Windows drive letter: first segment is a single letter (A-Z)
+    if (parts.length >= 2 && /^[A-Za-z]$/.test(parts[0])) {
+      return parts[0] + ":\\" + parts.slice(1).join("\\");
+    }
+    return "/" + parts.join("/");
   }
 
   function dateStr(d) {
@@ -236,7 +268,7 @@ module.exports = function initAnalyticsScan(ctx) {
 
       try {
         const content = fs.readFileSync(filePath, "utf8");
-        const lines = content.split("\n").filter(Boolean);
+        const lines = content.split(/\r?\n/).filter(Boolean);
         for (const line of lines) {
           let d;
           try { d = JSON.parse(line); } catch { continue; }
@@ -342,7 +374,7 @@ module.exports = function initAnalyticsScan(ctx) {
 
         try {
           const content = fs.readFileSync(filePath, "utf8");
-          const lines = content.split("\n").filter(Boolean);
+          const lines = content.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
             let rec;
             try { rec = JSON.parse(line); } catch { continue; }
@@ -433,7 +465,7 @@ module.exports = function initAnalyticsScan(ctx) {
 
         try {
           const content = fs.readFileSync(jsonlFile, "utf8");
-          const lines = content.split("\n").filter(Boolean);
+          const lines = content.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
             let rec;
             try { rec = JSON.parse(line); } catch { continue; }
@@ -654,7 +686,7 @@ module.exports = function initAnalyticsScan(ctx) {
 
     try {
       const content = fs.readFileSync(filePath, "utf8");
-      const lines = content.split("\n").filter(Boolean);
+      const lines = content.split(/\r?\n/).filter(Boolean);
 
       for (const line of lines) {
         let d;

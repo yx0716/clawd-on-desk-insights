@@ -20,6 +20,7 @@ docs/*
 !docs/copilot-setup.md
 !docs/release-v0.5.5.md
 !docs/guide-theme-creation.md
+!docs/self-check.md
 
 # Temp files from testing
 .tmp_*

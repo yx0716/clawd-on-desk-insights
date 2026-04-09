@@ -553,7 +553,7 @@ module.exports = function initAnalyticsAI(ctx) {
     if (!cfg || !cfg.customCliPaths) return null;
     const candidate = cfg.customCliPaths[key];
     if (typeof candidate !== "string" || !candidate.trim()) return null;
-    const expanded = candidate.trim().replace(/^~(?=\/)/, os.homedir());
+    const expanded = candidate.trim().replace(/^~(?=[/\\])/, os.homedir());
     try { if (fs.existsSync(expanded)) return expanded; } catch {}
     return null;
   }
@@ -600,6 +600,21 @@ module.exports = function initAnalyticsAI(ctx) {
       const home = os.homedir();
       const localAppData = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
       extraCandidates.push(path.join(localAppData, "Programs", "Claude Code", "claude.exe"));
+      const progFiles = process.env.PROGRAMFILES || "C:\\Program Files";
+      extraCandidates.push(path.join(progFiles, "Claude Code", "claude.exe"));
+      const progFilesX86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
+      extraCandidates.push(path.join(progFilesX86, "Claude Code", "claude.exe"));
+    }
+
+    // Linux-specific paths
+    if (process.platform === "linux") {
+      extraCandidates.push("/usr/local/bin/claude");
+      extraCandidates.push("/opt/claude-code/bin/claude");
+      // Linuxbrew
+      const linuxbrew = "/home/linuxbrew/.linuxbrew/bin/claude";
+      extraCandidates.push(linuxbrew);
+      // Snap
+      extraCandidates.push("/snap/claude/current/bin/claude");
     }
 
     cachedClaudePath = findCommandBinary("claude", extraCandidates);
@@ -668,6 +683,17 @@ module.exports = function initAnalyticsAI(ctx) {
       "/usr/local/bin/codex",
       ...getBundledCodexCandidates(),
     ];
+    // Linux-specific Codex paths
+    if (process.platform === "linux") {
+      extras.push("/home/linuxbrew/.linuxbrew/bin/codex");
+      extras.push("/snap/codex/current/bin/codex");
+      extras.push("/opt/codex/bin/codex");
+    }
+    // Windows Program Files
+    if (isWin) {
+      const progFiles = process.env.PROGRAMFILES || "C:\\Program Files";
+      extras.push(path.join(progFiles, "Codex", "codex.exe"));
+    }
     cachedCodexPath = findCommandBinary("codex", extras);
     return cachedCodexPath;
   }
