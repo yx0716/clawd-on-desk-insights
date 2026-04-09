@@ -1,7 +1,7 @@
 const { describe, it, beforeEach, mock } = require("node:test");
 const assert = require("node:assert");
 
-const initUpdater = require("../src/updater");
+let initUpdater = require("../src/updater");
 
 function makeCtx(overrides = {}) {
   return {
@@ -56,6 +56,8 @@ function makeDeps(overrides = {}) {
 describe("updater visual flow", () => {
   beforeEach(() => {
     mock.restoreAll();
+    delete require.cache[require.resolve("../src/updater")];
+    initUpdater = require("../src/updater");
   });
 
   it("shows sweeping state and up-to-date bubble when latest version matches", async () => {
@@ -175,6 +177,65 @@ describe("updater visual flow", () => {
 
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available", "downloading", "error"]);
     assert.match(bubbles[3].detail, /download exploded/);
+  });
+
+  it("uses the macOS packaged-update path by opening the releases page and showing a success bubble", async () => {
+    const originalPlatform = process.platform;
+    const bubbles = [];
+    const handlers = {};
+    const openedUrls = [];
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    try {
+      delete require.cache[require.resolve("../src/updater")];
+      initUpdater = require("../src/updater");
+      const ctx = makeCtx({
+        showUpdateBubble: async (payload) => {
+          bubbles.push(payload);
+          if (payload.mode === "available") return "primary";
+          if (payload.mode === "ready") return "dismiss";
+          return payload.defaultAction || null;
+        },
+      });
+      const updater = initUpdater(ctx, makeDeps({
+        shell: {
+          openExternal(url) {
+            openedUrls.push(url);
+          },
+        },
+        autoUpdaterFactory: () => ({
+          autoDownload: false,
+          autoInstallOnAppQuit: true,
+          on(event, handler) { handlers[event] = handler; },
+          checkForUpdates: async () => ({ updateInfo: { version: "0.5.11" } }),
+          quitAndInstall() {},
+          downloadUpdate() {
+            throw new Error("downloadUpdate should not run on macOS");
+          },
+        }),
+        httpsGetImpl: (options, cb) => {
+          const res = {
+            statusCode: 200,
+            on(event, handler) {
+              if (event === "data") handler(Buffer.from(JSON.stringify({ tag_name: "v0.5.11" })));
+              if (event === "end") handler();
+              return this;
+            },
+          };
+          cb(res);
+          return { on() { return this; }, setTimeout() {} };
+        },
+      }));
+
+      updater.setupAutoUpdater();
+      await updater.checkForUpdates(true);
+      await handlers["update-available"]({ version: "0.5.11" });
+
+      assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available", "ready"]);
+      assert.strictEqual(openedUrls[0], "https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
+      assert.match(bubbles[2].message, /opened/i);
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
   });
 
   it("uses a friendly dirty-worktree message while keeping detailed file status", async () => {
