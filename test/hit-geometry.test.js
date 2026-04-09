@@ -16,17 +16,38 @@ function approx(actual, expected, epsilon = 0.01) {
   );
 }
 
+function visibleContentRect(theme, artRect) {
+  const box = theme.layout.contentBox;
+  const sx = artRect.w / theme.viewBox.width;
+  const sy = artRect.h / theme.viewBox.height;
+  return {
+    x: artRect.x + (box.x - theme.viewBox.x) * sx,
+    y: artRect.y + (box.y - theme.viewBox.y) * sy,
+    w: box.width * sx,
+    h: box.height * sy,
+    bottom: artRect.y + (box.y - theme.viewBox.y + box.height) * sy,
+  };
+}
+
 describe("hit geometry", () => {
   const bounds = { x: 0, y: 0, width: 200, height: 200 };
 
   it("matches bottom-anchored SVG layout for calico idle", () => {
     const rect = hitGeometry.getAssetRectScreen(calico, bounds, "idle", "calico-idle-follow.svg");
     approx(rect.x, 41.81);
-    approx(rect.y, 37.63);
+    approx(rect.y, 115.63);
     approx(rect.w, 116.38);
     approx(rect.h, 87.5);
-    assert.ok(rect.y >= 0);
-    assert.ok(rect.y + rect.h <= bounds.height);
+  });
+
+  it("aligns calico idle baseline with clawd without forcing equal body size", () => {
+    const clawdArt = hitGeometry.getAssetRectScreen(clawd, bounds, "idle", "clawd-idle-follow.svg");
+    const calicoArt = hitGeometry.getAssetRectScreen(calico, bounds, "idle", "calico-idle-follow.svg");
+    const clawdVisible = visibleContentRect(clawd, clawdArt);
+    const calicoVisible = visibleContentRect(calico, calicoArt);
+
+    approx(calicoVisible.bottom, clawdVisible.bottom, 0.5);
+    assert.ok(calicoVisible.h < clawdVisible.h);
   });
 
   it("matches APNG layout with file scale and offsets for calico mini idle", () => {
