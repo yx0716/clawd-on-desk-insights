@@ -189,12 +189,12 @@ module.exports = function initAnalytics(ctx) {
     return { ok };
   });
 
-  ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider) => {
+  ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider, mode) => {
     if (!ctx.analyticsScan || !ctx.analyticsAI) return null;
     const detail = ctx.analyticsScan.getSessionDetail(sessionId, agent);
     if (!detail) return null;
     if (preferredProvider) detail._preferredProvider = preferredProvider;
-    return ctx.analyticsAI.analyzeSession(detail);
+    return ctx.analyticsAI.analyzeSession(detail, mode);
   });
 
   ipcMain.handle("analytics-get-analysis-provider", async () => {

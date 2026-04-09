@@ -1093,7 +1093,7 @@ async function selectSession(sid,agent){
   }
   markAnalyzing(sid);
   try{
-    const r=await window.analyticsAPI.analyzeSession(sid,agent,selectedAnalysisAgent);
+    const r=await window.analyticsAPI.analyzeSession(sid,agent,selectedAnalysisAgent,"brief");
     unmarkAnalyzing(sid);
     showAnalysisContent();
     if(!r){ct.innerHTML='<div style="color:var(--text-secondary)">Could not analyze</div>';return;}
@@ -1242,8 +1242,44 @@ function renderAnalysis(r){
   if (r.summary && isFixableAnalysisError(r.summary)) {
     h += `<div style="margin-top:8px;font-size:11px"><a class="analysis-error-link" data-action="open-settings">Open Settings</a> to configure an API provider as a fallback.</div>`;
   }
+  // Show "深入分析" button if this was a brief result, or "简报" if detailed
+  if (r._mode === "brief" || !r._mode) {
+    h += `<div style="margin-top:12px;text-align:right"><button class="detail-analysis-btn" style="font-size:11px;padding:4px 12px;border:1px solid var(--accent);border-radius:6px;background:none;color:var(--accent);cursor:pointer;transition:background .15s,color .15s" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='none';this.style.color='var(--accent)'">深入分析 →</button></div>`;
+  } else if (r._mode === "detail") {
+    h += `<div style="margin-top:12px;text-align:right"><button class="brief-analysis-btn" style="font-size:11px;padding:4px 12px;border:1px solid var(--text-muted);border-radius:6px;background:none;color:var(--text-muted);cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">← 简报</button></div>`;
+  }
   ct.innerHTML=h;
   bindAnalysisErrorLinks(ct);
+  // Bind mode-switch buttons
+  const detailBtn = ct.querySelector(".detail-analysis-btn");
+  if (detailBtn) detailBtn.addEventListener("click", () => runAnalysisMode("detail"));
+  const briefBtn = ct.querySelector(".brief-analysis-btn");
+  if (briefBtn) briefBtn.addEventListener("click", () => runAnalysisMode("brief"));
+}
+
+async function runAnalysisMode(mode) {
+  if (!selectedSessionId) return;
+  const ct = document.getElementById("analysisContent");
+  showAnalysisLoading();
+  try {
+    const sess = currentData && currentData.sessions ? currentData.sessions.find(s => s.id === selectedSessionId) : null;
+    const agent = sess ? sess.agent : "claude-code";
+    let r = await window.analyticsAPI.analyzeSession(selectedSessionId, agent, selectedAnalysisAgent, mode);
+    // If detail mode returned a fallback (no structured data), retry with brief
+    if (mode === "detail" && r && !r.keyTopics && !r.outcomes) {
+      console.warn("Detail analysis returned unstructured fallback, retrying as brief");
+      r = await window.analyticsAPI.analyzeSession(selectedSessionId, agent, selectedAnalysisAgent, "brief");
+    }
+    showAnalysisContent();
+    if (!r) { ct.innerHTML = '<div style="color:var(--text-secondary)">Could not analyze</div>'; return; }
+    setCachedAnalysis(selectedSessionId, selectedAnalysisAgent, r);
+    renderAnalysis(r);
+    bindAnalysisErrorLinks(ct);
+  } catch (err) {
+    showAnalysisContent();
+    ct.innerHTML = renderAnalysisErrorMessage(err && (err.message || String(err)));
+    bindAnalysisErrorLinks(ct);
+  }
 }
 
 function refreshSel(){document.querySelectorAll(".time-block,.evt-card").forEach(el=>{el.classList.toggle("selected",el.dataset.sid===selectedSessionId);});}

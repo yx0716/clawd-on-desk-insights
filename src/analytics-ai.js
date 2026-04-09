@@ -190,9 +190,14 @@ module.exports = function initAnalyticsAI(ctx) {
       }
     }
 
-    p += "\nProvide a JSON response with exactly this structure:\n";
-    p += '{"summary":"2-3 sentence overview of work patterns","highlights":["insight1","insight2","insight3"],"suggestions":["actionable suggestion1","actionable suggestion2"]}\n';
-    p += "Focus on: productivity patterns, peak productive hours, project focus vs context-switching, error patterns, work/rest balance, agent efficiency comparison, and any unusual patterns.";
+    p += "\n请返回 JSON（不要 markdown code block），格式：\n";
+    p += '{"summary":"1-2 句中文，像朋友一样点评今天的工作节奏，带一点鼓励或幽默","highlights":["亮点1","亮点2","亮点3"],"suggestions":["一条简短建议"]}\n';
+    p += "要求：\n";
+    p += "- summary 要有情绪价值：不要只列数据，要让用户感受到'今天还不错'或'辛苦了'。可以用比喻、轻松的语气。\n";
+    p += "- highlights 提取 2-3 个今日亮点，每条 ≤ 15 字，聚焦成果而非过程。\n";
+    p += "- suggestions 最多 1 条，简短实用，不要说教。如果今天做得很好可以不给建议，返回空数组。\n";
+    p += "- 所有字段用中文。\n";
+    p += "- **重要**：JSON 字符串值里不要出现未转义的双引号。引用名称请用「」或『』代替双引号。";
 
     return p;
   }
@@ -918,6 +923,46 @@ module.exports = function initAnalyticsAI(ctx) {
   // JSON.parse — if that succeeds, return the object; if it fails, continue
   // scanning past that block in case there's a *better* candidate later. On
   // total failure return null so callers fall through to a text-summary.
+  // Attempt to fix unescaped double quotes inside JSON string values.
+  // Common model mistake: {"detail":"确定以飞书"Home"主文档"} → parser breaks at inner "
+  // Strategy: replace inner unescaped " with 「」 between JSON structural quotes.
+  function sanitizeJsonQuotes(raw) {
+    // Replace smart/curly quotes with Chinese quotes (they're unambiguous)
+    let s = raw.replace(/[\u201C\u201D]/g, "\u300C").replace(/[\u2018\u2019]/g, "\u300E");
+    // For straight double quotes inside string values: walk through and fix
+    // This is a best-effort heuristic — not a full JSON parser
+    const result = [];
+    let inStr = false, escaped = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (escaped) { result.push(ch); escaped = false; continue; }
+      if (ch === "\\") { result.push(ch); escaped = true; continue; }
+      if (ch === '"') {
+        if (!inStr) { result.push(ch); inStr = true; continue; }
+        // We're inside a string and hit a ". Is this the closing quote?
+        // Heuristic: closing quote is followed by :, ,, }, ], or whitespace
+        const next = s[i + 1];
+        if (!next || /[,:}\]\s]/.test(next)) {
+          result.push(ch); inStr = false; // legitimate close
+        } else {
+          result.push("\u300C"); // replace rogue " with「
+          // Find the matching close of this rogue quote pair
+          const closeIdx = s.indexOf('"', i + 1);
+          if (closeIdx > i + 1) {
+            const afterClose = s[closeIdx + 1];
+            if (afterClose && !/[,:}\]\s]/.test(afterClose)) {
+              // The close quote is also rogue, replace it too
+              // (handled naturally in the next iteration)
+            }
+          }
+        }
+      } else {
+        result.push(ch);
+      }
+    }
+    return result.join("");
+  }
+
   function extractFirstJsonObject(text) {
     const s = String(text || "");
     let i = 0;
@@ -950,7 +995,14 @@ module.exports = function initAnalyticsAI(ctx) {
           }
         }
       }
-      if (depth !== 0) return null; // unterminated object — bail out
+      if (depth !== 0) {
+        // First pass failed — try sanitizing rogue quotes and re-parse
+        if (s !== sanitizeJsonQuotes(s)) {
+          const sanitized = extractFirstJsonObject(sanitizeJsonQuotes(s));
+          if (sanitized) return sanitized;
+        }
+        return null;
+      }
     }
     return null;
   }
@@ -1388,49 +1440,72 @@ module.exports = function initAnalyticsAI(ctx) {
     return result;
   }
 
-  function buildSessionPrompt(detail) {
-    let p = "你是一个对话分析助手。以下是用户与 AI 编程 agent 的对话记录摘要。\n";
-    p += "请从**用户视角**分析这段对话：用户想做什么、获得了什么成果、学到了什么信息。\n";
-    p += "不要描述 agent 的工作流程（如调用了什么工具），而是关注用户的意图和收获。\n\n";
+  // ── Session context builder (shared between brief & detail) ──
+  function buildSessionContext(detail) {
+    let p = "";
     p += `Agent: ${detail.agent}\n`;
     if (detail.title) p += `Title: ${detail.title}\n`;
     if (detail.cwd) p += `Project: ${detail.cwd}\n`;
-
     if (detail.timestamps.length >= 2) {
       const sorted = [...detail.timestamps].sort((a, b) => a - b);
-      const duration = sorted[sorted.length - 1] - sorted[0];
-      const mins = Math.round(duration / 60000);
+      const mins = Math.round((sorted[sorted.length - 1] - sorted[0]) / 60000);
       p += `Duration: ${mins} minutes\n`;
     }
-
-    p += "\n## User Messages (what the user asked/discussed)\n";
+    p += "\n## User Messages\n";
     for (const m of detail.userMessages.slice(0, 30)) {
       if (m.text) p += `- ${m.text}\n`;
     }
-
-    // Brief tool context (just categories, not detailed calls)
     const toolSummary = {};
     for (const t of detail.toolCalls) {
       toolSummary[t.name] = (toolSummary[t.name] || 0) + 1;
     }
     if (Object.keys(toolSummary).length) {
-      p += "\n## Activity types (for context only)\n";
+      p += "\n## Activity types\n";
       for (const [name, count] of Object.entries(toolSummary).sort((a, b) => b[1] - a[1]).slice(0, 5)) {
         p += `- ${name}: ${count}x\n`;
       }
     }
+    return p;
+  }
 
+  // ── Brief mode prompt (default: concise + emotional value) ──
+  function buildSessionBriefPrompt(detail) {
+    let p = "你是用户的编程搭档。以下是用户与 AI agent 的对话摘要。\n";
+    p += "请用简短、温暖的方式总结这段对话的核心收获。\n\n";
+    p += buildSessionContext(detail);
     p += "\n请返回 JSON（不要 markdown code block），格式：\n";
-    p += '{"summary":"2-3 句话概括用户在这段对话中做了什么、获得了什么成果"';
+    p += '{"summary":"1 句话概括核心收获，带情感色彩"';
+    p += ',"keyTopics":["话题1","话题2"]';
+    p += ',"outcomes":[{"headline":"≤10字成果","detail":"一句话具体说明"}]}\n';
+    p += "要求：\n";
+    p += "- summary：≤ 40 字，像队友一样说。用'搞定了''漂亮''辛苦了'这类语气，不要干列事实。\n";
+    p += "- keyTopics：2-3 个，每个 ≤ 8 字。\n";
+    p += "- outcomes：最多 2 条，headline 不加标点，detail 要具体。\n";
+    p += "- 所有字段用中文。不要返回 suggestions 和 timeBreakdown。\n";
+    p += "- **重要**：JSON 字符串值里不要出现未转义的双引号。引用名称请用「」或『』代替双引号。";
+    return p;
+  }
+
+  // ── Detail mode prompt (full analysis) ──
+  function buildSessionDetailPrompt(detail) {
+    let p = "你是一个对话分析助手。以下是用户与 AI 编程 agent 的对话记录摘要。\n";
+    p += "请从**用户视角**深度分析：用户想做什么、获得了什么成果、时间花在哪里。\n";
+    p += "不要描述 agent 的工作流程，而是关注用户的意图和收获。\n\n";
+    p += buildSessionContext(detail);
+    p += "\n请返回 JSON（不要 markdown code block），格式：\n";
+    p += '{"summary":"2-3 句深度概括，包含背景、过程和成果"';
     p += ',"keyTopics":["话题1","话题2","话题3"]';
-    p += ',"outcomes":[{"headline":"极简核心成果（6-14 字）","detail":"展开说明用户学到的关键知识点、新思路或具体细节，帮助用户回忆起当时获得的核心认知"}]';
-    p += ',"timeBreakdown":[{"activity":"用户视角的活动描述","percent":百分比}]';
-    p += ',"suggestions":["建议1"]}\n';
-    p += "所有字段用中文。keyTopics 提取 3-5 个关键话题。\n";
-    p += "outcomes 每条是 {headline, detail} 对象：\n";
-    p += "  - headline：6-14 字的极简中文短语，高度概括这一条成果的核心。不要用完整句子，不要加标点。示例：'掌握 3 阶段 T2V 流水线'、'明确 cache 项目关联度低'、'定位论文到飞书分类'。\n";
-    p += "  - detail：一句话展开具体内容，要具体且有信息量。不要只说'获得了阅读建议'，而要说'了解到该论文提出了X方法解决Y问题——核心思路是Z，与用户项目的关联在于W'。让用户看到就能回忆起关键认知。\n";
-    p += "timeBreakdown 从用户视角描述时间分配（如'讨论架构设计'而非'调用Read工具'）。";
+    p += ',"outcomes":[{"headline":"核心成果（≤10 字）","detail":"展开说明关键认知"}]';
+    p += ',"timeBreakdown":[{"activity":"活动描述","percent":百分比}]';
+    p += ',"suggestions":["建议"]}\n';
+    p += "要求：\n";
+    p += "- summary：2-3 句话，还原这段对话的全貌——用户想干什么、怎么推进的、最终成果如何。\n";
+    p += "- keyTopics：3-5 个关键话题，每个 ≤ 10 字。\n";
+    p += "- outcomes：3-5 条。headline ≤ 12 字不加标点；detail 展开说明关键认知，要具体有信息量（不说'获得了建议'，说'定位到 CRLF 是 Windows 解析失败的根因'）。\n";
+    p += "- timeBreakdown：3-5 条，从用户视角描述时间分配（'讨论架构设计'而非'调用 Read 工具'）。\n";
+    p += "- suggestions：1-2 条简短实用的建议。做得好可以返回空数组。\n";
+    p += "- 所有字段用中文。确保 JSON 完整闭合。\n";
+    p += "- **重要**：JSON 字符串值里不要出现未转义的双引号。引用名称请用「」或『』代替双引号。";
     return p;
   }
 
@@ -1570,12 +1645,13 @@ module.exports = function initAnalyticsAI(ctx) {
     });
   }
 
-  async function analyzeSession(detail) {
+  async function analyzeSession(detail, mode) {
     if (!detail) return null;
+    const analysisMode = mode || "brief"; // "brief" (default) or "detail"
     const preferredProvider = detail._preferredProvider || "claude-code";
 
     // Check cache — invalidate if message count or provider changed
-    const cacheKey = analysisCacheKey(detail.sessionId, preferredProvider);
+    const cacheKey = analysisCacheKey(detail.sessionId, preferredProvider) + ":" + analysisMode;
     if (sessionAnalysisCache.has(cacheKey)) {
       const cached = sessionAnalysisCache.get(cacheKey);
       if (
@@ -1590,7 +1666,7 @@ module.exports = function initAnalyticsAI(ctx) {
     }
 
     const startTime = Date.now();
-    const prompt = buildSessionPrompt(detail);
+    const prompt = analysisMode === "detail" ? buildSessionDetailPrompt(detail) : buildSessionBriefPrompt(detail);
     let cliError = null;
 
     // Pick CLI binary based on preference — no auto-fallback
@@ -1685,6 +1761,7 @@ module.exports = function initAnalyticsAI(ctx) {
           obj._provider = cliName;
           obj._msgCount = (detail.userMessages || []).length;
           obj._analysisMs = Date.now() - startTime;
+          obj._mode = analysisMode;
           return obj;
         };
         if (text) {
