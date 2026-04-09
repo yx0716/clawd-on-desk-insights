@@ -641,6 +641,86 @@ function renderLegend(data) {
 let timelineRange = { startHour:0, endHour:24 };
 let userOverrideRange = false;
 
+// ── Wheel Zoom (Chrome tracing style) ──
+const ZOOM_LEVELS = [24, 18, 12, 8, 6, 4, 3, 2, 1, 0.5, 0.25]; // hours
+let wheelDeltaAccum = 0;
+const WHEEL_THRESHOLD = 100; // px of scroll before triggering one zoom step
+
+function handleTimelineWheel(e) {
+  // Find the .timeline-tracks element that contains the cursor
+  const track = e.target.closest(".timeline-tracks");
+  if (!track) return;
+  e.preventDefault();
+
+  wheelDeltaAccum += e.deltaY;
+  if (Math.abs(wheelDeltaAccum) < WHEEL_THRESHOLD) return;
+  const direction = wheelDeltaAccum > 0 ? 1 : -1; // positive = zoom in, negative = zoom out
+  wheelDeltaAccum = 0;
+
+  const { startHour, endHour } = timelineRange;
+  const currentDuration = endHour - startHour;
+
+  // Find current zoom level index (closest match)
+  let idx = 0;
+  let minDiff = Infinity;
+  for (let i = 0; i < ZOOM_LEVELS.length; i++) {
+    const diff = Math.abs(ZOOM_LEVELS[i] - currentDuration);
+    if (diff < minDiff) { minDiff = diff; idx = i; }
+  }
+
+  // Move to next/prev level
+  const nextIdx = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, idx + direction));
+  if (nextIdx === idx) return; // already at min/max
+  const nextDuration = ZOOM_LEVELS[nextIdx];
+
+  // Cursor anchoring: the time under the cursor stays at the same screen position
+  const rect = track.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const anchorHour = startHour + currentDuration * ratio;
+
+  let newStart = anchorHour - nextDuration * ratio;
+  let newEnd = newStart + nextDuration;
+
+  // Clamp to [0, 24]
+  if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+  if (newEnd > 24) { newStart -= (newEnd - 24); newEnd = 24; }
+  newStart = Math.max(0, newStart);
+  newEnd = Math.min(24, newEnd);
+
+  timelineRange = { startHour: newStart, endHour: newEnd };
+  userOverrideRange = true;
+  renderTimeAxis();
+  renderTimeline(currentData);
+}
+
+// ── Keyboard Pan (arrow keys) ──
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  // Don't pan when typing in inputs or when timeline has no data
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (!currentData) return;
+  e.preventDefault();
+
+  const { startHour, endHour } = timelineRange;
+  const span = endHour - startHour;
+  const step = span * 0.25; // pan 25% of visible range per keypress
+  const dir = e.key === "ArrowLeft" ? -1 : 1;
+
+  let newStart = startHour + step * dir;
+  let newEnd = endHour + step * dir;
+
+  // Clamp to [0, 24]
+  if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+  if (newEnd > 24) { newStart -= (newEnd - 24); newEnd = 24; }
+  newStart = Math.max(0, newStart);
+  newEnd = Math.min(24, newEnd);
+
+  timelineRange = { startHour: newStart, endHour: newEnd };
+  userOverrideRange = true;
+  renderTimeAxis();
+  renderTimeline(currentData);
+});
+
 function initRangeSelectors() {
   const startSel=document.getElementById("rangeStart"), endSel=document.getElementById("rangeEnd");
   startSel.innerHTML=""; endSel.innerHTML="";
@@ -673,19 +753,27 @@ function autoDetectRange(sessions) {
 function renderTimeAxis() {
   const el=document.getElementById("timeAxis");const{startHour,endHour}=timelineRange;
   const span=endHour-startHour;
-  const step=span>16?3:span>8?2:1;
-  const hours=[];
-  for(let h=startHour;h<=endHour;h+=step)hours.push(h);
-  if(hours[hours.length-1]!==endHour)hours.push(endHour);
-  el.innerHTML=hours.map((h,i)=>{
+  // Adaptive tick step based on zoom level (fractional hours supported)
+  let stepH;
+  if(span>16)stepH=3; else if(span>8)stepH=2; else if(span>4)stepH=1;
+  else if(span>2)stepH=0.5; else stepH=0.25;
+  // Snap first tick to a clean boundary
+  const firstTick=Math.ceil(startHour/stepH)*stepH;
+  const ticks=[];
+  for(let h=firstTick;h<=endHour+0.001;h+=stepH)ticks.push(h);
+  // Always include start and end edges
+  if(ticks.length===0||ticks[0]>startHour+0.01)ticks.unshift(startHour);
+  if(ticks[ticks.length-1]<endHour-0.01)ticks.push(endHour);
+  el.innerHTML=ticks.map((h,i)=>{
     const pos=span>0?((h-startHour)/span)*100:0;
-    const edgeClass=i===0?" edge-start":i===hours.length-1?" edge-end":"";
-    const label=`${String(h).padStart(2,"0")}:00`;
+    const edgeClass=i===0?" edge-start":i===ticks.length-1?" edge-end":"";
+    const hh=Math.floor(h),mm=Math.round((h-hh)*60);
+    const label=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
     return `<span class="time-axis-label${edgeClass}" style="left:${pos}%">${label}</span>`;
   }).join("");
-  // Sync selectors
+  // Sync range selectors to nearest integer hour
   const ss=document.getElementById("rangeStart"),se=document.getElementById("rangeEnd");
-  if(ss)ss.value=startHour; if(se)se.value=endHour;
+  if(ss)ss.value=Math.round(startHour); if(se)se.value=Math.round(endHour);
 }
 
 function renderTimeline(data) {
@@ -723,13 +811,14 @@ function renderTimeline(data) {
         const b=s._block,st=s._laneStart,en=s._laneEnd;
         const lp=((st-axisStart)/rangeLen)*100,wp=Math.max(((en-st)/rangeLen)*100,.4);
         const dur=fmtDur(en-st),proj=resolveTitle(s).text||"session";
-        const lbl=wp>14?`${proj} · ${dur}`:wp>8?dur:"";
         const blockDur=en-st;
         const opacity=maxBlockDur>0?0.45+0.55*(blockDur/maxBlockDur):1;
         const safeProj=escapeHtml(proj);
         const tipTitle=escapeHtml(proj);
         const tipDetail=escapeHtml(`${agentLabel(s.agent)} · ${fmtTime(b.start)}-${fmtTime(b.end)} ${dur} · ${s.messages} msgs`);
-        bhtml+=`<div class="time-block${selectedSessionId===s.id?" selected":""}" style="left:${lp}%;width:${wp}%;background:${projColor(s.project||s.title||'unknown')};opacity:${opacity.toFixed(2)};box-shadow:inset 0 0 0 1px ${agentColor(s.agent)}" data-sid="${s.id}" data-agent="${s.agent}" data-tip-title="${tipTitle}" data-tip-detail="${tipDetail}">${safeProj&&lbl!==dur&&wp>14?safeProj+" · "+escapeHtml(dur):escapeHtml(lbl)}</div>`;
+        // Always show session name; CSS overflow:hidden + ellipsis handles narrow blocks
+        const lbl=wp>10?`${safeProj} · ${escapeHtml(dur)}`:safeProj;
+        bhtml+=`<div class="time-block${selectedSessionId===s.id?" selected":""}" style="left:${lp}%;width:${wp}%;background:${projColor(s.project||s.title||'unknown')};opacity:${opacity.toFixed(2)};box-shadow:inset 0 0 0 1px ${agentColor(s.agent)}" data-sid="${s.id}" data-agent="${s.agent}" data-tip-title="${tipTitle}" data-tip-detail="${tipDetail}">${lbl}</div>`;
       }
       return `<div class="timeline-lane">${bhtml}</div>`;
     }).join("");
@@ -737,6 +826,8 @@ function renderTimeline(data) {
   }
   c.innerHTML=html;
   c.querySelectorAll(".time-block").forEach(el=>{el.addEventListener("mouseenter",showTip);el.addEventListener("mouseleave",hideTip);el.addEventListener("click",onBlockClick);});
+  // Wheel zoom on timeline tracks
+  c.querySelectorAll(".timeline-tracks").forEach(el=>{el.addEventListener("wheel",handleTimelineWheel,{passive:false});});
 }
 
 // ── Distribution (by project) ──
