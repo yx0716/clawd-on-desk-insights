@@ -79,6 +79,12 @@
     "double":     { "files": ["react-double.gif"], "duration": 3500 }
   },
 
+  "sounds": {
+    "_comment": "Map logical sound names to audio files in sounds/ subdirectory. Omit this block to use built-in defaults. Set a value to null to disable that sound.",
+    "complete": "complete.mp3",
+    "confirm":  "confirm.mp3"
+  },
+
   "miniMode": {
     "_comment": "Set supported:false (or remove this block entirely) to disable mini mode for your theme.",
     "supported": false

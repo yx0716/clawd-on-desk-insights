@@ -394,13 +394,13 @@ window.electronAPI.onEyeMove((dx, dy) => {
   applyEyeMove(effectiveDx, dy);
 });
 
-// --- Sound playback (IPC from main) ---
+// --- Sound playback (IPC from main, receives file:// URL from theme) ---
 const _audioCache = {};
-window.electronAPI.onPlaySound((name) => {
-  let audio = _audioCache[name];
+window.electronAPI.onPlaySound((url) => {
+  let audio = _audioCache[url];
   if (!audio) {
-    audio = new Audio(`../assets/sounds/${name}.mp3`);
-    _audioCache[name] = audio;
+    audio = new Audio(url);
+    _audioCache[url] = audio;
   }
   audio.currentTime = 0;
   audio.play().catch(() => {});
