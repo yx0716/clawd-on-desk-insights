@@ -50,6 +50,28 @@ describe("hit geometry", () => {
     assert.ok(calicoVisible.h < clawdVisible.h);
   });
 
+  it("keeps major calico non-mini animations inside the window bottom edge", () => {
+    const files = [
+      "calico-react-drag.apng",
+      "calico-working-typing.apng",
+      "calico-working-juggling.apng",
+      "calico-working-building.apng",
+      "calico-working-conducting.apng",
+      "calico-working-sweeping.apng",
+      "calico-working-carrying.apng",
+      "calico-error.apng",
+      "calico-happy.apng",
+    ];
+
+    for (const file of files) {
+      const rect = hitGeometry.getAssetRectScreen(calico, bounds, null, file);
+      assert.ok(
+        rect.y + rect.h <= bounds.height,
+        `${file} bottom overflowed: ${rect.y + rect.h}`
+      );
+    }
+  });
+
   it("matches APNG layout with file scale and offsets for calico mini idle", () => {
     const rect = hitGeometry.getAssetRectScreen(calico, bounds, "mini-idle", "calico-mini-idle.apng");
     approx(rect.x, 42);
