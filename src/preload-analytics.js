@@ -18,4 +18,8 @@ contextBridge.exposeInMainWorld("analyticsAPI", {
   getAnalysisProvider: () => ipcRenderer.invoke("analytics-get-analysis-provider"),
   getAnalysisOptions: () => ipcRenderer.invoke("analytics-get-analysis-options"),
   getOneLiners: (sessionIds) => ipcRenderer.invoke("analytics-get-oneliners", sessionIds),
+  // Local session title overrides (dashboard pencil button)
+  getLocalTitleMap: () => ipcRenderer.invoke("analytics-get-local-title-map"),
+  setLocalTitle: (sessionId, title) => ipcRenderer.invoke("analytics-set-local-title", sessionId, title),
+  clearLocalTitle: (sessionId) => ipcRenderer.invoke("analytics-clear-local-title", sessionId),
 });

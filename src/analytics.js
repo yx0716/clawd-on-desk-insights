@@ -124,17 +124,39 @@ module.exports = function initAnalytics(ctx) {
     return ctx.analyticsScan.scanToday();
   });
 
+  // Overlay clawd local title renames onto scan results. Local renames live
+  // in ~/.clawd/session-titles.json (via analytics-titles module) because
+  // Claude Desktop's rename feature doesn't write back to jsonl. We attach
+  // them as `session.localTitle` — the renderer then resolves the final
+  // display title via the chain `localTitle > title > firstUserMsg > project`.
+  function overlayLocalTitles(data) {
+    if (!data || !Array.isArray(data.sessions) || !ctx.analyticsTitles) return data;
+    const titles = ctx.analyticsTitles.getAll();
+    if (!titles) return data;
+    for (const sess of data.sessions) {
+      if (sess && sess.id && titles[sess.id]) {
+        sess.localTitle = titles[sess.id];
+      }
+    }
+    return data;
+  }
+
   ipcMain.handle("analytics-get-timeline", async (_event, range, year, month) => {
     if (!ctx.analyticsScan) return null;
     // Month tab passes year + month (1-indexed). Extra args are backward-
     // compatible — old callers passing only `range` still hit the existing
     // branches below.
+    let data;
     if (range === "month" && year && month && ctx.analyticsScan.scanMonthOf) {
-      return ctx.analyticsScan.scanMonthOf(year, month);
+      data = ctx.analyticsScan.scanMonthOf(year, month);
+    } else if (range === "week") {
+      data = ctx.analyticsScan.scanWeek();
+    } else if (range === "3days") {
+      data = ctx.analyticsScan.scan3Days();
+    } else {
+      data = ctx.analyticsScan.scanToday();
     }
-    if (range === "week") return ctx.analyticsScan.scanWeek();
-    if (range === "3days") return ctx.analyticsScan.scan3Days();
-    return ctx.analyticsScan.scanToday();
+    return overlayLocalTitles(data);
   });
 
   // Returns the list of months that have at least one session, most recent
@@ -143,6 +165,28 @@ module.exports = function initAnalytics(ctx) {
   ipcMain.handle("analytics-get-available-months", async () => {
     if (!ctx.analyticsScan || !ctx.analyticsScan.getAvailableMonths) return [];
     return ctx.analyticsScan.getAvailableMonths();
+  });
+
+  // ── Local session title overrides (user renames from the dashboard) ──
+  // These persist to ~/.clawd/session-titles.json and override both the
+  // jsonl-derived title and the firstUserMsg/project fallbacks when rendering
+  // session cards. See analytics-titles.js for the rationale.
+
+  ipcMain.handle("analytics-get-local-title-map", async () => {
+    if (!ctx.analyticsTitles) return {};
+    return ctx.analyticsTitles.getAll();
+  });
+
+  ipcMain.handle("analytics-set-local-title", async (_event, sessionId, title) => {
+    if (!ctx.analyticsTitles) return { ok: false, error: "titles module unavailable" };
+    const ok = ctx.analyticsTitles.setTitle(sessionId, title);
+    return { ok };
+  });
+
+  ipcMain.handle("analytics-clear-local-title", async (_event, sessionId) => {
+    if (!ctx.analyticsTitles) return { ok: false, error: "titles module unavailable" };
+    const ok = ctx.analyticsTitles.clearTitle(sessionId);
+    return { ok };
   });
 
   ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider) => {

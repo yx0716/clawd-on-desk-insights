@@ -84,6 +84,7 @@ let _analyticsData = null;
 let _analyticsAI = null;
 let _analyticsDash = null;
 let _analyticsScan = null;
+let _analyticsTitles = null;
 
 function loadThemeFromPrefs(prefs) {
   return themeLoader.loadTheme((prefs && prefs.theme) || "clawd");
@@ -1186,10 +1187,19 @@ if (!gotTheLock) {
       },
     });
     _analyticsScan = require("./analytics-scan")({});
+    // Local session title overrides — stored at ~/.clawd/session-titles.json.
+    // Claude Desktop's rename feature doesn't write back to jsonl, so users
+    // have no way to rename sessions that show up in the dashboard. This
+    // module gives them a purely local rename that takes priority over
+    // jsonl custom-title in the display chain.
+    _analyticsTitles = require("./analytics-titles")({
+      titlesPath: path.join(os.homedir(), ".clawd", "session-titles.json"),
+    });
     _analyticsDash = require("./analytics")({
       analyticsData: _analyticsData,
       analyticsAI: _analyticsAI,
       analyticsScan: _analyticsScan,
+      analyticsTitles: _analyticsTitles,
     });
 
     // Register global shortcut for toggling pet visibility
