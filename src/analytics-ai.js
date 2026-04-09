@@ -1476,7 +1476,7 @@ module.exports = function initAnalyticsAI(ctx) {
     p += "\n请返回 JSON（不要 markdown code block），格式：\n";
     p += '{"summary":"1 句话概括核心收获，带情感色彩"';
     p += ',"keyTopics":["话题1","话题2"]';
-    p += ',"outcomes":[{"headline":"≤10字成果","detail":"一句话具体说明"}]}\n';
+    p += ',"outcomes":[{"headline":"3-4字成果","detail":"一句话具体说明"}]}\n';
     p += "要求：\n";
     p += "- summary：≤ 40 字，像队友一样说。用'搞定了''漂亮''辛苦了'这类语气，不要干列事实。\n";
     p += "- keyTopics：2-3 个，每个 ≤ 8 字。\n";
@@ -1493,15 +1493,15 @@ module.exports = function initAnalyticsAI(ctx) {
     p += "不要描述 agent 的工作流程，而是关注用户的意图和收获。\n\n";
     p += buildSessionContext(detail);
     p += "\n请返回 JSON（不要 markdown code block），格式：\n";
-    p += '{"summary":"2-3 句深度概括，包含背景、过程和成果"';
+    p += '{"summary":"≤50字概括：做了什么+结果如何"';
     p += ',"keyTopics":["话题1","话题2","话题3"]';
-    p += ',"outcomes":[{"headline":"核心成果（≤10 字）","detail":"展开说明关键认知"}]';
+    p += ',"outcomes":[{"headline":"3-4字短语","detail":"展开说明关键认知"}]';
     p += ',"timeBreakdown":[{"activity":"活动描述","percent":百分比}]';
     p += ',"suggestions":["建议"]}\n';
     p += "要求：\n";
-    p += "- summary：2-3 句话，还原这段对话的全貌——用户想干什么、怎么推进的、最终成果如何。\n";
+    p += "- summary：**严格 ≤ 50 字**，一句话说清'做了什么 + 结果如何'。不要铺垫背景，不要描述过程。\n";
     p += "- keyTopics：3-5 个关键话题，每个 ≤ 10 字。\n";
-    p += "- outcomes：3-5 条。headline ≤ 12 字不加标点；detail 展开说明关键认知，要具体有信息量（不说'获得了建议'，说'定位到 CRLF 是 Windows 解析失败的根因'）。\n";
+    p += "- outcomes：3-5 条。headline 用 3-4 字（如'修路径''搭布局''定方案'），不加标点；detail 一句话展开关键认知。\n";
     p += "- timeBreakdown：3-5 条，从用户视角描述时间分配（'讨论架构设计'而非'调用 Read 工具'）。\n";
     p += "- suggestions：1-2 条简短实用的建议。做得好可以返回空数组。\n";
     p += "- 所有字段用中文。确保 JSON 完整闭合。\n";
@@ -1646,8 +1646,15 @@ module.exports = function initAnalyticsAI(ctx) {
   }
 
   async function analyzeSession(detail, mode) {
+    // Wrapper: guarantee _mode is on every result, regardless of which code path produced it
+    const result = await _analyzeSessionImpl(detail, mode);
+    if (result && typeof result === "object") result._mode = mode || "brief";
+    return result;
+  }
+
+  async function _analyzeSessionImpl(detail, mode) {
     if (!detail) return null;
-    const analysisMode = mode || "brief"; // "brief" (default) or "detail"
+    const analysisMode = mode || "brief";
     const preferredProvider = detail._preferredProvider || "claude-code";
 
     // Check cache — invalidate if message count or provider changed

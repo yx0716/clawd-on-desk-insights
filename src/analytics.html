@@ -447,7 +447,7 @@ function unmarkAnalyzing(sid) {
   if (card) card.classList.remove("analyzing");
 }
 
-function analysisCacheKey(sessionId, provider = selectedAnalysisAgent) { return `${provider||"claude-code"}:${sessionId}`; }
+function analysisCacheKey(sessionId, provider = selectedAnalysisAgent, mode) { return `${provider||"claude-code"}:${sessionId}${mode?":"+mode:""}`; }
 
 // localStorage persistence so analysis results survive window close.
 const LS_CACHE_KEY = "clawd-analysis-cache-v1";
@@ -484,25 +484,36 @@ function persistCacheToStorage() {
 }
 loadCacheFromStorage();
 
-function getCachedAnalysis(sessionId, provider = selectedAnalysisAgent) {
-  // Try the requested provider first
-  let cached = batchCache[analysisCacheKey(sessionId, provider)];
+function getCachedAnalysis(sessionId, provider = selectedAnalysisAgent, mode) {
+  // If mode specified, look for exact match first
+  if (mode) {
+    const exact = batchCache[analysisCacheKey(sessionId, provider, mode)];
+    if (exact) {
+      const sess = (currentData && currentData.sessions || []).find(s => s.id === sessionId);
+      if (sess && exact._frontendMsgCount && sess.messages !== exact._frontendMsgCount) return null;
+      return exact;
+    }
+    return null;
+  }
+  // No mode specified: try mode-specific keys first (prefer brief), then legacy key without mode
+  let cached = batchCache[analysisCacheKey(sessionId, provider, "brief")]
+            || batchCache[analysisCacheKey(sessionId, provider, "detail")]
+            || batchCache[analysisCacheKey(sessionId, provider)];
   // Fallback: any other provider that's analyzed this session before
-  // (so switching from codex → claude-code doesn't lose previous results)
   if (!cached) {
-    const prefix = `:${sessionId}`;
+    const suffix = `:${sessionId}`;
     for (const k of Object.keys(batchCache)) {
-      if (k.endsWith(prefix)) { cached = batchCache[k]; break; }
+      if (k.includes(suffix)) { cached = batchCache[k]; break; }
     }
   }
   if (!cached) return null;
-  // Check if session has grown (new messages added)
   const sess = (currentData && currentData.sessions || []).find(s => s.id === sessionId);
-  if (sess && cached._frontendMsgCount && sess.messages !== cached._frontendMsgCount) return null; // invalidate
+  if (sess && cached._frontendMsgCount && sess.messages !== cached._frontendMsgCount) return null;
   return cached;
 }
 function setCachedAnalysis(sessionId, provider, result) {
-  const key = analysisCacheKey(sessionId, provider);
+  const mode = result && result._mode ? result._mode : null;
+  const key = analysisCacheKey(sessionId, provider, mode);
   if (result && result._cacheable !== false) {
     const sess = (currentData && currentData.sessions || []).find(s => s.id === sessionId);
     if (sess) result._frontendMsgCount = sess.messages;
@@ -1095,6 +1106,8 @@ async function selectSession(sid,agent){
   try{
     const r=await window.analyticsAPI.analyzeSession(sid,agent,selectedAnalysisAgent,"brief");
     unmarkAnalyzing(sid);
+    // Guard: if user switched to a different session while we were waiting, cache result silently
+    if(selectedSessionId!==sid){if(r)setCachedAnalysis(sid,selectedAnalysisAgent,r);return;}
     showAnalysisContent();
     if(!r){ct.innerHTML='<div style="color:var(--text-secondary)">Could not analyze</div>';return;}
     setCachedAnalysis(sid,selectedAnalysisAgent,r);
@@ -1259,20 +1272,26 @@ function renderAnalysis(r){
 
 async function runAnalysisMode(mode) {
   if (!selectedSessionId) return;
+  const targetSid = selectedSessionId; // capture at call time
   const ct = document.getElementById("analysisContent");
+  // Check frontend cache first — instant switch if already analyzed in this mode
+  const cached = getCachedAnalysis(targetSid, selectedAnalysisAgent, mode);
+  if (cached) { showAnalysisContent(); renderAnalysis(cached); bindAnalysisErrorLinks(ct); return; }
   showAnalysisLoading();
   try {
-    const sess = currentData && currentData.sessions ? currentData.sessions.find(s => s.id === selectedSessionId) : null;
+    const sess = currentData && currentData.sessions ? currentData.sessions.find(s => s.id === targetSid) : null;
     const agent = sess ? sess.agent : "claude-code";
-    let r = await window.analyticsAPI.analyzeSession(selectedSessionId, agent, selectedAnalysisAgent, mode);
+    let r = await window.analyticsAPI.analyzeSession(targetSid, agent, selectedAnalysisAgent, mode);
     // If detail mode returned a fallback (no structured data), retry with brief
     if (mode === "detail" && r && !r.keyTopics && !r.outcomes) {
       console.warn("Detail analysis returned unstructured fallback, retrying as brief");
-      r = await window.analyticsAPI.analyzeSession(selectedSessionId, agent, selectedAnalysisAgent, "brief");
+      r = await window.analyticsAPI.analyzeSession(targetSid, agent, selectedAnalysisAgent, "brief");
     }
+    // Guard: if user switched session while we were waiting, cache silently
+    if (selectedSessionId !== targetSid) { if (r) setCachedAnalysis(targetSid, selectedAnalysisAgent, r); return; }
     showAnalysisContent();
     if (!r) { ct.innerHTML = '<div style="color:var(--text-secondary)">Could not analyze</div>'; return; }
-    setCachedAnalysis(selectedSessionId, selectedAnalysisAgent, r);
+    setCachedAnalysis(targetSid, selectedAnalysisAgent, r);
     renderAnalysis(r);
     bindAnalysisErrorLinks(ct);
   } catch (err) {
