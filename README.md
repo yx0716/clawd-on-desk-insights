@@ -3,7 +3,7 @@
 # clawd-on-desk-insights
 ## A local-first analytics dashboard for your AI coding sessions
 
-> "Among all the bubbles you've shared with your Agent — what's surfacing?"
+> "Across all the conversations with your Agent — what's emerging?"
 
 [![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#why-it-exists)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
@@ -24,12 +24,12 @@
 <table align="center">
   <tr>
     <td width="50%" align="center" valign="top">
-      <img src="assets/screenshot-timeline-1.png" alt="时间线面板" />
-      <br /><sub><b>时间线视图</b> —— 每段会话的轨迹</sub>
+      <img src="assets/screenshot-timeline-1.png" alt="Timeline Dashboard" />
+      <br /><sub><b>Timeline view</b> — every session, traced</sub>
     </td>
     <td width="50%" align="center" valign="top">
-      <img src="assets/screenshot-ai-analysis.png" alt="AI 会话分析" />
-      <br /><sub><b>AI 会话复盘</b> —— 你的尝试和收获</sub>
+      <img src="assets/screenshot-ai-analysis.png" alt="AI Session Analysis" />
+      <br /><sub><b>AI session review</b> — what you tried, what you learned</sub>
     </td>
   </tr>
 </table>
@@ -41,7 +41,7 @@ Every conversation leaves an **imprint**. No idea you tried, no bug you wrestled
 
 All data stays on your machine. AI analysis runs through your own local `claude` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js.
+> Supports Windows 11, macOS, and Linux (tested on Ubuntu). Requires Node.js.
 
 ## Why it exists
 
@@ -107,7 +107,7 @@ There are three ways to open it — pick whichever feels natural:
 
 - **Right-click the desktop pet** → choose **Analytics Dashboard** from the context menu
 - **Click the tray icon** (menu bar on macOS, system tray on Windows/Linux) → **Analytics Dashboard**
-- **Keyboard shortcut**: macOS `⌘ + Shift + Option + A` / Windows · Linux `Ctrl + Shift + Alt + A`
+- **Keyboard shortcut**: macOS `⌘ + Shift + Option + A`  |  Windows / Linux `Ctrl + Shift + Alt + A`
 
 <p align="center">
   <img src="assets/screenshot-dashboard-menu.gif" width="720" alt="Right-click menu showing Analytics Dashboard">
@@ -152,7 +152,7 @@ The dialog has two sections:
 
 ### 5. Trigger AI analysis
 
-Once your provider is set up, **how do you actually make the dashboard read your conversations and produce summaries?** Two paths — pick whichever (or combine them):
+Once your provider is set up, **how do you actually make the dashboard read your conversations and produce summaries?** Two paths — pick one, or combine them:
 
 #### Method A: Batch pre-analysis (auto-prompted on dashboard open)
 
@@ -165,7 +165,7 @@ Available scopes:
 - **Week** — the last 7 days
 - **Custom** — your last N sessions
 
-Pick a scope, hit confirm, and the dashboard runs through them with an `Analyzing 1/N`, `2/N`, ... progress bar in the background. **Already-analyzed sessions are auto-skipped** (per-provider cache), so re-clicking never wastes tokens.
+Pick a scope, hit confirm, and the dashboard runs through them in the background, showing an `Analyzing 1/N`, `2/N`, ... progress bar. **Already-analyzed sessions are auto-skipped** (per-provider cache), so re-clicking never wastes tokens.
 
 <p align="center">
   <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Batch pre-analysis and per-session analysis in action">
@@ -193,9 +193,9 @@ Either way, the dashboard will:
 
 #### How to combine the two
 
-- **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want analyzed (a few minutes, costs more tokens upfront, but every record opens instantly afterwards)
-- **Daily use** → after that initial batch, switch to **Method B — pick specific sessions** as needed; only fresh ones require a manual trigger
-- **Token-sensitive** → use **Method B on demand**, only analyze the sessions you actually want to read — not a single wasted cent
+- **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want analyzed. Takes a few minutes and costs more tokens upfront, but every record opens instantly afterwards.
+- **Daily use** → after that initial batch, switch to **Method B — pick specific sessions** as needed. Only fresh ones require a manual trigger.
+- **Token-sensitive** → use **Method B on demand**. Only analyze the sessions you actually want to read — zero wasted tokens.
 
 > **About cost**: Local CLI (Claude Code / Codex subscription) analysis **uses your existing subscription quota** — typically no extra charges. In API key mode, the dashboard shows **token usage and cost** in the top status bar after each analysis completes, so you always know what you're spending.
 
