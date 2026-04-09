@@ -6,6 +6,7 @@ const assert = require("node:assert");
 const themeLoader = require("../src/theme-loader");
 themeLoader.init(require("path").join(__dirname, "..", "src"));
 const _defaultTheme = themeLoader.loadTheme("clawd");
+const _calicoTheme = themeLoader.loadTheme("calico");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -612,5 +613,32 @@ describe("DND mode", () => {
     mock.timers.tick(3000); // yawning → collapsing
     api.setState("working");
     assert.strictEqual(api.getCurrentState(), "collapsing");
+  });
+});
+
+describe("refreshTheme()", () => {
+  let api, ctx;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    ctx = makeCtx();
+    api = require("../src/state")(ctx);
+  });
+  afterEach(() => {
+    api.cleanup();
+    mock.timers.reset();
+  });
+
+  it("updates idle svg and DND sleep path after hot theme switch", () => {
+    assert.strictEqual(api.getSvgOverride("idle"), "clawd-idle-follow.svg");
+
+    ctx.theme = _calicoTheme;
+    api.refreshTheme();
+
+    assert.strictEqual(api.getSvgOverride("idle"), "calico-idle-follow.svg");
+    api.enableDoNotDisturb();
+    assert.strictEqual(api.getCurrentState(), "collapsing");
+    mock.timers.tick(5200);
+    assert.strictEqual(api.getCurrentState(), "sleeping");
   });
 });

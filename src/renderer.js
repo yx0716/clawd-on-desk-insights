@@ -34,6 +34,7 @@ function initWithConfig(cfg) {
     height: `${os.heightRatio * 100}%`,
     imgWidthBase: (os.imgWidthRatio || os.widthRatio) * 100,
     left:   `${os.offsetX * 100}%`,
+    imgLeft: `${(os.imgOffsetX != null ? os.imgOffsetX : os.offsetX) * 100}%`,
     // Unified bottom-anchored positioning for both <object> and <img>
     // Theme can override objBottom directly; otherwise derive from offsetY + heightRatio
     objBottom: `${(os.objBottom != null ? os.objBottom : (1 - os.offsetY - os.heightRatio)) * 100}%`,
@@ -59,7 +60,7 @@ function applyObjectScaleStyle(el, file) {
     const scale = (file && _fileScales[file]) || 1.0;
     el.style.width = `${_objectScaleCSS.imgWidthBase * scale}%`;
     el.style.height = "auto";
-    el.style.left = `calc(${_objectScaleCSS.left} + ${ox}px)`;
+    el.style.left = `calc(${_objectScaleCSS.imgLeft} + ${ox}px)`;
     el.style.top = "auto";
     el.style.bottom = `calc(${_objectScaleCSS.imgBottom || "5%"} + ${oy}px)`;
   } else {

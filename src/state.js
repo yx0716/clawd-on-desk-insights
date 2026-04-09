@@ -25,25 +25,17 @@ module.exports = function initState(ctx) {
 const _getCursor = ctx.getCursorScreenPoint || (screen ? () => screen.getCursorScreenPoint() : null);
 const _kill = ctx.processKill || process.kill.bind(process);
 
-// ── Theme-driven constants (from ctx.theme, populated by theme-loader) ──
-const theme = ctx.theme;
-
-const SVG_IDLE_FOLLOW = theme.states.idle[0];
-
-// ── State → SVG mapping (merged from theme.states + theme.miniMode.states) ──
-const STATE_SVGS = { ...theme.states };
-if (theme.miniMode && theme.miniMode.states) {
-  Object.assign(STATE_SVGS, theme.miniMode.states);
-}
-
-const MIN_DISPLAY_MS = theme.timings.minDisplay;
-const AUTO_RETURN_MS = theme.timings.autoReturn;
-
-const DEEP_SLEEP_TIMEOUT = theme.timings.deepSleepTimeout;
-const YAWN_DURATION = theme.timings.yawnDuration;
-const WAKE_DURATION = theme.timings.wakeDuration;
-const DND_SKIP_YAWN = !!theme.timings.dndSkipYawn;
-const COLLAPSE_DURATION = theme.timings.collapseDuration || 0;
+// ── Theme-driven state (refreshed on hot theme switch) ──
+let theme = null;
+let SVG_IDLE_FOLLOW = null;
+let STATE_SVGS = {};
+let MIN_DISPLAY_MS = {};
+let AUTO_RETURN_MS = {};
+let DEEP_SLEEP_TIMEOUT = 0;
+let YAWN_DURATION = 0;
+let WAKE_DURATION = 0;
+let DND_SKIP_YAWN = false;
+let COLLAPSE_DURATION = 0;
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
 
 const STATE_PRIORITY = {
@@ -54,7 +46,7 @@ const STATE_PRIORITY = {
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
 // Session display hints — validated against theme.displayHintMap keys
-const DISPLAY_HINT_MAP = theme.displayHintMap || {};
+let DISPLAY_HINT_MAP = {};
 
 // ── Session tracking ──
 const sessions = new Map();
@@ -66,9 +58,9 @@ let startupRecoveryTimer = null;
 const STARTUP_RECOVERY_MAX_MS = 300000;
 
 // ── Hit-test bounding boxes (from theme) ──
-const HIT_BOXES = theme.hitBoxes;
-const WIDE_SVGS = new Set(theme.wideHitboxFiles || []);
-const SLEEPING_SVGS = new Set(theme.sleepingHitboxFiles || []);
+let HIT_BOXES = {};
+let WIDE_SVGS = new Set();
+let SLEEPING_SVGS = new Set();
 let currentHitBox = HIT_BOXES.default;
 
 // ── State machine internal ──
@@ -94,6 +86,36 @@ const STATE_LABEL_KEY = {
   working: "sessionWorking", thinking: "sessionThinking", juggling: "sessionJuggling",
   idle: "sessionIdle", sleeping: "sessionSleeping",
 };
+
+function refreshTheme() {
+  theme = ctx.theme;
+  SVG_IDLE_FOLLOW = theme.states.idle[0];
+  STATE_SVGS = { ...theme.states };
+  if (theme.miniMode && theme.miniMode.states) {
+    Object.assign(STATE_SVGS, theme.miniMode.states);
+  }
+  MIN_DISPLAY_MS = theme.timings.minDisplay;
+  AUTO_RETURN_MS = theme.timings.autoReturn;
+  DEEP_SLEEP_TIMEOUT = theme.timings.deepSleepTimeout;
+  YAWN_DURATION = theme.timings.yawnDuration;
+  WAKE_DURATION = theme.timings.wakeDuration;
+  DND_SKIP_YAWN = !!theme.timings.dndSkipYawn;
+  COLLAPSE_DURATION = theme.timings.collapseDuration || 0;
+  DISPLAY_HINT_MAP = theme.displayHintMap || {};
+  HIT_BOXES = theme.hitBoxes;
+  WIDE_SVGS = new Set(theme.wideHitboxFiles || []);
+  SLEEPING_SVGS = new Set(theme.sleepingHitboxFiles || []);
+
+  if (currentSvg && SLEEPING_SVGS.has(currentSvg)) {
+    currentHitBox = HIT_BOXES.sleeping;
+  } else if (currentSvg && WIDE_SVGS.has(currentSvg)) {
+    currentHitBox = HIT_BOXES.wide;
+  } else {
+    currentHitBox = HIT_BOXES.default;
+  }
+}
+
+refreshTheme();
 
 function setState(newState, svgOverride) {
   if (ctx.doNotDisturb) return;
@@ -692,11 +714,13 @@ return {
   setState, applyState, updateSession, resolveDisplayState,
   enableDoNotDisturb, disableDoNotDisturb,
   startStaleCleanup, stopStaleCleanup, startWakePoll, stopWakePoll,
-  getSvgOverride, cleanStaleSessions, startStartupRecovery,
+  getSvgOverride, cleanStaleSessions, startStartupRecovery, refreshTheme,
   detectRunningAgentProcesses, buildSessionSubmenu,
   getCurrentState, getCurrentSvg, getCurrentHitBox, getStartupRecoveryActive,
-  sessions, STATE_SVGS, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
-  HIT_BOXES, WIDE_SVGS,
+  sessions, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
+  get STATE_SVGS() { return STATE_SVGS; },
+  get HIT_BOXES() { return HIT_BOXES; },
+  get WIDE_SVGS() { return WIDE_SVGS; },
   cleanup,
 };
 

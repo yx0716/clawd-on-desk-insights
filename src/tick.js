@@ -17,12 +17,22 @@ let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
 let mainTickTimer = null;
 
-// ── Theme-driven constants ──
-const theme = ctx.theme;
-const MOUSE_IDLE_TIMEOUT = theme.timings.mouseIdleTimeout;
-const MOUSE_SLEEP_TIMEOUT = theme.timings.mouseSleepTimeout;
-const SVG_IDLE_FOLLOW = theme.states.idle[0];
-const IDLE_ANIMS = (theme.idleAnimations || []).map(a => ({ svg: a.file, duration: a.duration }));
+// ── Theme-driven state (refreshed on hot theme switch) ──
+let theme = null;
+let MOUSE_IDLE_TIMEOUT = 0;
+let MOUSE_SLEEP_TIMEOUT = 0;
+let SVG_IDLE_FOLLOW = null;
+let IDLE_ANIMS = [];
+
+function refreshTheme() {
+  theme = ctx.theme;
+  MOUSE_IDLE_TIMEOUT = theme.timings.mouseIdleTimeout;
+  MOUSE_SLEEP_TIMEOUT = theme.timings.mouseSleepTimeout;
+  SVG_IDLE_FOLLOW = theme.states.idle[0];
+  IDLE_ANIMS = (theme.idleAnimations || []).map(a => ({ svg: a.file, duration: a.duration }));
+}
+
+refreshTheme();
 
 // ── Unified main tick (cursor polling for eye tracking + sleep + mini peek) ──
 // Input routing is handled by hitWin — no setIgnoreMouseEvents toggling here.
@@ -210,6 +220,14 @@ function cleanup() {
   if (mainTickTimer) { clearInterval(mainTickTimer); mainTickTimer = null; }
   if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
   if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
+  lastCursorX = null;
+  lastCursorY = null;
+  isMouseIdle = false;
+  hasTriggeredYawn = false;
+  idleLookPlayed = false;
+  idleWasActive = false;
+  lastEyeDx = 0;
+  lastEyeDy = 0;
 }
 
 // Expose mouseStillSince for wake poll (state.js deep sleep timeout)
@@ -217,6 +235,6 @@ Object.defineProperty(startMainTick, '_mouseStillSince', {
   get() { return mouseStillSince; },
 });
 
-return { startMainTick, resetIdleTimer, cleanup, get _mouseStillSince() { return mouseStillSince; } };
+return { startMainTick, resetIdleTimer, cleanup, refreshTheme, get _mouseStillSince() { return mouseStillSince; } };
 
 };
