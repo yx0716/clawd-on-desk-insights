@@ -41,6 +41,7 @@ function initWithConfig(cfg) {
   };
   _fileScales = os.fileScales || {};
   _fileOffsets = os.fileOffsets || {};
+  _transitions = tc.transitions || {};
 
   applyObjectScaleStyle(clawdEl);
   applyObjectScaleStyle(pendingNext);
@@ -82,6 +83,7 @@ let _glyphFlipDefs;
 let _objectScaleCSS;
 let _fileScales = {};
 let _fileOffsets = {};
+let _transitions = {};  // per-file fade config: { "file.apng": { in: 400, out: 400 } }
 
 // ── Layered tracking state (multi-layer eye/head/body tracking) ──
 let _useLayeredTracking = false;
@@ -267,6 +269,16 @@ currentIdleSvg = currentDisplayedSvg;
  * @param {string|null} state - current state name (for eye tracking decision)
  * @param {boolean} [useObjectChannel] - force object channel (true), img (false), or auto (undefined)
  */
+// Fade out an element and remove it after the transition completes
+function fadeOutAndRemove(el, durationMs) {
+  el.style.transition = `opacity ${durationMs}ms ease-out`;
+  el.style.opacity = "0";
+  setTimeout(() => {
+    if (el.tagName === "OBJECT") releaseObject(el);
+    else releaseImg(el);
+  }, durationMs);
+}
+
 function swapToFile(file, state, useObjectChannel) {
   if (pendingNext) {
     if (pendingNext.tagName === "OBJECT") releaseObject(pendingNext);
@@ -288,11 +300,21 @@ function swapToFile(file, state, useObjectChannel) {
 
     const swap = () => {
       if (pendingNext !== next) return;
-      next.style.transition = "none";
+      const fadeInMs = (_transitions[file] && _transitions[file].in) || 0;
+      const fadeOutMs = (currentDisplayedSvg && _transitions[currentDisplayedSvg] && _transitions[currentDisplayedSvg].out) || 0;
+
+      if (fadeInMs > 0) {
+        next.style.transition = `opacity ${fadeInMs}ms ease-in`;
+        next.offsetHeight; // force reflow to trigger transition
+      } else {
+        next.style.transition = "none";
+      }
       next.style.opacity = "1";
+
       for (const child of [...container.querySelectorAll("object, img.clawd-img")]) {
         if (child !== next) {
-          if (child.tagName === "OBJECT") releaseObject(child);
+          if (fadeOutMs > 0) fadeOutAndRemove(child, fadeOutMs);
+          else if (child.tagName === "OBJECT") releaseObject(child);
           else releaseImg(child);
         }
       }
@@ -326,11 +348,21 @@ function swapToFile(file, state, useObjectChannel) {
 
     const swap = () => {
       if (pendingNext !== next) return;
-      next.style.transition = "none";
+      const fadeInMs = (_transitions[file] && _transitions[file].in) || 0;
+      const fadeOutMs = (currentDisplayedSvg && _transitions[currentDisplayedSvg] && _transitions[currentDisplayedSvg].out) || 0;
+
+      if (fadeInMs > 0) {
+        next.style.transition = `opacity ${fadeInMs}ms ease-in`;
+        next.offsetHeight; // force reflow to trigger transition
+      } else {
+        next.style.transition = "none";
+      }
       next.style.opacity = "1";
+
       for (const child of [...container.querySelectorAll("object, img.clawd-img")]) {
         if (child !== next) {
-          if (child.tagName === "OBJECT") releaseObject(child);
+          if (fadeOutMs > 0) fadeOutAndRemove(child, fadeOutMs);
+          else if (child.tagName === "OBJECT") releaseObject(child);
           else releaseImg(child);
         }
       }

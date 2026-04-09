@@ -63,7 +63,7 @@
   ],
 
   "idleAnimations": [
-    { "file": "calico-idle.apng", "duration": 10000 }
+    { "file": "calico-idle.apng", "duration": 5200 }
   ],
 
   "displayHintMap": {
@@ -76,23 +76,23 @@
 
   "timings": {
     "minDisplay": {
-      "attention": 4000,
+      "attention": 5000,
       "error": 5000,
       "sweeping": 5500,
-      "notification": 2500,
+      "notification": 5200,
       "carrying": 3000,
       "working": 1000,
       "thinking": 1000
     },
     "autoReturn": {
-      "attention": 4000,
+      "attention": 5000,
       "error": 5000,
       "sweeping": 300000,
-      "notification": 2500,
+      "notification": 5200,
       "carrying": 3000
     },
-    "yawnDuration": 3000,
-    "wakeDuration": 1500,
+    "yawnDuration": 8000,
+    "wakeDuration": 5200,
     "deepSleepTimeout": 600000,
     "mouseIdleTimeout": 20000,
     "mouseSleepTimeout": 60000
@@ -130,6 +130,13 @@
       "autoReturn": { "mini-alert": 4000, "mini-happy": 4000 }
     },
     "glyphFlips": {}
+  },
+
+  "transitions": {
+    "calico-idle.apng":         { "in": 400, "out": 800 },
+    "calico-notification.apng": { "in": 300 },
+    "calico-happy.apng":        { "out": 1500 },
+    "calico-waking.apng":       { "out": 300 }
   },
 
   "sounds": {
@@ -184,7 +191,7 @@
       "calico-sleeping.apng": { "x": 10, "y": 65 },
       "calico-waking.apng": { "x": 10, "y": 65 },
       "calico-react-poke.apng": { "x": 10, "y": 65 },
-      "calico-react-drag.apng": { "x": 0, "y": 25 }
+      "calico-react-drag.apng": { "x": 0, "y": 55 }
     }
   }
 }
