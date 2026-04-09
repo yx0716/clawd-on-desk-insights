@@ -12,9 +12,10 @@
 [![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#关于-fork-仓的说明)
 
 <p>
-  <a href="#为什么需要它">为什么</a> ·
-  <a href="#洞察面板能做什么">能力</a> ·
+  <a href="#快速安装">安装</a> ·
+  <a href="#功能特性">能力</a> ·
   <a href="#上手指南">上手</a> ·
+  <a href="#它是怎么工作的">原理</a> ·
   <a href="#常见问题">FAQ</a> ·
   <a href="README.md">English</a>
 </p>
@@ -43,17 +44,19 @@
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。
 
+## 快速安装
+
+```bash
+git clone https://github.com/yx0716/clawd-on-desk-insights.git
+cd clawd-on-desk-insights
+npm install
+npm start
+```
+
+启动后桌面上出现一只小螃蟹——右键它即可打开 **Analytics Dashboard**。详细的 Provider 配置和分析触发方式见下方[上手指南](#上手指南)。
 
 
-## 为什么需要它
-
-Vibe Coding 的一天 —— 你开了五个 session,改了三个项目,跟 Agent 讨论了两个方案,关掉终端。感觉很疲倦🥱,但又想不起来做了什么。又或者,你觉得和 AI 的聊天卓有成效,但重新看一遍历史记录复盘总结又显得过于繁重。
-
-这个项目将帮你丢下这些烦恼和负担🎒:你和 AI 的每次对话都以 JSONL 的形式留在了本地(`~/.claude/projects/`、`~/.codex/sessions/`、`~/.cursor/projects/`),只是平时没人会翻开看。洞察面板把这些原始日志变成可以刷的时间线和 AI 复盘摘要。
-
-下次再想回顾"今天都干了什么"、"那个 session 里调通的写法"或者"上周那个库最后怎么处理的",交给桌面就好。
-
-## 洞察面板能做什么
+## 功能特性
 
 | 能力 | 说明 |
 |---|---|
@@ -63,9 +66,9 @@ Vibe Coding 的一天 —— 你开了五个 session,改了三个项目,跟 Agen
 | **灵活分析后端** | 本地 `claude` CLI、本地 `codex` CLI,或回退到你配置的 API provider / Ollama——你的选择,你的 key |
 | **批量预分析** | 对最近会话批量预生成摘要,按 provider 隔离的缓存可复用 |
 | **成本追踪** | 显示每次 AI 分析的 token 用量与费用 |
-| **快捷入口** | 托盘菜单、右键桌宠或快捷键一键打开 |
+| **快捷入口** | 托盘菜单、右键桌面宠物或快捷键一键打开 |
 
-### 看它实际跑起来
+### 使用示例
 
 <table align="center">
   <tr>
@@ -99,13 +102,13 @@ npm install
 npm start
 ```
 
-启动后桌面右下角会出现一只小螃蟹(默认主题),它就是 Clawd 桌宠。**洞察面板的入口都通过它**。
+启动后桌面右下角会出现一只小螃蟹(默认主题),它就是 Clawd 桌面宠物。**洞察面板的入口都通过它**。
 
 ### 2. 打开 Analytics Dashboard
 
 有三种方式可以打开洞察面板,选你顺手的:
 
-- **右键点击桌宠** → 在弹出菜单中选 **Analytics Dashboard**
+- **右键点击桌面宠物** → 在弹出菜单中选 **Analytics Dashboard**
 - **点击托盘图标**(macOS 顶部菜单栏 / Windows 系统托盘) → **Analytics Dashboard**
 - **快捷键**:macOS `⌘ + Shift + Option + A` / Windows · Linux `Ctrl + Shift + Alt + A`
 
@@ -115,11 +118,9 @@ npm start
 
 第一次打开就能立刻看到时间线视图——它直接读你硬盘上已有的会话日志,**不需要任何配置**。
 
-### 3.配置一个 AI Provider,启用会话摘要
+### 3.配置 AI Provider, 启用会话摘要
 
-时间线本身是开箱即用的,但要让面板自动**生成每段会话的复盘摘要**,需要告诉它一个能调用大模型的入口， **AI Provider**(分析后端)。
-
-**Provider 是什么?** 简单说,就是"谁来读你的对话日志、谁来写摘要"。你有三种选择:
+时间线本身是开箱即用的,但要让面板自动**生成每段会话的复盘摘要**,需要告诉它一个能调用大模型的入口， **AI Provider**(分析后端)。具体而言，有以下三种配置选择：
 
 | Provider 类型 | 是什么 | 怎么配置 | 适合谁 |
 |---|---|---|---|
@@ -129,13 +130,15 @@ npm start
 
 > **💡 强烈推荐**:如果你电脑上已经装了 Claude Code 或 Codex CLI,**直接什么都不用配**——面板会自动找到它们,直接复用你已有的订阅额度。这是最省事也最便宜的方案。
 
+如果暂时还不想配置，可以在启动界面点选 Skip，后续也可以随时在设置里配置。
 <p align="center">
   <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="选择并配置 AI Provider 的实际操作演示">
 </p>
 
+
 ### 4. 在哪里配置 / 修改 Provider?
 
-如果第 3 步你跳过了,或者后来想换个 provider,随时可以打开 **AI Provider Settings** 重新配置:
+如果第 3 步跳过了，或者此后想更换 provider，可以通过 **AI Provider Settings** 进行调整:
 
 打开 Analytics Dashboard → 点右上角的 **齿轮图标 ⚙** → 弹出 **AI Provider Settings** 面板。
 
@@ -145,14 +148,12 @@ npm start
 
 这个面板有两块内容:
 
-- **LOCAL CLI DETECTION**(本地 CLI 自动检测) — 显示面板有没有找到你本地的 `claude` 和 `codex`。绿点 = 找到了,显示版本号和路径;红点 = 没找到。**已经绿点的就什么都不用做**。
-- **API PROVIDER (FALLBACK)**(API 备选) — 如果本地 CLI 都没装,在这里选一个服务商(Claude / OpenAI / Ollama 等)、粘贴 API key 即可。
+- **LOCAL CLI DETECTION**(本地 CLI 自动检测) — 显示面板有没有找到你本地的 `claude` 和 `codex`。绿点 = 找到了,显示版本号和路径;红点 = 没找到。**已显示绿点说明一切正常，可以直接进行下一步**。
+- **API PROVIDER (FALLBACK)**(API 备选) — 如果未安装本地 CLI，可以通过 API Key 进行 会话智能分析(Claude / OpenAI / Ollama 等)、粘贴 API key 即可。
 
 > **小提示**:如果你的 `claude` / `codex` 是通过 NVM、fnm、Volta 这类版本管理工具装的,自动检测可能找不到。这时候在终端执行 `which claude` 或 `which codex`,把输出的路径粘贴到上面的 **Claude binary path** / **Codex binary path** 输入框里就行。
 
-### 5. 触发 AI 分析 
-
-Provider 配好之后,**怎么让面板真正去读你的对话、生成摘要?** 有两条路,任选其一(也可结合使用):
+### 5. 开始 Agent 会话分析
 
 #### 方法 A:批量预分析(开 Dashboard 时弹出)
 
@@ -191,13 +192,52 @@ Provider 配好之后,**怎么让面板真正去读你的对话、生成摘要?*
 
 > **适合谁**:已经知道自己想看哪段会话的、临时想起来的查阅、平时按需"刷"历史。
 
-#### 两种姿势怎么搭配?
-
+**总体而言**：
 - **第一次用** → 建议先跑一次 **方法 A 的 Week**, 选择特定数目/周期的对话进行分析(几分钟,消耗token较多，但之后可以随时秒开记录)
 - **日常用** → 跑完一次 多条绘画分析后，日常采用 **方法 B 选择特定对话进行分析** 
 - **token 敏感** → 用 **方法 B 按需触发**,只分析你真的想看的那几条,不浪费一分钱
 
 > **关于成本**:本地 CLI(Claude Code / Codex 订阅)分析**走你已有的订阅额度**,通常几乎不需要额外付费。API key 模式下,面板会在每条分析完成后**显示 token 用量和费用**(顶部状态栏),让你心里有数。
+
+## 它是怎么工作的
+
+Clawd 同时跑着两条互不依赖的数据通路:
+
+```
+你的 Agent                            Clawd
+  │                                    │
+  ├── 实时事件 ──→ hook / 轮询 / 插件 ──→ 🦀 桌面宠物动画
+  │                                    │
+  └── 对话历史 ──→ 本地 JSONL 文件 ────→ 📊 洞察面板
+```
+
+### 通路 ①:实时感知 → 桌宠动画
+
+Agent 工作时(调用工具、等待用户输入、报错、完成任务……)会产生事件。Clawd 通过三种方式捕获这些事件,驱动桌面宠物播放对应动画:
+
+| 集成方式 | 原理 | 延迟 | 使用的 Agent |
+|---|---|---|---|
+| **Command hook** | Agent 触发事件时自动执行一段脚本,脚本通过 HTTP POST 把事件发给 Clawd 本地服务器(`127.0.0.1:23333`) | 近乎零 | Claude Code、Copilot CLI、Gemini CLI、Cursor Agent、Kiro CLI |
+| **日志轮询** | Clawd 每 ~1.5 秒扫描 Agent 写入的 JSONL 日志文件,检测新事件 | ~1.5 秒 | Codex CLI、Gemini CLI(备选) |
+| **In-process 插件** | 插件直接跑在 Agent 进程内部,零开销转发事件 | 零 | opencode |
+
+所有 Agent 的事件最终都映射到同一套状态机:`idle → thinking → working → happy / error → sleeping`。桌面宠物根据当前状态播放对应的 SVG 动画,多个会话同时运行时自动切换到 juggling(杂耍)/ building(建造)/ conducting(指挥)动画。
+
+> **多 Agent 共存**:Claude Code、Codex、Copilot、Gemini、Cursor、Kiro、opencode 可以同时运行。Clawd 为每个 session 独立维护状态,取最高优先级作为桌面宠物当前显示。
+
+### 通路 ②:离线分析 → 洞察面板
+
+你和 Agent 的每次对话都会以 JSONL 格式保存在本地:
+
+| Agent | 本地历史路径 |
+|---|---|
+| Claude Code | `~/.claude/projects/` |
+| Codex CLI | `~/.codex/sessions/` |
+| Cursor Agent | `~/.cursor/projects/` |
+
+洞察面板直接读这些文件,生成时间线和 AI 摘要。**不走 hooks,不依赖小clawd运行**——即使你从没启动过桌面宠物,只要本地有对话历史,面板就能工作。
+
+> **注**:目前分析面板的扫描器只覆盖上面三个 Agent。Copilot CLI、Gemini CLI、Kiro CLI、opencode 仍能驱动桌面宠物动画,但它们的本地历史尚未接入面板扫描链路。
 
 ## 常见问题
 
@@ -212,11 +252,11 @@ Provider 配好之后,**怎么让面板真正去读你的对话、生成摘要?*
 
 ## 关于 Fork 仓的说明
 
-本仓库 fork 自 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk)——一个会实时感知你的 coding agent 状态的桌宠。桌宠还在(动画、权限气泡、多 Agent 状态追踪),但**这个 fork 的重心是上层的洞察分析**。
+本仓库 fork 自 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk)——一个会实时感知你的 coding agent 状态的桌面宠物。桌面宠物还在(动画、权限气泡、多 Agent 状态追踪),但**这个 fork 的重心是上层的洞察分析**。
 
-从上游继承的多 Agent 支持:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。需要注意的是,目前分析面板的扫描器只覆盖 Claude Code、Codex CLI 和 Cursor Agent——其他 agent 仍能驱动桌宠动画,但本地历史尚未接入分析面板。
+从上游继承的多 Agent 支持:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。需要注意的是,目前分析面板的扫描器只覆盖 Claude Code、Codex CLI 和 Cursor Agent——其他 agent 仍能驱动桌面宠物动画,但本地历史尚未接入分析面板。
 
-桌宠本体的完整功能(动画、权限气泡、极简模式、点击反应、自定义主题、远程 SSH 等)详见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
+桌面宠物本体的完整功能(动画、权限气泡、极简模式、点击反应、自定义主题、远程 SSH 等)详见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
 
 ## 许可证
 
