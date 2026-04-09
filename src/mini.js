@@ -5,12 +5,12 @@ const { screen } = require("electron");
 
 module.exports = function initMini(ctx) {
 
-const MINI_OFFSET_RATIO = ctx.theme.miniMode.offsetRatio;
 const PEEK_OFFSET = 25;
 const SNAP_TOLERANCE = 30;
 const JUMP_PEAK_HEIGHT = 40;
 const JUMP_DURATION = 350;
 const CRABWALK_SPEED = 0.12;  // px/ms
+let MINI_OFFSET_RATIO = ctx.theme.miniMode.offsetRatio;
 
 let miniMode = false;
 let miniEdge = "right";  // "left" | "right"
@@ -23,6 +23,10 @@ let miniSnap = null;  // { y, width, height } — canonical rect to prevent DPI 
 let miniTransitionTimer = null;
 let peekAnimTimer = null;
 let isAnimating = false;
+
+function refreshTheme() {
+  MINI_OFFSET_RATIO = ctx.theme.miniMode.offsetRatio;
+}
 
 // ── Window animation ──
 function animateWindowX(targetX, durationMs) {
@@ -344,10 +348,12 @@ return {
   enterMiniMode, exitMiniMode, enterMiniViaMenu,
   miniPeekIn, miniPeekOut, checkMiniModeSnap, cancelMiniTransition,
   animateWindowX, animateWindowParabola,
+  refreshTheme,
   handleDisplayChange, handleResize, restoreFromPrefs,
   getMiniMode, getMiniEdge, getMiniTransitioning, getMiniSleepPeeked, setMiniSleepPeeked, getMiniPeeked, setMiniPeeked,
   getIsAnimating, getPreMiniX, getPreMiniY, getCurrentMiniX, getMiniSnap,
-  MINI_OFFSET_RATIO,
+  get MINI_OFFSET_RATIO() { return MINI_OFFSET_RATIO; },
+  PEEK_OFFSET,
   cleanup,
 };
 

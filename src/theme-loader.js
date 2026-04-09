@@ -537,6 +537,24 @@ function mergeDefaults(raw, themeId, isBuiltin) {
 
   // objectScale
   theme.objectScale = { ...DEFAULT_OBJECT_SCALE, ...(raw.objectScale || {}) };
+  {
+    const vb = theme.viewBox || { width: 1, height: 1 };
+    const aspect = (vb.width && vb.height) ? (vb.width / vb.height) : 1;
+    const os = theme.objectScale;
+    const derivedObjBottom = os.objBottom != null ? os.objBottom : (1 - os.offsetY - os.heightRatio);
+    const rawOs = raw.objectScale || {};
+
+    if (os.imgWidthRatio == null) {
+      os.imgWidthRatio = Math.min(os.widthRatio, os.heightRatio * aspect);
+    }
+    if (rawOs.imgOffsetX == null) {
+      os.imgOffsetX = os.offsetX + Math.max(0, (os.widthRatio - os.imgWidthRatio) / 2);
+    }
+    if (os.imgBottom == null) {
+      const fittedHeightRatio = aspect > 0 ? (os.imgWidthRatio / aspect) : os.heightRatio;
+      os.imgBottom = derivedObjBottom + Math.max(0, (os.heightRatio - fittedHeightRatio) / 2);
+    }
+  }
 
   // eyeTracking
   theme.eyeTracking = { ...DEFAULT_EYE_TRACKING, ...(raw.eyeTracking || {}) };

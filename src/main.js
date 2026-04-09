@@ -2,6 +2,7 @@ const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut } = require("e
 const path = require("path");
 const fs = require("fs");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
+const hitGeometry = require("./hit-geometry");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -83,13 +84,10 @@ let activeTheme = loadThemeFromPrefs(loadPrefs());
 
 // ── CSS <object> sizing (from theme) ──
 function getObjRect(bounds) {
-  const os = activeTheme.objectScale;
-  return {
-    x: bounds.x + bounds.width * os.offsetX,
-    y: bounds.y + bounds.height * os.offsetY,
-    w: bounds.width * os.widthRatio,
-    h: bounds.height * os.heightRatio,
-  };
+  const state = _state.getCurrentState();
+  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
+  return hitGeometry.getAssetRectScreen(activeTheme, bounds, state, file)
+    || { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
 }
 
 let win;
@@ -189,6 +187,52 @@ function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
 }
 
+function syncHitStateAfterLoad() {
+  sendToHitWin("hit-state-sync", {
+    currentSvg: _state.getCurrentSvg(),
+    currentState: _state.getCurrentState(),
+    miniMode: _mini.getMiniMode(),
+    dndEnabled: doNotDisturb,
+  });
+}
+
+function syncRendererStateAfterLoad({ includeStartupRecovery = true } = {}) {
+  if (_mini.getMiniMode()) {
+    sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
+  }
+  if (doNotDisturb) {
+    sendToRenderer("dnd-change", true);
+    if (_mini.getMiniMode()) {
+      applyState("mini-sleep");
+    } else {
+      applyState("sleeping");
+    }
+    return;
+  }
+  if (_mini.getMiniMode()) {
+    applyState("mini-idle");
+    return;
+  }
+  if (sessions.size > 0) {
+    const resolved = resolveDisplayState();
+    applyState(resolved, getSvgOverride(resolved));
+    return;
+  }
+
+  applyState("idle", getSvgOverride("idle"));
+  if (!includeStartupRecovery) return;
+
+  setTimeout(() => {
+    if (sessions.size > 0 || doNotDisturb) return;
+    detectRunningAgentProcesses((found) => {
+      if (found && sessions.size === 0 && !doNotDisturb) {
+        _startStartupRecovery();
+        resetIdleTimer();
+      }
+    });
+  }, 5000);
+}
+
 // ── Sound playback ──
 let lastSoundTime = 0;
 const SOUND_COOLDOWN_MS = 10000;
@@ -228,6 +272,7 @@ let dragLocked = false;
 let menuOpen = false;
 let idlePaused = false;
 let forceEyeResend = false;
+let themeReloadInProgress = false;
 
 // ── Mini Mode — delegated to src/mini.js ──
 // Initialized after state module (needs applyState, resolveDisplayState, etc.)
@@ -323,23 +368,24 @@ const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride
         startWakePoll, stopWakePoll, detectRunningAgentProcesses, buildSessionSubmenu,
         startStartupRecovery: _startStartupRecovery } = _state;
 const sessions = _state.sessions;
-const STATE_SVGS = _state.STATE_SVGS;
 const STATE_PRIORITY = _state.STATE_PRIORITY;
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) {
-  const obj = getObjRect(bounds);
-  const vb = activeTheme.viewBox;
-  const scale = Math.min(obj.w, obj.h) / vb.width;
-  const offsetX = obj.x + (obj.w - vb.width * scale) / 2;
-  const offsetY = obj.y + (obj.h - vb.height * scale) / 2;
-  const hb = _state.getCurrentHitBox();
-  return {
-    left:   offsetX + (hb.x + -vb.x) * scale,
-    top:    offsetY + (hb.y + -vb.y) * scale,
-    right:  offsetX + (hb.x + -vb.x + hb.w) * scale,
-    bottom: offsetY + (hb.y + -vb.y + hb.h) * scale,
-  };
+  const state = _state.getCurrentState();
+  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
+  const hit = hitGeometry.getHitRectScreen(
+    activeTheme,
+    bounds,
+    state,
+    file,
+    _state.getCurrentHitBox(),
+    {
+      padX: _mini.getMiniMode() ? _mini.PEEK_OFFSET : 0,
+      padY: _mini.getMiniMode() ? 8 : 0,
+    }
+  );
+  return hit || { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height };
 }
 
 // ── Main tick — delegated to src/tick.js ──
@@ -386,7 +432,7 @@ const _serverCtx = {
   get hideBubbles() { return hideBubbles; },
   get pendingPermissions() { return pendingPermissions; },
   get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
-  get STATE_SVGS() { return STATE_SVGS; },
+  get STATE_SVGS() { return _state.STATE_SVGS; },
   get sessions() { return sessions; },
   setState,
   updateSession,
@@ -711,9 +757,9 @@ function createWindow() {
 
     // Send initial state to hitWin once it's ready
     hitWin.webContents.on("did-finish-load", () => {
-      sendToHitWin("hit-state-sync", {
-        currentSvg: _state.getCurrentSvg(), miniMode: _mini.getMiniMode(), dndEnabled: doNotDisturb,
-      });
+      sendToHitWin("theme-config", themeLoader.getHitRendererConfig());
+      if (themeReloadInProgress) return;
+      syncHitStateAfterLoad();
     });
 
     // Crash recovery for hitWin
@@ -806,37 +852,9 @@ function createWindow() {
   // If hooks arrived during startup, respect them instead of forcing idle
   // Also handles crash recovery (render-process-gone → reload)
   win.webContents.on("did-finish-load", () => {
-    if (_mini.getMiniMode()) {
-      sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
-    sendToHitWin("hit-state-sync", { miniMode: true });
-    }
-    if (doNotDisturb) {
-      sendToRenderer("dnd-change", true);
-    sendToHitWin("hit-state-sync", { dndEnabled: true });
-      if (_mini.getMiniMode()) {
-        applyState("mini-sleep");
-      } else {
-        applyState("sleeping");
-      }
-    } else if (_mini.getMiniMode()) {
-      applyState("mini-idle");
-    } else if (sessions.size > 0) {
-      const resolved = resolveDisplayState();
-      applyState(resolved, getSvgOverride(resolved));
-    } else {
-      applyState("idle", getSvgOverride("idle"));
-      // Startup recovery: delay 5s to let HWND/z-order/drag systems stabilize,
-      // then detect running Claude Code processes → suppress sleep sequence
-      setTimeout(() => {
-        if (sessions.size > 0 || doNotDisturb) return; // hook arrived during wait
-        detectRunningAgentProcesses((found) => {
-          if (found && sessions.size === 0 && !doNotDisturb) {
-            _startStartupRecovery();
-            resetIdleTimer();
-          }
-        });
-      }, 5000);
-    }
+    sendToRenderer("theme-config", themeLoader.getRendererConfig());
+    if (themeReloadInProgress) return;
+    syncRendererStateAfterLoad();
   });
 
   // ── Crash recovery: renderer process can die from <object> churn ──
@@ -985,32 +1003,28 @@ function switchTheme(themeId) {
 
   // 3. Update active theme
   activeTheme = newTheme;
-
-  const rendererConfig = themeLoader.getRendererConfig();
-  const hitConfig = themeLoader.getHitRendererConfig();
+  _mini.refreshTheme();
+  _state.refreshTheme();
+  _tick.refreshTheme();
+  if (_mini.getMiniMode()) _mini.handleDisplayChange();
 
   // 4. Reload both windows
+  themeReloadInProgress = true;
   win.webContents.reload();
   hitWin.webContents.reload();
 
-  // 5. After reload completes, push new config via IPC + restart tick
+  // 5. After both reloads complete, re-sync state with the new theme.
   let ready = 0;
   const onReady = () => {
     if (++ready < 2) return;
-    // Re-apply current state so renderer shows correct animation
-    const { state, svg } = resolveDisplayState();
-    sendToRenderer("state-change", state, svg);
+    themeReloadInProgress = false;
+    syncHitStateAfterLoad();
+    syncRendererStateAfterLoad({ includeStartupRecovery: false });
     syncHitWin();
     startMainTick();
   };
-  win.webContents.once("did-finish-load", () => {
-    win.webContents.send("theme-config", rendererConfig);
-    onReady();
-  });
-  hitWin.webContents.once("did-finish-load", () => {
-    hitWin.webContents.send("theme-config", hitConfig);
-    onReady();
-  });
+  win.webContents.once("did-finish-load", onReady);
+  hitWin.webContents.once("did-finish-load", onReady);
 
   savePrefs();
   rebuildAllMenus();
