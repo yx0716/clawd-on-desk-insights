@@ -394,7 +394,15 @@ function getAssetPath(filename) {
  * @returns {string} path prefix
  */
 function getRendererAssetsPath() {
-  if (!activeTheme || activeTheme._builtin) {
+  if (!activeTheme) return "../assets/svg";
+  if (activeTheme._builtin) {
+    // Built-in theme with own assets dir (e.g., calico with SVG + APNGs)
+    const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
+    if (fs.existsSync(themeAssetsDir)) {
+      // Use relative path (not file:// URL) so SVG internal <style> works
+      // file:// absolute URLs may cause browser to restrict inline CSS in SVG
+      return "../themes/" + activeTheme._id + "/assets";
+    }
     return "../assets/svg";
   }
   // External theme: return file:// URL to the cache dir for SVGs
@@ -412,7 +420,7 @@ function getRendererSourceAssetsPath() {
     // Built-in theme with own assets dir (e.g., calico with APNGs)
     const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
     if (fs.existsSync(themeAssetsDir)) {
-      return pathToFileURL(themeAssetsDir).href;
+      return "../themes/" + activeTheme._id + "/assets";
     }
     return null;
   }

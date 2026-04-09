@@ -9,11 +9,33 @@
   "viewBox": { "x": 0, "y": 0, "width": 266, "height": 200 },
 
   "eyeTracking": {
-    "enabled": false
+    "enabled": true,
+    "states": ["idle"],
+    "eyeRatioX": 0.48,
+    "eyeRatioY": 0.38,
+    "maxOffset": 20,
+    "trackingLayers": {
+      "eyes": {
+        "ids": ["eye-sockets", "eye-pupils", "eye-highlights"],
+        "maxOffset": 20,
+        "ease": 0.2
+      },
+      "head": {
+        "ids": ["outline-head", "base-head", "patch-head-right", "patch-head-left", "cheek-right", "cheek-left", "mouth", "whiskers-right", "ears-inner", "ear-inner-right", "ear-inner-left"],
+        "classes": ["ear-anim"],
+        "maxOffset": 12,
+        "ease": 0.12
+      },
+      "body": {
+        "ids": ["outline-body", "chest-head"],
+        "maxOffset": 3,
+        "ease": 0.07
+      }
+    }
   },
 
   "states": {
-    "idle":         ["calico-idle.apng"],
+    "idle":         ["calico-idle-follow.svg"],
     "yawning":      ["calico-yawning.apng"],
     "dozing":       ["calico-dozing.apng"],
     "collapsing":   ["calico-collapsing.apng"],
@@ -40,7 +62,9 @@
     { "minSessions": 1, "file": "calico-working-juggling.apng" }
   ],
 
-  "idleAnimations": [],
+  "idleAnimations": [
+    { "file": "calico-idle.apng", "duration": 10000 }
+  ],
 
   "displayHintMap": {
     "clawd-working-building.svg": "calico-working-building.apng",
@@ -114,9 +138,9 @@
   },
 
   "objectScale": {
-    "widthRatio":  1.4,
-    "heightRatio": 1.2,
-    "offsetX":    -0.2,
-    "offsetY":    -0.05
+    "widthRatio":  0.58,
+    "heightRatio": 0.44,
+    "offsetX":     0.21,
+    "offsetY":     0.28
   }
 }

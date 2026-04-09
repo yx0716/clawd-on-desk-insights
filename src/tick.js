@@ -136,7 +136,7 @@ function startMainTick() {
       }
 
       // 20s no mouse movement → random idle animation (play once, then return to idle-follow)
-      if (!isMouseIdle && !hasTriggeredYawn && !idleLookPlayed && elapsed >= MOUSE_IDLE_TIMEOUT) {
+      if (IDLE_ANIMS.length > 0 && !isMouseIdle && !hasTriggeredYawn && !idleLookPlayed && elapsed >= MOUSE_IDLE_TIMEOUT) {
         isMouseIdle = true;
         idleLookPlayed = true;
         const pick = IDLE_ANIMS[Math.floor(Math.random() * IDLE_ANIMS.length)];
@@ -190,7 +190,8 @@ function startMainTick() {
 
     eyeDx = Math.round(eyeDx * 2) / 2;
     eyeDy = Math.round(eyeDy * 2) / 2;
-    eyeDy = Math.max(-1.5, Math.min(1.5, eyeDy));
+    const yClamp = MAX_OFFSET * 0.5;
+    eyeDy = Math.max(-yClamp, Math.min(yClamp, eyeDy));
 
     if (skipDedup || eyeDx !== lastEyeDx || eyeDy !== lastEyeDy) {
       lastEyeDx = eyeDx;
