@@ -12,9 +12,10 @@
 [![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#about-the-fork)
 
 <p>
-  <a href="#why-it-exists">Why</a> ·
-  <a href="#what-the-dashboard-does">Features</a> ·
-  <a href="#getting-started">Quick Start</a> ·
+  <a href="#quick-install">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#getting-started">Guide</a> ·
+  <a href="#how-it-works">How it works</a> ·
   <a href="#faq">FAQ</a> ·
   <a href="README.zh-CN.md">中文版</a>
 </p>
@@ -43,17 +44,18 @@ All data stays on your machine. AI analysis runs through your own local `claude`
 
 > Supports Windows 11, macOS, and Linux (tested on Ubuntu). Requires Node.js.
 
-## Why it exists
+## Quick Install
 
-A day of vibe coding — five sessions open, three projects touched, two approaches debated with the Agent, terminal closed. You feel exhausted 🥱 but can't quite recall what you accomplished.
+```bash
+git clone https://github.com/yx0716/clawd-on-desk-insights.git
+cd clawd-on-desk-insights
+npm install
+npm start
+```
 
-Or maybe the conversations *were* productive 🥂, but going back through the raw history to review them feels like a chore.
+A small crab appears on your desktop — right-click it to open the **Analytics Dashboard**. For provider setup and analysis workflows, see [Getting Started](#getting-started) below.
 
-This project takes that weight off your shoulders 🎒: every conversation you've had with an AI agent is already sitting on your disk as JSONL (`~/.claude/projects/`, `~/.codex/sessions/`, `~/.cursor/projects/`) — it's just that nobody normally opens them. The insights dashboard turns those raw logs into a scrollable timeline and AI-generated review summaries.
-
-Next time you want to recall *"what did I actually do today"*, *"which session had that working solution"*, or *"how did we end up handling that library last week"* — let the dashboard handle it.
-
-## What the Dashboard does
+## Features
 
 | Capability | What you get |
 |---|---|
@@ -63,9 +65,9 @@ Next time you want to recall *"what did I actually do today"*, *"which session h
 | **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys |
 | **Batch pre-analysis** | Pre-compute summaries for recent sessions and reuse provider-aware cached results |
 | **Cost tracking** | See token usage and cost per analysis run |
-| **Quick access** | Open from the tray menu, the right-click menu on the pet, or a global shortcut |
+| **Quick access** | Open from the tray menu, the right-click menu on the desktop pet, or a global shortcut |
 
-### See it in action
+### Usage examples
 
 <table align="center">
   <tr>
@@ -115,11 +117,9 @@ There are three ways to open it — pick whichever feels natural:
 
 The first time you open it, you'll see your timeline immediately — it just reads the session logs already on your disk. **No setup required for that part.**
 
-### 3. Configure an AI provider for session summaries
+### 3. Configure an AI Provider for session summaries
 
-The timeline works out of the box. But to make the dashboard automatically **generate a recap summary for each session**, you need to point it at something that can call a large language model — what we call an **AI Provider** (the analysis backend).
-
-**What's a "provider"?** Plain answer: it's *whoever reads your conversation logs and writes the summary*. You have three options:
+The timeline works out of the box. But to make the dashboard automatically **generate a recap summary for each session**, you need to point it at something that can call a large language model — an **AI Provider** (the analysis backend). There are three options:
 
 | Provider type | What it is | Setup | Best for |
 |---|---|---|---|
@@ -129,13 +129,15 @@ The timeline works out of the box. But to make the dashboard automatically **gen
 
 > **💡 Strong recommendation**: if you already have Claude Code or Codex CLI installed, **do nothing** — the dashboard auto-detects them and reuses your existing subscription quota. Cheapest and easiest path.
 
+If you don't want to configure a provider right now, click **Skip** on the startup screen. You can always set it up later in the settings.
+
 <p align="center">
   <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Selecting and configuring an AI Provider in action">
 </p>
 
 ### 4. Where to configure / change the provider later
 
-If you skipped step 3, or you want to switch providers later, you can open **AI Provider Settings** at any time:
+If you skipped step 3, or you want to switch providers later, you can adjust it via **AI Provider Settings** at any time:
 
 Open the Analytics Dashboard → click the **gear icon ⚙** in the top-right → **AI Provider Settings** dialog appears.
 
@@ -145,14 +147,12 @@ Open the Analytics Dashboard → click the **gear icon ⚙** in the top-right �
 
 The dialog has two sections:
 
-- **LOCAL CLI DETECTION** — shows whether the dashboard found `claude` and `codex` on your machine. Green dot = found (with version + path); red dot = missing. **If you already see green dots, you're done — nothing to configure.**
-- **API PROVIDER (FALLBACK)** — only kicks in when no local CLI is available. Pick a provider (Claude / OpenAI / Ollama / …), paste an API key, and you're set.
+- **LOCAL CLI DETECTION** — shows whether the dashboard found `claude` and `codex` on your machine. Green dot = found (with version + path); red dot = missing. **If you see green dots, everything is working — proceed to the next step.**
+- **API PROVIDER (FALLBACK)** — if no local CLI is installed, you can use an API key for AI session analysis (Claude / OpenAI / Ollama / …) — just paste the key and you're set.
 
 > **Tip**: if your `claude` or `codex` was installed via **NVM, fnm, or Volta**, auto-detection may miss it. Run `which claude` or `which codex` in your terminal and paste the output into the **Claude binary path** / **Codex binary path** override field.
 
-### 5. Trigger AI analysis
-
-Once your provider is set up, **how do you actually make the dashboard read your conversations and produce summaries?** Two paths — pick one, or combine them:
+### 5. Start AI session analysis
 
 #### Method A: Batch pre-analysis (auto-prompted on dashboard open)
 
@@ -191,13 +191,53 @@ Either way, the dashboard will:
 
 > **Best for**: you already know which session you want to revisit, ad-hoc lookups, day-to-day "scrolling through" history.
 
-#### How to combine the two
+**In summary:**
 
 - **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want analyzed. Takes a few minutes and costs more tokens upfront, but every record opens instantly afterwards.
 - **Daily use** → after that initial batch, switch to **Method B — pick specific sessions** as needed. Only fresh ones require a manual trigger.
 - **Token-sensitive** → use **Method B on demand**. Only analyze the sessions you actually want to read — zero wasted tokens.
 
 > **About cost**: Local CLI (Claude Code / Codex subscription) analysis **uses your existing subscription quota** — typically no extra charges. In API key mode, the dashboard shows **token usage and cost** in the top status bar after each analysis completes, so you always know what you're spending.
+
+## How it works
+
+Clawd runs two independent data paths side by side:
+
+```
+Your Agent                              Clawd
+  │                                      │
+  ├── live events ──→ hook / poll / plugin ──→ 🦀 pet animation
+  │                                      │
+  └── chat history ──→ local JSONL files ────→ 📊 insights dashboard
+```
+
+### Path ①: Live awareness → pet animation
+
+While an agent works (calling tools, waiting for input, erroring out, finishing a task…) it emits events. Clawd captures them through three integration modes and drives the pet accordingly:
+
+| Mode | How it works | Latency | Agents |
+|---|---|---|---|
+| **Command hook** | Agent fires an event → automatically runs a script → script HTTP-POSTs the event to Clawd's local server (`127.0.0.1:23333`) | Near zero | Claude Code, Copilot CLI, Gemini CLI, Cursor Agent, Kiro CLI |
+| **Log polling** | Clawd scans the agent's JSONL log file every ~1.5 s and detects new entries | ~1.5 s | Codex CLI, Gemini CLI (fallback) |
+| **In-process plugin** | Plugin runs inside the agent's own runtime, forwarding events with zero overhead | Zero | opencode |
+
+All events map to the same state machine: `idle → thinking → working → happy / error → sleeping`. The pet plays the matching SVG animation. When multiple sessions run simultaneously, it auto-switches to juggling / building / conducting animations.
+
+> **Multi-agent coexistence**: Claude Code, Codex, Copilot, Gemini, Cursor, Kiro, and opencode can all run at the same time. Clawd tracks each session independently and displays the highest-priority state.
+
+### Path ②: Offline analysis → insights dashboard
+
+Every conversation you have with an agent is saved as JSONL on your disk:
+
+| Agent | Local history path |
+|---|---|
+| Claude Code | `~/.claude/projects/` |
+| Codex CLI | `~/.codex/sessions/` |
+| Cursor Agent | `~/.cursor/projects/` |
+
+The insights dashboard reads these files directly to generate timelines and AI summaries. **It doesn't go through hooks and doesn't require the pet to be running** — as long as chat history exists on disk, the dashboard works.
+
+> **Note**: the analytics scanner currently covers only the three agents above. Copilot CLI, Gemini CLI, Kiro CLI, and opencode still drive pet animations, but their local histories are not yet wired into the dashboard scanner.
 
 ## FAQ
 
