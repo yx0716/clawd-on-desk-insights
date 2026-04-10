@@ -289,6 +289,7 @@ let themeReloadInProgress = false;
 const _permCtx = {
   get win() { return win; },
   get lang() { return lang; },
+  get sessions() { return sessions; },
   get bubbleFollowPet() { return bubbleFollowPet; },
   get permDebugLog() { return permDebugLog; },
   get doNotDisturb() { return doNotDisturb; },

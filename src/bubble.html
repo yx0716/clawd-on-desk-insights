@@ -137,6 +137,21 @@ body { padding: 6px; }
 .tool-pill[data-tool="Shell"] { background: #d97757; }
 .tool-pill[data-tool="CodexExec"] { background: #2563eb; }
 
+/* ── Session tag (folder + short id, hidden when absent) ── */
+.session-tag {
+  display: none;
+  font-size: 11px;
+  color: var(--cmd-color);
+  opacity: 0.7;
+  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
+  letter-spacing: 0.02em;
+  margin-top: -2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-tag.visible { display: block; }
+
 /* ── Command block ── */
 .command-block {
   padding: 12px;
@@ -254,6 +269,8 @@ body { padding: 6px; }
     <span class="tool-pill" id="toolPill"></span>
   </div>
 
+  <div class="session-tag" id="sessionTag"></div>
+
   <div class="command-block" id="commandBlock"></div>
   
   <div class="actions">
@@ -272,7 +289,21 @@ const btnAllow = document.getElementById("btnAllow");
 const btnDeny = document.getElementById("btnDeny");
 const suggestionsContainer = document.getElementById("suggestions");
 const headerTitle = document.querySelector(".header-title");
+const sessionTag = document.getElementById("sessionTag");
 let elicitationMode = false;
+
+function setSessionTag(data) {
+  const parts = [];
+  if (data.sessionFolder) parts.push(data.sessionFolder);
+  if (data.sessionShortId) parts.push("#" + data.sessionShortId);
+  if (parts.length) {
+    sessionTag.textContent = parts.join(" \u00B7 ");
+    sessionTag.classList.add("visible");
+  } else {
+    sessionTag.textContent = "";
+    sessionTag.classList.remove("visible");
+  }
+}
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
@@ -332,6 +363,7 @@ function revealCard() {
 
 function show(data) {
   elicitationMode = data.isElicitation || false;
+  setSessionTag(data);
 
   // opencode branch — Phase 2. Three differences from CC:
   //   1. tool names are lowercase (edit/bash/write) — we PascalCase them so

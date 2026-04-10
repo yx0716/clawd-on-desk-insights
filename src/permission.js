@@ -206,6 +206,14 @@ function showPermissionBubble(permEntry) {
   bub.loadFile(path.join(__dirname, "bubble.html"));
 
   bub.webContents.once("did-finish-load", () => {
+    // Session disambiguation: same as Sessions submenu (state.js:648-649) so the
+    // bubble matches what the user sees in the right-click menu. Lets users tell
+    // apart multiple permission requests from the same project directory.
+    const sess = ctx.sessions.get(permEntry.sessionId);
+    const sessionFolder = sess && sess.cwd ? path.basename(sess.cwd) : null;
+    const sessionShortId = permEntry.sessionId
+      ? String(permEntry.sessionId).slice(-3)
+      : null;
     bub.webContents.send("permission-show", {
       toolName: permEntry.toolName,
       toolInput: permEntry.toolInput,
@@ -215,6 +223,8 @@ function showPermissionBubble(permEntry) {
       isOpencode: permEntry.isOpencode || false,
       opencodeAlways: permEntry.opencodeAlwaysCandidates || [],
       opencodePatterns: permEntry.opencodePatterns || [],
+      sessionFolder,
+      sessionShortId,
     });
     // Don't call bub.focus() — it steals focus from terminal and can trigger
     // false "User answered in terminal" denials in Claude Code, wasting tokens.
