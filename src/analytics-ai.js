@@ -42,6 +42,17 @@ Ignore the marker above. It is only used by Clawd to hide this internal summary 
 ${prompt}`;
 }
 
+function resolvePreferredAnalysisProvider(options, config) {
+  const opts = Array.isArray(options) ? options : [];
+  if (!opts.length) return null;
+  const saved = config && config.defaultAnalysisProvider;
+  if (saved) {
+    const matched = opts.find(opt => (opt.id || opt.provider) === saved);
+    if (matched) return matched;
+  }
+  return opts[0] || null;
+}
+
 function getDetailContextEntryCount(detail) {
   if (detail && Array.isArray(detail.conversation) && detail.conversation.length) {
     return detail.conversation.length;
@@ -370,10 +381,10 @@ module.exports = function initAnalyticsAI(ctx) {
     } catch { /* no asdf */ }
     // pnpm / Yarn / Bun globals — covers users who installed Codex via
     // alternative package managers
-    try { dirs.push(path.join(home, ".bun", "bin")); } catch {}
-    try { dirs.push(path.join(home, ".yarn", "bin")); } catch {}
+    try { dirs.push(path.join(home, ".bun", "bin")); } catch { }
+    try { dirs.push(path.join(home, ".yarn", "bin")); } catch { }
     if (process.env.PNPM_HOME) dirs.push(process.env.PNPM_HOME);
-    try { dirs.push(path.join(home, "Library", "pnpm")); } catch {} // pnpm default on macOS
+    try { dirs.push(path.join(home, "Library", "pnpm")); } catch { } // pnpm default on macOS
     return uniqueExistingPaths(dirs);
   }
 
@@ -604,7 +615,7 @@ module.exports = function initAnalyticsAI(ctx) {
     const candidate = cfg.customCliPaths[key];
     if (typeof candidate !== "string" || !candidate.trim()) return null;
     const expanded = candidate.trim().replace(/^~(?=[/\\])/, os.homedir());
-    try { if (fs.existsSync(expanded)) return expanded; } catch {}
+    try { if (fs.existsSync(expanded)) return expanded; } catch { }
     return null;
   }
 
@@ -1269,18 +1280,18 @@ module.exports = function initAnalyticsAI(ctx) {
   // cacheWrite defaults to 1.25× input (Anthropic 5-min cache); cachedInput defaults to 0.1× input.
   const MODEL_PRICING = {
     // Claude — official Anthropic prices per 1M tokens
-    "claude-haiku-4-5":      { input: 1.00, cachedInput: 0.10, cacheWrite: 1.25, output: 5.00 },
-    "claude-sonnet-4-5":     { input: 3.00, cachedInput: 0.30, cacheWrite: 3.75, output: 15.00 },
-    "claude-opus-4-6":       { input: 15.00, cachedInput: 1.50, cacheWrite: 18.75, output: 75.00 },
-    "haiku":                 { input: 1.00, cachedInput: 0.10, cacheWrite: 1.25, output: 5.00 },
-    "sonnet":                { input: 3.00, cachedInput: 0.30, cacheWrite: 3.75, output: 15.00 },
-    "opus":                  { input: 15.00, cachedInput: 1.50, cacheWrite: 18.75, output: 75.00 },
+    "claude-haiku-4-5": { input: 1.00, cachedInput: 0.10, cacheWrite: 1.25, output: 5.00 },
+    "claude-sonnet-4-5": { input: 3.00, cachedInput: 0.30, cacheWrite: 3.75, output: 15.00 },
+    "claude-opus-4-6": { input: 15.00, cachedInput: 1.50, cacheWrite: 18.75, output: 75.00 },
+    "haiku": { input: 1.00, cachedInput: 0.10, cacheWrite: 1.25, output: 5.00 },
+    "sonnet": { input: 3.00, cachedInput: 0.30, cacheWrite: 3.75, output: 15.00 },
+    "opus": { input: 15.00, cachedInput: 1.50, cacheWrite: 18.75, output: 75.00 },
     // OpenAI — GPT-5 family per 1M tokens
-    "gpt-5":                 { input: 1.25, cachedInput: 0.13, cacheWrite: 1.25, output: 10.00 },
-    "gpt-5-mini":            { input: 0.25, cachedInput: 0.025, cacheWrite: 0.25, output: 2.00 },
-    "gpt-5.4":               { input: 1.25, cachedInput: 0.13, cacheWrite: 1.25, output: 10.00 },
-    "gpt-4o":                { input: 2.50, cachedInput: 1.25, cacheWrite: 2.50, output: 10.00 },
-    "gpt-4o-mini":           { input: 0.15, cachedInput: 0.075, cacheWrite: 0.15, output: 0.60 },
+    "gpt-5": { input: 1.25, cachedInput: 0.13, cacheWrite: 1.25, output: 10.00 },
+    "gpt-5-mini": { input: 0.25, cachedInput: 0.025, cacheWrite: 0.25, output: 2.00 },
+    "gpt-5.4": { input: 1.25, cachedInput: 0.13, cacheWrite: 1.25, output: 10.00 },
+    "gpt-4o": { input: 2.50, cachedInput: 1.25, cacheWrite: 2.50, output: 10.00 },
+    "gpt-4o-mini": { input: 0.15, cachedInput: 0.075, cacheWrite: 0.15, output: 0.60 },
   };
 
   // Resolve a model id (e.g. "claude-haiku-4-5-20251001", "gpt-5.4", "haiku")
@@ -1371,12 +1382,12 @@ module.exports = function initAnalyticsAI(ctx) {
       bundleCandidates: [],
       shell: process.env.SHELL || null,
     };
-    try { out.searchDirs = getCommonCliSearchDirs(); } catch {}
+    try { out.searchDirs = getCommonCliSearchDirs(); } catch { }
     // Surface the Codex.app + Cursor/VS Code extension candidates so users
     // can verify Clawd checked the right place. We show all candidates (even
     // non-existent ones) so users on a fresh machine can see the search
     // surface area instead of an empty list.
-    try { out.bundleCandidates = getBundledCodexCandidates(); } catch {}
+    try { out.bundleCandidates = getBundledCodexCandidates(); } catch { }
 
     const claudePath = findClaudeBinary();
     out.claude = {
@@ -1868,7 +1879,7 @@ module.exports = function initAnalyticsAI(ctx) {
   }
 
   function getAnalysisProvider() {
-    return getAvailableAnalysisProviders()[0] || null;
+    return resolvePreferredAnalysisProvider(getAvailableAnalysisProviders(), getConfig());
   }
 
   // ── One-liner summaries (lightweight, for event cards) ──
@@ -1923,4 +1934,5 @@ module.exports = function initAnalyticsAI(ctx) {
 module.exports.__test = {
   buildSessionContext,
   getDetailContextEntryCount,
+  resolvePreferredAnalysisProvider,
 };

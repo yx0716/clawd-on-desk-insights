@@ -26,6 +26,9 @@ body * { -webkit-app-region:no-drag; }
 .header-title .sub { font-size:11px; color:var(--text-muted); letter-spacing:1px; }
 .header-title h1 { font-size:28px; font-weight:800; color:var(--text); line-height:1.2; }
 .header-title h1 span { color:var(--accent); }
+.header-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.header-report-btn { border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); border-radius:999px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; }
+.header-report-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
 .header-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .hstat { background:var(--accent-light); border-radius:var(--radius-sm); padding:8px 14px; min-width:120px; }
 .hstat .hl { font-size:9px; color:var(--accent); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
@@ -190,6 +193,14 @@ body * { -webkit-app-region:no-drag; }
 
 /* Settings dialog */
 .settings-dialog { background:var(--bg-card); border-radius:var(--radius); padding:22px 24px; box-shadow:var(--shadow-md); max-width:440px; width:92%; text-align:left; max-height:88vh; overflow-y:auto; }
+.report-dialog { background:var(--bg-card); border-radius:var(--radius); padding:22px 24px; box-shadow:var(--shadow-md); max-width:760px; width:94%; text-align:left; max-height:88vh; overflow-y:auto; }
+.report-dialog h2 { font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.report-dialog .report-sub { font-size:11px; color:var(--text-muted); margin-bottom:14px; }
+.report-textarea { width:100%; min-height:360px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; padding:12px; resize:vertical; }
+.report-actions { display:flex; align-items:center; gap:8px; margin-top:12px; }
+.report-actions .report-copy { padding:7px 14px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; font-size:12px; font-weight:700; }
+.report-actions .report-close { padding:7px 14px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); cursor:pointer; font-size:12px; font-weight:700; }
+.report-actions .report-status { margin-left:auto; font-size:11px; color:var(--text-muted); }
 .settings-dialog h2 { font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px; }
 .settings-dialog .settings-sub { font-size:11px; color:var(--text-muted); margin-bottom:14px; line-height:1.5; }
 .settings-field { margin-bottom:12px; }
@@ -247,7 +258,7 @@ body * { -webkit-app-region:no-drag; }
 .evt-day-count { font-size:10px; font-weight:500; color:var(--text-muted); }
 .evt-day-grid { display:flex; flex-direction:column; gap:8px; margin-bottom:4px; }
 
-@media (max-width: 900px) {
+@media (max-width: 840px) {
   .container { grid-template-columns:1fr; grid-template-areas:"header" "tabs" "timeline" "charts" "sessions" "analysis"; max-width:880px; }
   .events-card, .analysis-panel { max-height:none; overflow-y:visible; }
 }
@@ -266,6 +277,10 @@ body * { -webkit-app-region:no-drag; }
     <div class="header-title">
       <div class="sub">Agent Usage</div>
       <h1><span>Timeline</span></h1>
+    </div>
+    <div class="header-actions">
+      <button class="header-report-btn" id="dailyReportBtn" type="button">日报</button>
+      <button class="header-report-btn" id="weeklyReportBtn" type="button">周报</button>
     </div>
     <div class="header-stats">
       <div class="hstat"><div class="hl">Total Duration</div><div class="hv" id="hDur">--</div></div>
@@ -341,18 +356,39 @@ body * { -webkit-app-region:no-drag; }
 </div>
 <div class="tooltip" id="tooltip"></div>
 
+<!-- Report modal -->
+<div class="confirm-overlay" id="reportOverlay" style="display:none">
+  <div class="report-dialog">
+    <h2 id="reportTitle">日报</h2>
+    <div class="report-sub" id="reportSub">基于当前 analytics 数据生成，可直接复制。</div>
+    <textarea class="report-textarea" id="reportTextarea" spellcheck="false"></textarea>
+    <div class="report-actions">
+      <button class="report-copy" id="reportCopyBtn" type="button">复制</button>
+      <button class="report-close" id="reportCloseBtn" type="button">关闭</button>
+      <span class="report-status" id="reportStatus"></span>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal (AI provider config) -->
 <div class="confirm-overlay" id="settingsOverlay" style="display:none">
   <div class="settings-dialog">
     <h2>AI Provider Settings</h2>
-    <div class="settings-sub">Local CLI (Claude Code / Codex) is preferred when available. Configure an API key below as a fallback, or point Clawd at a custom CLI install.</div>
+    <div class="settings-sub">Clawd will prefer locally detected CLI analyzers when available. Pick the default provider here, then use the API section below only as a fallback or override.</div>
     <div class="settings-status" id="settingsStatus"></div>
 
-    <!-- Section 1: Local CLI Detection -->
+    <!-- Section 1: Local CLI Detection + default selection -->
     <div class="settings-section">
       <h3>Local CLI Detection</h3>
       <div class="cli-diag" id="cliDiag">
         <div style="color:var(--text-muted);text-align:center;padding:6px 0">Loading…</div>
+      </div>
+      <div class="settings-field">
+        <label for="settingsDefaultAnalysisProvider">Default Analysis Provider</label>
+        <select id="settingsDefaultAnalysisProvider">
+          <option value="">(use first available)</option>
+        </select>
+        <div class="field-hint">New session analysis and the Pre-analyze modal will use this provider by default. If empty, Clawd picks the first available provider above.</div>
       </div>
       <div class="settings-field">
         <label for="settingsClaudePath">Claude binary path <span style="color:var(--text-muted);font-weight:400">(optional override)</span></label>
@@ -398,18 +434,6 @@ body * { -webkit-app-region:no-drag; }
         <label for="settingsModel">Model <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
         <input id="settingsModel" type="text" autocomplete="off" spellcheck="false" placeholder="">
         <div class="field-hint" id="settingsModelHint"></div>
-      </div>
-    </div>
-
-    <!-- Section 3: Default Analysis Provider -->
-    <div class="settings-section">
-      <h3>Default Analysis Provider</h3>
-      <div class="settings-field">
-        <label for="settingsDefaultAnalysisProvider">Provider for Pre-analyze modal</label>
-        <select id="settingsDefaultAnalysisProvider">
-          <option value="">(use first available)</option>
-        </select>
-        <div class="field-hint">Pre-fills the Pre-analyze Sessions dropdown so you don't have to pick every time. Updated automatically when you click Start in the modal.</div>
       </div>
     </div>
 
@@ -1486,6 +1510,48 @@ async function runAnalysisMode(mode) {
 
 function refreshSel(){document.querySelectorAll(".time-block,.evt-card").forEach(el=>{el.classList.toggle("selected",el.dataset.sid===selectedSessionId);});}
 
+async function openReportModal(scope) {
+  const overlay = document.getElementById("reportOverlay");
+  const titleEl = document.getElementById("reportTitle");
+  const subEl = document.getElementById("reportSub");
+  const textEl = document.getElementById("reportTextarea");
+  const statusEl = document.getElementById("reportStatus");
+  const copyBtn = document.getElementById("reportCopyBtn");
+
+  overlay.style.display = "flex";
+  titleEl.textContent = scope === "week" ? "周报" : "日报";
+  subEl.textContent = "基于当前 analytics 数据生成，可直接复制。";
+  textEl.value = "生成中...";
+  textEl.readOnly = true;
+  statusEl.textContent = "";
+  copyBtn.disabled = true;
+
+  try {
+    const result = await window.analyticsAPI.generateReport(scope);
+    titleEl.textContent = result && result.title ? result.title : (scope === "week" ? "周报" : "日报");
+    textEl.value = result && result.text ? result.text : "暂无可用数据。";
+    copyBtn.disabled = !textEl.value || textEl.value === "暂无可用数据。";
+  } catch (err) {
+    textEl.value = `生成失败：${err && (err.message || String(err))}`;
+    copyBtn.disabled = true;
+  }
+}
+
+function closeReportModal() {
+  document.getElementById("reportOverlay").style.display = "none";
+}
+
+function copyReportText() {
+  const textEl = document.getElementById("reportTextarea");
+  const statusEl = document.getElementById("reportStatus");
+  textEl.focus();
+  textEl.select();
+  textEl.setSelectionRange(0, textEl.value.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  statusEl.textContent = ok ? "已复制" : "复制失败，请手动复制";
+}
+
 // ── Tabs ──
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", async () => {
@@ -1528,6 +1594,14 @@ document.querySelectorAll(".tab").forEach(tab => {
   });
 });
 
+document.getElementById("dailyReportBtn").addEventListener("click", () => openReportModal("day"));
+document.getElementById("weeklyReportBtn").addEventListener("click", () => openReportModal("week"));
+document.getElementById("reportCloseBtn").addEventListener("click", closeReportModal);
+document.getElementById("reportCopyBtn").addEventListener("click", copyReportText);
+document.getElementById("reportOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "reportOverlay") closeReportModal();
+});
+
 // Month picker change — re-fetch with the newly chosen month.
 document.getElementById("monthPicker").addEventListener("change", function () {
   const [y, m] = this.value.split("-").map(Number);
@@ -1558,7 +1632,10 @@ async function loadData(){
   }catch(e){console.error("Load failed:",e);}
 }
 loadData().then(()=>offerBatchAnalysis());
-window.analyticsAPI.getAnalysisProvider().then(p=>{analysisProvider=p;}).catch(()=>{});
+window.analyticsAPI.getAnalysisProvider().then(p=>{
+  analysisProvider=p;
+  if(p&&(p.id||p.provider))selectedAnalysisAgent=p.id||p.provider;
+}).catch(()=>{});
 window.analyticsAPI.getAnalysisOptions().then(opts=>{
   analysisOptions=Array.isArray(opts)?opts:[];
   if(analysisOptions.length&&!analysisOptions.some(opt=>opt.id===selectedAnalysisAgent))selectedAnalysisAgent=analysisOptions[0].id;
@@ -1605,12 +1682,14 @@ function applyProviderDefaults(provider, opts) {
 }
 
 let _settingsOpen = false;
+let _settingsLoadedConfig = null;
 async function openSettings() {
   if (_settingsOpen) return;
   _settingsOpen = true;
   setSettingsStatus("");
   let cfg = null;
   try { cfg = await window.analyticsAPI.getAIConfig(); } catch (e) { console.warn("getAIConfig failed", e); }
+  _settingsLoadedConfig = cfg;
   const provider = (cfg && cfg.provider) || "claude";
   document.getElementById("settingsProvider").value = provider;
   applyProviderDefaults(provider);
@@ -1749,6 +1828,7 @@ async function testCustomCliPath(key) {
 function closeSettings() {
   document.getElementById("settingsOverlay").style.display = "none";
   _settingsOpen = false;
+  _settingsLoadedConfig = null;
 }
 
 async function saveSettings() {
@@ -1756,27 +1836,24 @@ async function saveSettings() {
   const apiKey = document.getElementById("settingsApiKey").value.trim();
   const baseUrl = document.getElementById("settingsBaseUrl").value.trim();
   const model = document.getElementById("settingsModel").value.trim();
-  const def = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.claude;
-
-  // Validate: if the provider needs a key, ensure either user typed one
-  // OR there is one already saved (the GET handler tells us via apiKeyMasked).
-  if (def.needsKey && !apiKey) {
-    let existing = null;
-    try { existing = await window.analyticsAPI.getAIConfig(); } catch {}
-    if (!existing || !existing.apiKeyMasked || (existing.provider && existing.provider !== provider)) {
-      setSettingsStatus(`${provider} requires an API key`, "error");
-      document.getElementById("settingsApiKey").focus();
-      return;
-    }
-  }
+  const existing = _settingsLoadedConfig || await window.analyticsAPI.getAIConfig().catch(() => null);
+  const providerChanged = !!(existing && existing.provider && existing.provider !== provider);
 
   // Build the payload. We omit apiKey when blank — the IPC handler will
-  // preserve the previously saved key. baseUrl/model also omitted when
-  // blank so the backend falls back to provider defaults.
+  // preserve the previously saved key for the same provider. If the user
+  // switched API providers and left the key blank, explicitly clear the old
+  // key so local CLI analysis can continue without inheriting a mismatched
+  // fallback credential.
   const payload = { provider };
   if (apiKey) payload.apiKey = apiKey;
-  if (baseUrl) payload.baseUrl = baseUrl;
-  if (model) payload.model = model;
+  else if (providerChanged) payload.apiKey = null;
+
+  const existingBaseUrl = (existing && existing.baseUrl) || "";
+  const existingModel = (existing && existing.model) || "";
+  if (!baseUrl || (providerChanged && baseUrl === existingBaseUrl)) payload.baseUrl = null;
+  else payload.baseUrl = baseUrl;
+  if (!model || (providerChanged && model === existingModel)) payload.model = null;
+  else payload.model = model;
 
   // Custom CLI overrides — only include the field when at least one path
   // is set so we don't wipe a previously-saved override by accident.
@@ -1837,6 +1914,12 @@ async function refreshAnalysisOptions() {
   try {
     const opts = await window.analyticsAPI.getAnalysisOptions();
     analysisOptions = Array.isArray(opts) ? opts : [];
+    try {
+      analysisProvider = await window.analyticsAPI.getAnalysisProvider();
+    } catch {}
+    if (analysisProvider && (analysisProvider.id || analysisProvider.provider)) {
+      selectedAnalysisAgent = analysisProvider.id || analysisProvider.provider;
+    }
     if (analysisOptions.length && !analysisOptions.some(opt => opt.id === selectedAnalysisAgent)) {
       selectedAnalysisAgent = analysisOptions[0].id;
     }
