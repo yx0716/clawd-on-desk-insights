@@ -1,9 +1,9 @@
 <div align="center">
 
 # clawd-insights
-## 本地优先的 AI 编程会话分析面板
+## 本地 Agent 编程会话分析面板
 
-> "在你和 Agent 的对话中——什么正在浮现?"
+> "你好clawd，该你写周报了"
 
 [![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#为什么需要它)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
@@ -47,10 +47,7 @@
 ## 快速安装
 
 ```bash
-git clone https://github.com/yx0716/clawd-on-desk-insights.git
-cd clawd-on-desk-insights
-npm install
-npm start
+git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && npm install && npm start
 ```
 
 启动后桌面上出现一只小螃蟹——在 macOS 上可右键它打开 **Analytics Dashboard**。详细的 Provider 配置和分析触发方式见下方[上手指南](#上手指南)。
@@ -96,10 +93,7 @@ npm start
 ### 1. 安装并启动
 
 ```bash
-git clone https://github.com/yx0716/clawd-on-desk-insights.git
-cd clawd-on-desk-insights
-npm install
-npm start
+git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && npm install && npm start
 ```
 
 启动后桌面右下角会出现一只小螃蟹(默认主题),它就是 Clawd 桌面宠物。**洞察面板的入口都通过它**。

@@ -3,7 +3,7 @@
 # clawd-insights
 ## A local-first analytics dashboard for your AI coding sessions
 
-> "Across all the conversations with your Agent — what's emerging?"
+> "Hello Clawd, it's time for your weekly report"
 
 [![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#why-it-exists)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
