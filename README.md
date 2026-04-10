@@ -7,7 +7,7 @@
 
 [![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#why-it-exists)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111827)](#getting-started)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20(primary)-111827)](#getting-started)
 [![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#getting-started)
 [![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#about-the-fork)
 
@@ -42,7 +42,7 @@ Every conversation leaves an **imprint**. No idea you tried, no bug you wrestled
 
 All data stays on your machine. AI analysis runs through your own local `claude` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
 
-> Supports Windows 11, macOS, and Linux (tested on Ubuntu). Requires Node.js.
+> Currently focused on macOS. Windows/Linux may work, but they are not the primary supported environments yet. Requires Node.js.
 
 ## Quick Install
 
@@ -53,7 +53,7 @@ npm install
 npm start
 ```
 
-A small crab appears on your desktop — right-click it to open the **Analytics Dashboard**. For provider setup and analysis workflows, see [Getting Started](#getting-started) below.
+A small crab appears on your desktop — on macOS, right-click it to open the **Analytics Dashboard**. For provider setup and analysis workflows, see [Getting Started](#getting-started) below.
 
 ## Features
 
@@ -108,8 +108,8 @@ Once it launches, a small crab (the default theme) appears on your desktop — t
 There are three ways to open it — pick whichever feels natural:
 
 - **Right-click the desktop pet** → choose **Analytics Dashboard** from the context menu
-- **Click the tray icon** (menu bar on macOS, system tray on Windows/Linux) → **Analytics Dashboard**
-- **Keyboard shortcut**: macOS `⌘ + Shift + Option + A`  |  Windows / Linux `Ctrl + Shift + Alt + A`
+- **Click the tray icon** (menu bar on macOS) → **Analytics Dashboard**
+- **Keyboard shortcut**: macOS `⌘ + Shift + Option + A`
 
 <p align="center">
   <img src="assets/screenshot-dashboard-menu.gif" width="720" alt="Right-click menu showing Analytics Dashboard">

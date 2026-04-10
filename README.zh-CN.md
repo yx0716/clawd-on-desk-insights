@@ -7,7 +7,7 @@
 
 [![Local-First](https://img.shields.io/badge/Local--First-8b5cf6)](#为什么需要它)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111827)](#上手指南)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20(primary)-111827)](#上手指南)
 [![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#上手指南)
 [![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#关于-fork-仓的说明)
 
@@ -42,7 +42,7 @@
 
 数据全部留在本地。AI 分析通过你自己的本地 `claude` / `codex` CLI(或者你配置的 API / Ollama 后端)完成,你的对话不被第三方获取。
 
-> 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。
+> 现阶段主要支持 macOS。Windows/Linux 可能可以运行，但还不是主支持环境。需要 Node.js。
 
 ## 快速安装
 
@@ -53,7 +53,7 @@ npm install
 npm start
 ```
 
-启动后桌面上出现一只小螃蟹——右键它即可打开 **Analytics Dashboard**。详细的 Provider 配置和分析触发方式见下方[上手指南](#上手指南)。
+启动后桌面上出现一只小螃蟹——在 macOS 上可右键它打开 **Analytics Dashboard**。详细的 Provider 配置和分析触发方式见下方[上手指南](#上手指南)。
 
 
 ## 功能特性
@@ -109,8 +109,8 @@ npm start
 有三种方式可以打开洞察面板,选你顺手的:
 
 - **右键点击桌面宠物** → 在弹出菜单中选 **Analytics Dashboard**
-- **点击托盘图标**(macOS 顶部菜单栏 / Windows 系统托盘) → **Analytics Dashboard**
-- **快捷键**:macOS `⌘ + Shift + Option + A` / Windows · Linux `Ctrl + Shift + Alt + A`
+- **点击托盘图标**(macOS 顶部菜单栏) → **Analytics Dashboard**
+- **快捷键**:macOS `⌘ + Shift + Option + A`
 
 <p align="center">
   <img src="assets/screenshot-dashboard-menu.gif" width="720" alt="右键菜单中的 Analytics Dashboard">
