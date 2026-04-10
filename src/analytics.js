@@ -135,6 +135,11 @@ module.exports = function initAnalytics(ctx) {
     return { ok: true };
   });
 
+  ipcMain.handle("analytics-clear-analysis-caches", async () => {
+    if (!ctx.analyticsAI || !ctx.analyticsAI.clearAnalysisCaches) return { ok: false };
+    return ctx.analyticsAI.clearAnalysisCaches();
+  });
+
   // Settings UI: report which CLIs were detected and what was searched, so
   // users can debug "Codex doesn't show up in the provider list" without
   // reading source code.
