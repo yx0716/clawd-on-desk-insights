@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
 const hitGeometry = require("./hit-geometry");
+const { findNearestWorkArea, computeLooseClamp } = require("./work-area");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -960,37 +961,26 @@ function createWindow() {
   });
 }
 
-function getNearestWorkArea(cx, cy) {
-  const displays = screen.getAllDisplays();
-  let nearest = displays[0].workArea;
-  let minDist = Infinity;
-  for (const d of displays) {
-    const wa = d.workArea;
-    const dx = Math.max(wa.x - cx, 0, cx - (wa.x + wa.width));
-    const dy = Math.max(wa.y - cy, 0, cy - (wa.y + wa.height));
-    const dist = dx * dx + dy * dy;
-    if (dist < minDist) { minDist = dist; nearest = wa; }
+// Read primary display safely — getPrimaryDisplay() can also throw during
+// display topology changes, so wrap it. Returns null on failure; the pure
+// helpers in work-area.js will fall through to a synthetic last-resort.
+function getPrimaryWorkAreaSafe() {
+  try {
+    const primary = screen.getPrimaryDisplay();
+    return (primary && primary.workArea) || null;
+  } catch {
+    return null;
   }
-  return nearest;
+}
+
+function getNearestWorkArea(cx, cy) {
+  return findNearestWorkArea(screen.getAllDisplays(), getPrimaryWorkAreaSafe(), cx, cy);
 }
 
 // Loose clamp used during drag: union of all display work areas as the boundary,
 // so the pet can freely cross between screens. Only prevents going fully off-screen.
 function looseClampToDisplays(x, y, w, h) {
-  const displays = screen.getAllDisplays();
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const d of displays) {
-    const wa = d.workArea;
-    if (wa.x < minX) minX = wa.x;
-    if (wa.y < minY) minY = wa.y;
-    if (wa.x + wa.width > maxX) maxX = wa.x + wa.width;
-    if (wa.y + wa.height > maxY) maxY = wa.y + wa.height;
-  }
-  const margin = Math.round(w * 0.25);
-  return {
-    x: Math.max(minX - margin, Math.min(x, maxX - w + margin)),
-    y: Math.max(minY - margin, Math.min(y, maxY - h + margin)),
-  };
+  return computeLooseClamp(screen.getAllDisplays(), getPrimaryWorkAreaSafe(), x, y, w, h);
 }
 
 function clampToScreen(x, y, w, h) {
