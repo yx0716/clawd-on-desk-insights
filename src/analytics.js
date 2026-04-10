@@ -2,14 +2,15 @@
 
 const { BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+const { mergeAIConfig } = require("./analytics-config");
 
 module.exports = function initAnalytics(ctx) {
   let dashWin = null;
 
   function createWindow() {
     dashWin = new BrowserWindow({
-      width: 900,
-      height: 650,
+      width: 1040,
+      height: 720,
       minWidth: 600,
       minHeight: 450,
       frame: true,
@@ -63,6 +64,24 @@ module.exports = function initAnalytics(ctx) {
     return ctx.analyticsAI.getInsights(today, week);
   });
 
+  ipcMain.handle("analytics-generate-report", async (_event, scope) => {
+    const today = ctx.analyticsData.aggregateToday();
+    const week = ctx.analyticsData.aggregateWeek();
+    if (scope === "week") {
+      return {
+        scope: "week",
+        title: "周报",
+        text: ctx.analyticsData.buildWeeklyReport(week),
+      };
+    }
+    const computed = ctx.analyticsData.computeInsights(today, week);
+    return {
+      scope: "day",
+      title: "日报",
+      text: ctx.analyticsData.buildDailyReport(today, computed),
+    };
+  });
+
   ipcMain.handle("analytics-get-ai-config", async () => {
     const cfg = ctx.analyticsAI.getConfig();
     if (!cfg) return null;
@@ -76,20 +95,8 @@ module.exports = function initAnalytics(ctx) {
   });
 
   ipcMain.handle("analytics-save-ai-config", async (_event, config) => {
-    // Merge with existing config: the GET handler masks apiKey before
-    // sending it to the renderer, so the form has no way to round-trip
-    // the saved key. If the incoming payload omits apiKey (or sends it
-    // as empty string), preserve the previously saved value instead of
-    // wiping it. Use `apiKey: null` to explicitly clear.
     const existing = ctx.analyticsAI.getConfig() || {};
-    const incoming = config || {};
-    const merged = { ...existing, ...incoming };
-    if (incoming.apiKey === undefined || incoming.apiKey === "") {
-      if (existing.apiKey) merged.apiKey = existing.apiKey;
-      else delete merged.apiKey;
-    } else if (incoming.apiKey === null) {
-      delete merged.apiKey;
-    }
+    const merged = mergeAIConfig(existing, config || {});
     ctx.analyticsAI.setConfig(merged);
     return { ok: true };
   });
@@ -230,4 +237,8 @@ module.exports = function initAnalytics(ctx) {
   }
 
   return { toggleDashboard, cleanup };
+};
+
+module.exports.__test = {
+  mergeAIConfig,
 };
