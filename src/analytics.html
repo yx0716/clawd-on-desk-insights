@@ -1996,6 +1996,7 @@
       </div>
 
       <div class="settings-btns">
+        <button class="btn-clear" id="settingsClearCacheBtn" type="button">Clear Analysis Cache</button>
         <button class="btn-clear" id="settingsClearBtn" type="button">Clear</button>
         <button class="btn-cancel" id="settingsCancelBtn" type="button">Cancel</button>
         <button class="btn-save" id="settingsSaveBtn" type="button">Save</button>
@@ -2076,6 +2077,7 @@
         model: "Model ",
         optional: "（可选）",
         clear: "清除",
+        clearAnalysisCache: "清理分析缓存",
         cancel: "取消",
         save: "保存",
         noSessions: "没有会话",
@@ -2113,10 +2115,13 @@
         copied: "已复制",
         copyFailed: "复制失败，请手动复制",
         clearConfirm: "清除已保存的 API key、provider 配置和自定义 CLI 路径？",
+        clearAnalysisCacheConfirm: "清理已生成的会话分析缓存和 one-liner 缓存？不会影响 provider 配置。",
         saved: "已保存",
         cleared: "已清除",
+        cacheCleared: "分析缓存已清理",
         saveFailed: "保存失败：{message}",
         clearFailed: "清除失败：{message}",
+        cacheClearFailed: "清理缓存失败：{message}",
         pathEmpty: "路径为空",
         testing: "测试中…",
         testFailed: "测试失败",
@@ -2208,6 +2213,7 @@
         model: "Model ",
         optional: "(optional)",
         clear: "Clear",
+        clearAnalysisCache: "Clear Analysis Cache",
         cancel: "Cancel",
         save: "Save",
         noSessions: "No sessions",
@@ -2245,10 +2251,13 @@
         copied: "Copied",
         copyFailed: "Copy failed, please copy manually",
         clearConfirm: "Clear the saved API key, provider config, and custom CLI paths?",
+        clearAnalysisCacheConfirm: "Clear generated session analysis and one-liner caches? Provider settings will be kept.",
         saved: "Saved",
         cleared: "Cleared",
+        cacheCleared: "Analysis cache cleared",
         saveFailed: "Save failed: {message}",
         clearFailed: "Clear failed: {message}",
+        cacheClearFailed: "Failed to clear cache: {message}",
         pathEmpty: "Path is empty",
         testing: "Testing…",
         testFailed: "Test failed",
@@ -2309,9 +2318,12 @@
     const analyzingSessionIds = new Set(); // sessionIds currently being analyzed (cross-tab persistent)
     const selectedExportSessionIds = new Set();
     let currentAnalysisMode = "brief";
+    let currentRenderedAnalysis = null;
+    let analysisModeLoading = null;
     let exportRunning = false;
     let exportStatusTimer = null;
     let panelResizeCleanup = null;
+    const analysisPrefetchInFlight = new Set();
 
     function isOnboardingDismissed() {
       return localStorage.getItem(ONBOARDING_HINT_STORAGE_KEY) === "1";
@@ -2385,6 +2397,7 @@
       document.getElementById("settingsBaseUrlOptional").textContent = t("optional");
       document.getElementById("settingsModelLabel").childNodes[0].textContent = t("model");
       document.getElementById("settingsModelOptional").textContent = t("optional");
+      document.getElementById("settingsClearCacheBtn").textContent = t("clearAnalysisCache");
       document.getElementById("settingsClearBtn").textContent = t("clear");
       document.getElementById("settingsCancelBtn").textContent = t("cancel");
       document.getElementById("settingsSaveBtn").textContent = t("save");
@@ -2656,6 +2669,9 @@
       if (mode) {
         const exact = batchCache[analysisCacheKey(sessionId, provider, mode)];
         if (exact && isFrontendCacheFresh(exact, sessionId)) return stampAnalysisProvider(exact, provider);
+        // Legacy keys without an explicit mode predate the brief/detail split.
+        // Treat them as brief-only so they don't block a real detail request.
+        if (mode !== "brief") return null;
         // Fallback 2: legacy key without explicit mode for the current provider.
         const legacy = batchCache[analysisCacheKey(sessionId, provider)];
         if (legacy && isFrontendCacheFresh(legacy, sessionId)) return stampAnalysisProvider(legacy, provider);
@@ -2764,15 +2780,18 @@
       });
     }
 
-    function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent) {
+    function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent, pendingMode = null) {
       const providerLabel = formatAnalysisProviderShort(providerId);
-      const detailActive = mode === "detail";
+      const effectiveMode = pendingMode || mode;
+      const detailActive = effectiveMode === "detail";
+      const briefPending = pendingMode === "brief";
+      const detailPending = pendingMode === "detail";
       const showProviderSwitch = (analysisOptions && analysisOptions.length > 1) || false;
       const regenLabel = targetProviderId && targetProviderId !== providerId ? `改用 ${formatAnalysisProviderShort(targetProviderId)}` : "";
       return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     <div style="display:flex;gap:4px;padding:2px;background:var(--border);border-radius:999px">
-      <button data-analysis-mode="brief" style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'transparent' : 'var(--bg-card)'};color:${detailActive ? 'var(--text-secondary)' : 'var(--accent)'};font-size:11px;font-weight:700;cursor:pointer">${escapeHtml(t("brief"))}</button>
-      <button data-analysis-mode="detail" style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'var(--bg-card)' : 'transparent'};color:${detailActive ? 'var(--accent)' : 'var(--text-secondary)'};font-size:11px;font-weight:700;cursor:pointer">${escapeHtml(t("detail"))}</button>
+      <button data-analysis-mode="brief" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'transparent' : 'var(--bg-card)'};color:${detailActive ? 'var(--text-secondary)' : 'var(--accent)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${briefPending ? '0.9' : '1'}">${escapeHtml(briefPending ? `${t("brief")}…` : t("brief"))}</button>
+      <button data-analysis-mode="detail" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'var(--bg-card)' : 'transparent'};color:${detailActive ? 'var(--accent)' : 'var(--text-secondary)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${detailPending ? '0.9' : '1'}">${escapeHtml(detailPending ? `${t("detail")}…` : t("detail"))}</button>
     </div>
     <span style="font-size:10px;padding:3px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border-light);color:var(--text);font-weight:700">${escapeHtml(providerLabel)}</span>
     ${showProviderSwitch ? `<button id="analysisProviderSwitchBtn" style="margin-left:auto;border:none;background:none;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 0">${escapeHtml(t("switchAnalyzer"))}</button>` : '<span style="margin-left:auto"></span>'}
@@ -3321,10 +3340,14 @@
 
     function showAnalysisPlaceholder() {
       const ph = document.getElementById("analysisPlaceholder"), ld = document.getElementById("analysisLoading"), ct = document.getElementById("analysisContent");
+      currentRenderedAnalysis = null;
+      analysisModeLoading = null;
       ph.style.display = "block"; ld.style.display = "none"; ct.style.display = "none";
     }
     function showAnalysisLoading() {
       const ph = document.getElementById("analysisPlaceholder"), ld = document.getElementById("analysisLoading"), ct = document.getElementById("analysisContent");
+      currentRenderedAnalysis = null;
+      analysisModeLoading = null;
       ph.style.display = "none"; ld.style.display = "block"; ct.style.display = "none";
     }
     function showAnalysisContent() {
@@ -3369,8 +3392,9 @@
       return true;
     }
 
-    async function requestSessionAnalysis(sessionId, agent, providerId, mode) {
-      markAnalyzing(sessionId);
+    async function requestSessionAnalysis(sessionId, agent, providerId, mode, opts = {}) {
+      const trackUi = opts.trackUi !== false;
+      if (trackUi) markAnalyzing(sessionId);
       try {
         let result = await window.analyticsAPI.analyzeSession(sessionId, agent, providerId, mode);
         if (mode === "detail" && result && !result.keyTopics && !result.outcomes) {
@@ -3380,7 +3404,28 @@
         if (result) setCachedAnalysis(sessionId, providerId, result);
         return result;
       } finally {
-        unmarkAnalyzing(sessionId);
+        if (trackUi) unmarkAnalyzing(sessionId);
+      }
+    }
+
+    function getAlternateAnalysisMode(mode) {
+      return mode === "detail" ? "brief" : "detail";
+    }
+
+    async function prefetchAlternateAnalysisMode(sessionId, agent, currentMode, providerId = selectedAnalysisAgent) {
+      if (!analysisConsented || !sessionId || !agent || !providerId) return;
+      const targetMode = getAlternateAnalysisMode(currentMode || "brief");
+      if (getCachedAnalysis(sessionId, providerId, targetMode)) return;
+      const prefetchKey = `${analysisCacheKey(sessionId, providerId, targetMode)}:prefetch`;
+      if (analysisPrefetchInFlight.has(prefetchKey)) return;
+      analysisPrefetchInFlight.add(prefetchKey);
+      try {
+        await requestSessionAnalysis(sessionId, agent, providerId, targetMode, { trackUi: false });
+        if (currentData) renderEvents(currentData);
+      } catch {
+        // Ignore prefetch failures; interactive mode switches still work on demand.
+      } finally {
+        analysisPrefetchInFlight.delete(prefetchKey);
       }
     }
 
@@ -3533,6 +3578,7 @@
         ensureAnalysisPanelVisible();
         renderAnalysis(cached);
         bindAnalysisErrorLinks(ct);
+        void prefetchAlternateAnalysisMode(sessionId, agent, targetMode, selectedAnalysisAgent);
         return;
       }
       const alternate = findAlternateCachedAnalysis(sessionId, targetMode, selectedAnalysisAgent);
@@ -3540,6 +3586,7 @@
         showAnalysisContent();
         ensureAnalysisPanelVisible();
         renderAnalysis(attachFallbackNotice(alternate.result, selectedAnalysisAgent, targetMode));
+        void prefetchAlternateAnalysisMode(sessionId, agent, targetMode, selectedAnalysisAgent);
         return;
       }
       const consent = await ensureAnalysisConsent(selectedAnalysisAgent);
@@ -3566,9 +3613,12 @@
         renderAnalysis(result);
         bindAnalysisErrorLinks(ct);
         if (currentData) renderEvents(currentData);
+        void prefetchAlternateAnalysisMode(sessionId, agent, currentAnalysisMode, selectedAnalysisAgent);
       } catch (err) {
         showAnalysisContent();
         ensureAnalysisPanelVisible();
+        currentRenderedAnalysis = null;
+        analysisModeLoading = null;
         ct.innerHTML = renderAnalysisErrorMessage(err && (err.message || String(err)));
         bindAnalysisErrorLinks(ct);
       }
@@ -3628,15 +3678,18 @@
 
     function showConfirm(p) { return new Promise(res => { const o = document.createElement("div"); o.className = "confirm-overlay"; const pn = formatAnalysisProvider(p); o.innerHTML = `<div class="confirm-dialog"><p>${t("confirmAnalyze", { provider: pn })}</p><div class="confirm-btns"><button class="btn-ok">${escapeHtml(t("analyze"))}</button><button class="btn-cancel">${escapeHtml(t("cancel"))}</button></div></div>`; document.body.appendChild(o); o.querySelector(".btn-ok").onclick = () => { o.remove(); res(true); }; o.querySelector(".btn-cancel").onclick = () => { o.remove(); res(false); }; }); }
 
-    function renderAnalysis(r) {
+    function renderAnalysis(r, opts = {}) {
       r = sanitizeAnalysis(r);
       const ct = document.getElementById("analysisContent"); let h = "";
       const providerId = r._selectedProvider || selectedAnalysisAgent;
       const mode = r._mode || "brief";
       const targetProviderId = r._targetProvider || selectedAnalysisAgent;
-      currentAnalysisMode = mode;
+      const pendingMode = opts.pendingMode || null;
+      currentAnalysisMode = pendingMode || mode;
+      analysisModeLoading = pendingMode;
+      if (!opts.volatile) currentRenderedAnalysis = { ...r };
 
-      h += renderAnalysisHeader(providerId, mode, targetProviderId);
+      h += renderAnalysisHeader(providerId, mode, targetProviderId, pendingMode);
       if (r._fallbackNotice) {
         h += `<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary)">${escapeHtml(t("showingCachedFrom", { provider: formatAnalysisProviderShort(r._selectedProvider) }))}</div>`;
       }
@@ -3755,8 +3808,11 @@
             }
             renderAnalysis(result);
             if (currentData) renderEvents(currentData);
+            void prefetchAlternateAnalysisMode(selectedSessionId, agent, currentAnalysisMode, targetProviderId);
           } catch (err) {
             showAnalysisContent();
+            currentRenderedAnalysis = null;
+            analysisModeLoading = null;
             ct.innerHTML = renderAnalysisErrorMessage(err && (err.message || String(err)));
             bindAnalysisErrorLinks(ct);
           }
@@ -3766,6 +3822,8 @@
 
     async function runAnalysisMode(mode) {
       if (!selectedSessionId) return;
+      if (analysisModeLoading === mode) return;
+      if (!analysisModeLoading && currentRenderedAnalysis && currentRenderedAnalysis._mode === mode) return;
       await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), mode);
     }
 
@@ -4188,6 +4246,29 @@
       }
     }
 
+    async function clearAnalysisCaches() {
+      if (!confirm(t("clearAnalysisCacheConfirm"))) return;
+      try {
+        await window.analyticsAPI.clearAnalysisCaches();
+        for (const key of Object.keys(batchCache)) delete batchCache[key];
+        try {
+          localStorage.removeItem(LS_CACHE_KEY);
+        } catch { /* ignore localStorage failures */ }
+        if (_cachePersistTimer) {
+          clearTimeout(_cachePersistTimer);
+          _cachePersistTimer = null;
+        }
+        currentAnalysisMode = "brief";
+        selectedSessionId = null;
+        showAnalysisPlaceholder();
+        refreshSel();
+        if (currentData) renderEvents(currentData);
+        setSettingsStatus(t("cacheCleared"), "success");
+      } catch (e) {
+        setSettingsStatus(t("cacheClearFailed", { message: e.message || e }), "error");
+      }
+    }
+
     async function refreshAnalysisOptions() {
       try {
         const opts = await window.analyticsAPI.getAnalysisOptions();
@@ -4210,6 +4291,7 @@
     document.getElementById("settingsBtn").addEventListener("click", openSettings);
     document.getElementById("settingsCancelBtn").addEventListener("click", closeSettings);
     document.getElementById("settingsSaveBtn").addEventListener("click", saveSettings);
+    document.getElementById("settingsClearCacheBtn").addEventListener("click", clearAnalysisCaches);
     document.getElementById("settingsClearBtn").addEventListener("click", clearSettings);
     document.getElementById("onboardingDismissBtn").addEventListener("click", dismissOnboardingHint);
     document.getElementById("langBtnZh").addEventListener("click", () => setLanguage("zh"));

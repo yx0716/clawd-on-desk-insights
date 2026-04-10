@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("analyticsAPI", {
   getAIConfig: () => ipcRenderer.invoke("analytics-get-ai-config"),
   saveAIConfig: (config) => ipcRenderer.invoke("analytics-save-ai-config", config),
   clearAIConfig: () => ipcRenderer.invoke("analytics-clear-ai-config"),
+  clearAnalysisCaches: () => ipcRenderer.invoke("analytics-clear-analysis-caches"),
   getCliDiagnostics: () => ipcRenderer.invoke("analytics-cli-diagnostics"),
   testCliPath: (path) => ipcRenderer.invoke("analytics-test-cli-path", path),
   getProviders: () => ipcRenderer.invoke("analytics-get-providers"),

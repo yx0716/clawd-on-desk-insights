@@ -1497,6 +1497,12 @@ module.exports = function initAnalyticsAI(ctx) {
     return result;
   }
 
+  function clearAnalysisCaches() {
+    sessionAnalysisCache.clear();
+    onelinerCache.clear();
+    return { ok: true };
+  }
+
   // ── Brief mode prompt (default: concise + emotional value) ──
   function buildSessionBriefPrompt(detail) {
     let p = "你是用户的编程搭档。以下是用户与 AI agent 的对话摘要。\n";
@@ -1928,7 +1934,7 @@ module.exports = function initAnalyticsAI(ctx) {
     return null;
   }
 
-  return { getInsights, getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath };
+  return { getInsights, getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath, clearAnalysisCaches };
 };
 
 module.exports.__test = {
