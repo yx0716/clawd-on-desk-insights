@@ -502,7 +502,6 @@ function initUpdater(ctx, deps = {}) {
               defaultAction: "dismiss",
               requireAction: true,
             });
-            hideBubble();
             dismissToResolvedState();
             return;
           }

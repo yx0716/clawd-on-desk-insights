@@ -6,7 +6,7 @@
   <a href="README.zh-CN.md">中文版</a>
 </p>
 
-A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away.
+A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (三花猫), with full support for custom themes.
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**.
 
@@ -60,34 +60,32 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 
 Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
 
-| Agent Event | Clawd State | Animation | |
-|---|---|---|---|
-| Idle (no activity) | idle | Eye-tracking follow | <img src="assets/gif/clawd-idle.gif" width="200"> |
-| Idle (random) | idle | Reading a book | <img src="assets/gif/clawd-idle-reading.gif" width="200"> |
-| Idle (random) | idle | Debugger patrol | <img src="assets/gif/clawd-debugger.gif" width="200"> |
-| UserPromptSubmit | thinking | Thought bubble | <img src="assets/gif/clawd-thinking.gif" width="200"> |
-| PreToolUse / PostToolUse | working (typing) | Typing | <img src="assets/gif/clawd-typing.gif" width="200"> |
-| PreToolUse (3+ sessions) | working (building) | Building | <img src="assets/gif/clawd-building.gif" width="200"> |
-| SubagentStart (1) | juggling | Juggling | <img src="assets/gif/clawd-juggling.gif" width="200"> |
-| SubagentStart (2+) | conducting | Conducting | <img src="assets/gif/clawd-conducting.gif" width="200"> |
-| PostToolUseFailure / StopFailure | error | ERROR + smoke | <img src="assets/gif/clawd-error.gif" width="200"> |
-| Stop / PostCompact | attention | Happy bounce | <img src="assets/gif/clawd-happy.gif" width="200"> |
-| PermissionRequest / Notification | notification | Alert jump | <img src="assets/gif/clawd-notification.gif" width="200"> |
-| PreCompact | sweeping | Broom sweep | <img src="assets/gif/clawd-sweeping.gif" width="200"> |
-| WorktreeCreate | carrying | Carrying box | <img src="assets/gif/clawd-carrying.gif" width="200"> |
-| 60s no events | sleeping | Sleep sequence | <img src="assets/gif/clawd-sleeping.gif" width="200"> |
+| Agent Event | State | Animation | Clawd | Calico |
+|---|---|---|---|---|
+| Idle (no activity) | idle | Eye-tracking follow | <img src="assets/gif/clawd-idle.gif" width="160"> | <img src="assets/gif/calico-idle.gif" width="130"> |
+| Idle (random) | idle | Reading / patrol | <img src="assets/gif/clawd-idle-reading.gif" width="160"> | |
+| UserPromptSubmit | thinking | Thought bubble | <img src="assets/gif/clawd-thinking.gif" width="160"> | <img src="assets/gif/calico-thinking.gif" width="130"> |
+| PreToolUse / PostToolUse | working (typing) | Typing | <img src="assets/gif/clawd-typing.gif" width="160"> | <img src="assets/gif/calico-typing.gif" width="130"> |
+| PreToolUse (3+ sessions) | working (building) | Building | <img src="assets/gif/clawd-building.gif" width="160"> | <img src="assets/gif/calico-building.gif" width="130"> |
+| SubagentStart (1) | juggling | Juggling | <img src="assets/gif/clawd-juggling.gif" width="160"> | <img src="assets/gif/calico-juggling.gif" width="130"> |
+| SubagentStart (2+) | conducting | Conducting | <img src="assets/gif/clawd-conducting.gif" width="160"> | <img src="assets/gif/calico-conducting.gif" width="130"> |
+| PostToolUseFailure | error | Error | <img src="assets/gif/clawd-error.gif" width="160"> | <img src="assets/gif/calico-error.gif" width="130"> |
+| Stop / PostCompact | attention | Happy | <img src="assets/gif/clawd-happy.gif" width="160"> | <img src="assets/gif/calico-happy.gif" width="130"> |
+| PermissionRequest | notification | Alert | <img src="assets/gif/clawd-notification.gif" width="160"> | <img src="assets/gif/calico-notification.gif" width="130"> |
+| PreCompact | sweeping | Sweeping | <img src="assets/gif/clawd-sweeping.gif" width="160"> | <img src="assets/gif/calico-sweeping.gif" width="130"> |
+| WorktreeCreate | carrying | Carrying | <img src="assets/gif/clawd-carrying.gif" width="160"> | <img src="assets/gif/calico-carrying.gif" width="130"> |
+| 60s no events | sleeping | Sleep | <img src="assets/gif/clawd-sleeping.gif" width="160"> | <img src="assets/gif/calico-sleeping.gif" width="130"> |
 
 ### Mini Mode
 
-Drag Clawd to the right screen edge (or right-click → "Mini Mode") to enter mini mode. Clawd hides behind the screen edge with half-body visible, peeking out when you hover.
+Drag to the right screen edge (or right-click → "Mini Mode") to enter mini mode — half-body visible at screen edge, peeking out on hover.
 
-| Trigger | Mini Reaction | |
-|---|---|---|
-| Default | Breathing + blinking + occasional arm wobble + eye tracking | <img src="assets/gif/clawd-mini-idle.gif" width="120"> |
-| Hover | Peek out + wave (slides 25px into screen) | <img src="assets/gif/clawd-mini-peek.gif" width="120"> |
-| Notification / PermissionRequest | Exclamation mark pop + >< squint eyes | <img src="assets/gif/clawd-mini-alert.gif" width="120"> |
-| Stop / PostCompact | Flower + ^^ happy eyes + sparkles | <img src="assets/gif/clawd-mini-happy.gif" width="120"> |
-| Click during peek | Exit mini mode (parabolic jump back) | |
+| Trigger | Mini Reaction | Clawd | Calico |
+|---|---|---|---|
+| Default | Breathing + blinking + eye tracking | <img src="assets/gif/clawd-mini-idle.gif" width="100"> | <img src="assets/gif/calico-mini-idle.gif" width="80"> |
+| Hover | Peek out + wave | <img src="assets/gif/clawd-mini-peek.gif" width="100"> | <img src="assets/gif/calico-mini-peek.gif" width="80"> |
+| Notification | Alert pop | <img src="assets/gif/clawd-mini-alert.gif" width="100"> | <img src="assets/gif/calico-mini-alert.gif" width="80"> |
+| Task complete | Happy celebration | <img src="assets/gif/clawd-mini-happy.gif" width="100"> | <img src="assets/gif/calico-mini-happy.gif" width="80"> |
 
 ### Click Reactions
 

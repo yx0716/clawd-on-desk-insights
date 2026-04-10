@@ -515,16 +515,23 @@ function stopStaleCleanup() {
 }
 
 function resolveDisplayState() {
-  if (updateVisualState) return updateVisualState;
-  if (sessions.size === 0) return "idle";
-  let best = "sleeping";
-  let hasNonHeadless = false;
-  for (const [, s] of sessions) {
-    if (s.headless) continue;
-    hasNonHeadless = true;
-    if ((STATE_PRIORITY[s.state] || 0) > (STATE_PRIORITY[best] || 0)) best = s.state;
+  let best;
+  if (sessions.size === 0) {
+    best = "idle";
+  } else {
+    best = "sleeping";
+    let hasNonHeadless = false;
+    for (const [, s] of sessions) {
+      if (s.headless) continue;
+      hasNonHeadless = true;
+      if ((STATE_PRIORITY[s.state] || 0) > (STATE_PRIORITY[best] || 0)) best = s.state;
+    }
+    if (!hasNonHeadless) best = "idle";
   }
-  if (!hasNonHeadless) return "idle";
+  // Update overlay participates in priority — won't override higher-priority agent states
+  if (updateVisualState && (STATE_PRIORITY[updateVisualState] || 0) >= (STATE_PRIORITY[best] || 0)) {
+    return updateVisualState;
+  }
   return best;
 }
 

@@ -334,9 +334,6 @@ function repositionFloatingBubbles() {
   repositionUpdateBubble();
 }
 
-// ── macOS fullscreen visibility helper ──
-// Re-apply visibleOnAllWorkspaces + alwaysOnTop to all windows after events
-// that may reset NSWindowCollectionBehavior (showInactive, dock.hide, etc.)
 // ── macOS cross-Space visibility helper ──
 // Prefer native collection behavior over Electron's setVisibleOnAllWorkspaces:
 // Electron may briefly hide the window while transforming process type, while

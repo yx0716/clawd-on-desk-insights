@@ -6,7 +6,7 @@
   <a href="README.md">English</a>
 </p>
 
-一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。
+一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。内置两套主题：**Clawd**（像素螃蟹）和 **Calico**（三花猫），支持自定义主题。
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Kiro CLI**、**Cursor Agent** 与 **opencode**。
 
@@ -58,34 +58,32 @@
 
 ## 状态映射
 
-| Claude Code 事件 | 桌宠状态 | 动画 | |
-|---|---|---|---|
-| 无活动 | 待机 | 眼球跟踪 | <img src="assets/gif/clawd-idle.gif" width="200"> |
-| 无活动（随机） | 待机 | 看书 | <img src="assets/gif/clawd-idle-reading.gif" width="200"> |
-| 无活动（随机） | 待机 | 侦探巡逻 | <img src="assets/gif/clawd-debugger.gif" width="200"> |
-| UserPromptSubmit | 思考 | 思考泡泡 | <img src="assets/gif/clawd-thinking.gif" width="200"> |
-| PreToolUse / PostToolUse | 工作（打字） | 打字 | <img src="assets/gif/clawd-typing.gif" width="200"> |
-| PreToolUse（3+ 会话） | 工作（建造） | 建造 | <img src="assets/gif/clawd-building.gif" width="200"> |
-| SubagentStart（1 个） | 杂耍 | 杂耍 | <img src="assets/gif/clawd-juggling.gif" width="200"> |
-| SubagentStart（2+） | 指挥 | 指挥 | <img src="assets/gif/clawd-conducting.gif" width="200"> |
-| PostToolUseFailure / StopFailure | 报错 | ERROR + 冒烟 | <img src="assets/gif/clawd-error.gif" width="200"> |
-| Stop / PostCompact | 注意 | 开心蹦跳 | <img src="assets/gif/clawd-happy.gif" width="200"> |
-| PermissionRequest / Notification | 通知 | 惊叹跳跃 | <img src="assets/gif/clawd-notification.gif" width="200"> |
-| PreCompact | 扫地 | 扫帚清扫 | <img src="assets/gif/clawd-sweeping.gif" width="200"> |
-| WorktreeCreate | 搬运 | 搬箱子 | <img src="assets/gif/clawd-carrying.gif" width="200"> |
-| 60 秒无事件 | 睡觉 | 睡眠序列 | <img src="assets/gif/clawd-sleeping.gif" width="200"> |
+| 事件 | 状态 | 动画 | Clawd | Calico |
+|---|---|---|---|---|
+| 无活动 | 待机 | 眼球跟踪 | <img src="assets/gif/clawd-idle.gif" width="160"> | <img src="assets/gif/calico-idle.gif" width="130"> |
+| 无活动（随机） | 待机 | 看书 / 巡逻 | <img src="assets/gif/clawd-idle-reading.gif" width="160"> | |
+| UserPromptSubmit | 思考 | 思考泡泡 | <img src="assets/gif/clawd-thinking.gif" width="160"> | <img src="assets/gif/calico-thinking.gif" width="130"> |
+| PreToolUse / PostToolUse | 工作（打字） | 打字 | <img src="assets/gif/clawd-typing.gif" width="160"> | <img src="assets/gif/calico-typing.gif" width="130"> |
+| PreToolUse（3+ 会话） | 工作（建造） | 建造 | <img src="assets/gif/clawd-building.gif" width="160"> | <img src="assets/gif/calico-building.gif" width="130"> |
+| SubagentStart（1 个） | 杂耍 | 杂耍 | <img src="assets/gif/clawd-juggling.gif" width="160"> | <img src="assets/gif/calico-juggling.gif" width="130"> |
+| SubagentStart（2+） | 指挥 | 指挥 | <img src="assets/gif/clawd-conducting.gif" width="160"> | <img src="assets/gif/calico-conducting.gif" width="130"> |
+| PostToolUseFailure | 报错 | 报错 | <img src="assets/gif/clawd-error.gif" width="160"> | <img src="assets/gif/calico-error.gif" width="130"> |
+| Stop / PostCompact | 注意 | 开心 | <img src="assets/gif/clawd-happy.gif" width="160"> | <img src="assets/gif/calico-happy.gif" width="130"> |
+| PermissionRequest | 通知 | 警报 | <img src="assets/gif/clawd-notification.gif" width="160"> | <img src="assets/gif/calico-notification.gif" width="130"> |
+| PreCompact | 扫地 | 扫地 | <img src="assets/gif/clawd-sweeping.gif" width="160"> | <img src="assets/gif/calico-sweeping.gif" width="130"> |
+| WorktreeCreate | 搬运 | 搬箱子 | <img src="assets/gif/clawd-carrying.gif" width="160"> | <img src="assets/gif/calico-carrying.gif" width="130"> |
+| 60 秒无事件 | 睡觉 | 睡眠 | <img src="assets/gif/clawd-sleeping.gif" width="160"> | <img src="assets/gif/calico-sleeping.gif" width="130"> |
 
 ### 极简模式
 
-将 Clawd 拖到屏幕右边缘（或右键 →"极简模式"）进入。Clawd 藏在屏幕边缘只露出半身，鼠标悬停时探出来招手。
+拖到屏幕右边缘（或右键 →"极简模式"）进入——半身露出在屏幕边缘，悬停时探出来。
 
-| 触发 | 极简反应 | |
-|---|---|---|
-| 默认 | 呼吸 + 眨眼 + 偶尔手臂晃动 + 眼球追踪 | <img src="assets/gif/clawd-mini-idle.gif" width="120"> |
-| 鼠标悬停 | 探出身体 + 招手（向屏幕内侧滑出 25px） | <img src="assets/gif/clawd-mini-peek.gif" width="120"> |
-| 通知 / 权限请求 | 感叹号弹出 + >< 挤眼 | <img src="assets/gif/clawd-mini-alert.gif" width="120"> |
-| 任务完成 | 花花 + ^^ 眯眼 + 星星闪烁 | <img src="assets/gif/clawd-mini-happy.gif" width="120"> |
-| Peek 时点击 | 退出极简模式（抛物线跳回） | |
+| 触发 | 极简反应 | Clawd | Calico |
+|---|---|---|---|
+| 默认 | 呼吸 + 眨眼 + 眼球追踪 | <img src="assets/gif/clawd-mini-idle.gif" width="100"> | <img src="assets/gif/calico-mini-idle.gif" width="80"> |
+| 鼠标悬停 | 探出身体 + 招手 | <img src="assets/gif/clawd-mini-peek.gif" width="100"> | <img src="assets/gif/calico-mini-peek.gif" width="80"> |
+| 通知 / 权限请求 | 警报弹出 | <img src="assets/gif/clawd-mini-alert.gif" width="100"> | <img src="assets/gif/calico-mini-alert.gif" width="80"> |
+| 任务完成 | 开心庆祝 | <img src="assets/gif/clawd-mini-happy.gif" width="100"> | <img src="assets/gif/calico-mini-happy.gif" width="80"> |
 
 ### 点击反应
 

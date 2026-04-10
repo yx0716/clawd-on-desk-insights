@@ -139,6 +139,29 @@ describe("resolveDisplayState()", () => {
     api.setUpdateVisualState(null);
     assert.strictEqual(api.resolveDisplayState(), "working");
   });
+
+  it("update overlay does not override higher-priority agent states", () => {
+    // error(8) > sweeping(6) — update checking must not stomp agent error
+    api.sessions.set("s1", rawSession("error"));
+    api.setUpdateVisualState("checking"); // → sweeping(6)
+    assert.strictEqual(api.resolveDisplayState(), "error");
+
+    // notification(7) > sweeping(6)
+    api.sessions.set("s1", rawSession("notification"));
+    assert.strictEqual(api.resolveDisplayState(), "notification");
+
+    // carrying(4) < sweeping(6) — update checking still wins over lower
+    api.sessions.set("s1", rawSession("working"));
+    assert.strictEqual(api.resolveDisplayState(), "sweeping");
+
+    api.setUpdateVisualState(null);
+  });
+
+  it("update overlay wins when no sessions exist", () => {
+    api.setUpdateVisualState("checking");
+    assert.strictEqual(api.resolveDisplayState(), "sweeping");
+    api.setUpdateVisualState(null);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
