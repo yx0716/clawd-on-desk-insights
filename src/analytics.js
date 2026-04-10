@@ -1,8 +1,13 @@
 // src/analytics.js — Dashboard window lifecycle (create/toggle/destroy)
 
-const { BrowserWindow, ipcMain } = require("electron");
+const fs = require("fs");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 const { mergeAIConfig } = require("./analytics-config");
+const {
+  buildSessionAnalysesExportMarkdown,
+  makeSessionAnalysesExportFilename,
+} = require("./analytics-export");
 
 module.exports = function initAnalytics(ctx) {
   let dashWin = null;
@@ -80,6 +85,30 @@ module.exports = function initAnalytics(ctx) {
       title: "日报",
       text: ctx.analyticsData.buildDailyReport(today, computed),
     };
+  });
+
+  ipcMain.handle("analytics-pick-session-analyses-export-path", async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) || dashWin || null;
+    const result = await dialog.showSaveDialog(owner, {
+      title: "Export Session Analyses",
+      defaultPath: path.join(app.getPath("documents"), makeSessionAnalysesExportFilename()),
+      filters: [
+        { name: "Markdown", extensions: ["md"] },
+        { name: "Text", extensions: ["txt"] },
+      ],
+    });
+    return {
+      canceled: !!result.canceled,
+      filePath: result.filePath || null,
+    };
+  });
+
+  ipcMain.handle("analytics-export-session-analyses", async (_event, payload) => {
+    const markdown = buildSessionAnalysesExportMarkdown(payload || {});
+    const filePath = payload && payload.filePath;
+    if (!filePath) throw new Error("missing export path");
+    fs.writeFileSync(filePath, markdown, "utf8");
+    return { ok: true, filePath, markdown };
   });
 
   ipcMain.handle("analytics-get-ai-config", async () => {
@@ -240,5 +269,7 @@ module.exports = function initAnalytics(ctx) {
 };
 
 module.exports.__test = {
+  buildSessionAnalysesExportMarkdown,
+  makeSessionAnalysesExportFilename,
   mergeAIConfig,
 };
