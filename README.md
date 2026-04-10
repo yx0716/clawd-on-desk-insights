@@ -152,6 +152,16 @@ The dialog has two sections:
 
 > **Tip**: if your `claude` or `codex` was installed via **NVM, fnm, or Volta**, auto-detection may miss it. Run `which claude` or `which codex` in your terminal and paste the output into the **Claude binary path** / **Codex binary path** override field.
 
+### Quick self-check
+
+1. You have used `Claude Code`, `Codex`, or `Cursor Agent` locally, and it is still available now
+2. Local session history exists
+
+**Quick check**
+
+- Open Settings and look at `Local CLI Detection`
+- Switch to `Week` or `Month` and check whether the timeline shows any sessions
+
 ### 5. Start AI session analysis
 
 #### Method A: Batch pre-analysis (auto-prompted on dashboard open)
