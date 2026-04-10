@@ -153,6 +153,16 @@ npm start
 
 > **小提示**:如果你的 `claude` / `codex` 是通过 NVM、fnm、Volta 这类版本管理工具装的,自动检测可能找不到。这时候在终端执行 `which claude` 或 `which codex`,把输出的路径粘贴到上面的 **Claude binary path** / **Codex binary path** 输入框里就行。
 
+### 使用前自检
+
+1. 已在本地使用 `Claude Code`、`Codex` 或 `Cursor Agent`，且当前仍可使用
+2. 本地有会话记录 （默认存在）
+
+**快速检查**
+
+- 打开设置,看 `Local CLI Detection`
+- 切到 `Week` 或 `Month` 看 timeline 里是否有 session
+
 ### 5. 开始 Agent 会话分析
 
 #### 方法 A:批量预分析(开 Dashboard 时弹出)
