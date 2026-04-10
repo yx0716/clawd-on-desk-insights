@@ -1,4 +1,4 @@
-const { describe, it, afterEach } = require("node:test");
+const { describe, it, afterEach, mock } = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +21,7 @@ function readJson(filePath) {
 }
 
 afterEach(() => {
+  mock.restoreAll();
   while (tempDirs.length) {
     fs.rmSync(tempDirs.pop(), { recursive: true, force: true });
   }
@@ -114,13 +115,15 @@ describe("Gemini hook installer", () => {
   });
 
   it("skips when ~/.gemini/ does not exist", () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-gemini-home-"));
+    tempDirs.push(tmpHome);
+    mock.method(os, "homedir", () => tmpHome);
+
     const result = registerGeminiHooks({
       silent: true,
       nodeBin: "/usr/local/bin/node",
     });
 
-    assert.strictEqual(typeof result.added, "number");
-    assert.strictEqual(typeof result.skipped, "number");
-    assert.strictEqual(typeof result.updated, "number");
+    assert.deepStrictEqual(result, { added: 0, skipped: 0, updated: 0 });
   });
 });

@@ -109,6 +109,8 @@ function createPidResolver(options) {
     const pidChain = [];
 
     for (let i = 0; i < maxDepth; i++) {
+      // Keep the starting PID even when process inspection is blocked.
+      pidChain.push(pid);
       let name, parentPid;
       try {
         if (isWin) {
@@ -134,8 +136,6 @@ function createPidResolver(options) {
           parentPid = parseInt(ppidOut, 10);
         }
       } catch { break; }
-
-      pidChain.push(pid);
       if (!detectedEditor && editorMap[name]) detectedEditor = editorMap[name];
 
       // Agent process detection
