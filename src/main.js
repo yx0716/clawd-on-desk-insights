@@ -1185,6 +1185,10 @@ function switchTheme(themeId) {
   win.webContents.once("did-finish-load", onReady);
   hitWin.webContents.once("did-finish-load", onReady);
 
+  // Persist theme choice through the controller so it survives restarts.
+  // flushRuntimeStateToPrefs only captures window bounds + mini state;
+  // user-selected prefs like `theme` must be written explicitly.
+  _settingsController.applyBulk({ theme: themeId });
   flushRuntimeStateToPrefs();
   rebuildAllMenus();
 }
