@@ -146,6 +146,34 @@ Host my-server
 
 > 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
 
+### WSL（Windows Subsystem for Linux）
+
+如果你在 WSL 里跑 Claude Code，而 Clawd 跑在 Windows 宿主上，hook 可以直接 POST 到 `127.0.0.1:23333` —— 不需要 SSH 隧道，因为 WSL2 默认与 Windows 共享 localhost。
+
+**配置步骤：**
+
+```bash
+# 在 WSL shell 中执行：
+mkdir -p ~/.claude/hooks
+
+# 从 Windows 侧的 Clawd 仓库复制 hook 文件（按实际路径调整 /mnt/ 前缀）
+cp /mnt/d/animation/hooks/{server-config,json-utils,shared-process,clawd-hook,install}.js ~/.claude/hooks/
+
+# 以远程模式注册 hooks
+node ~/.claude/hooks/install.js --remote
+```
+
+如果你的 WSL 里开启了 SSH 服务，也可以用一键部署脚本：
+
+```bash
+# 从 Windows 侧执行（Git Bash / PowerShell）：
+bash scripts/remote-deploy.sh 你的用户名@localhost
+```
+
+配置完成后，在 Windows 上启动 Clawd，在 WSL 里运行 Claude Code —— Clawd 会自动感知你的会话。权限气泡也能正常弹出。
+
+> **注意：** WSL2 的 localhost 转发需要 Windows 10 build 18945+（默认开启）。如果不生效，检查 `%USERPROFILE%\.wslconfig` 中 `localhostForwarding=true` 是否被禁用。
+
 ### macOS 说明
 
 - **源码运行**（`npm start`）：Intel 和 Apple Silicon 均可直接使用。

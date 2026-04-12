@@ -148,6 +148,34 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 
 > Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
 
+### WSL (Windows Subsystem for Linux)
+
+If you run Claude Code inside WSL while Clawd runs on the Windows host, hooks can POST directly to `127.0.0.1:23333` — no SSH tunnel needed, because WSL2 shares localhost with Windows by default.
+
+**Setup:**
+
+```bash
+# Inside your WSL shell:
+mkdir -p ~/.claude/hooks
+
+# Copy hook files from the Windows-side repo (adjust the /mnt/ path to your Clawd location)
+cp /mnt/d/animation/hooks/{server-config,json-utils,shared-process,clawd-hook,install}.js ~/.claude/hooks/
+
+# Register hooks in remote mode
+node ~/.claude/hooks/install.js --remote
+```
+
+If you have SSH enabled in WSL, the one-click deploy script also works:
+
+```bash
+# From Windows (Git Bash / PowerShell):
+bash scripts/remote-deploy.sh youruser@localhost
+```
+
+After setup, start Clawd on Windows and run Claude Code in WSL — Clawd reacts to your sessions automatically. Permission bubbles work too.
+
+> **Note:** WSL2 localhost forwarding requires Windows 10 build 18945+ (enabled by default). If it doesn't work, check that `localhostForwarding=true` is not disabled in `%USERPROFILE%\.wslconfig`.
+
 ### macOS Notes
 
 - **From source** (`npm start`): works out of the box on Intel and Apple Silicon.
