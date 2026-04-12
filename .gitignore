@@ -20,6 +20,12 @@ docs/*
 !docs/release-v0.5.5.md
 !docs/guide-theme-creation.md
 !docs/permission-hook-fail-deny-investigation.md
+!docs/state-mapping.md
+!docs/state-mapping.zh-CN.md
+!docs/setup-guide.md
+!docs/setup-guide.zh-CN.md
+!docs/known-limitations.md
+!docs/known-limitations.zh-CN.md
 
 # Temp files from testing
 .tmp_*
