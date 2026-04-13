@@ -73,6 +73,45 @@ After setup, start Clawd on Windows and run Claude Code in WSL — Clawd reacts 
 
 > **Note:** WSL2 localhost forwarding requires Windows 10 build 18945+ (enabled by default). If it doesn't work, check that `localhostForwarding=true` is not disabled in `%USERPROFILE%\.wslconfig`.
 
+### WSL Networking & Hook Registration (Alternative Approach)
+
+Clawd runs as a Windows Electron app, while your AI coding agents (Claude Code, Kiro CLI, etc.) may run inside WSL. Hook scripts in WSL POST HTTP requests to `127.0.0.1:23333`, so WSL and Windows must share the same localhost.
+
+- **WSL1** — works out of the box. WSL1 naturally shares localhost with Windows, no extra configuration needed.
+- **WSL2** — requires mirrored networking mode. WSL2 has its own network stack by default, so `127.0.0.1` points to WSL itself, not Windows. Enable mirrored mode in `%USERPROFILE%\.wslconfig` (create the file if it doesn't exist), then run `wsl --shutdown` to restart WSL:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+**Manually register hooks inside WSL:**
+
+Clawd auto-registers Claude Code hooks to `~/.claude/settings.json` on Windows startup. But if your agent runs in WSL, hooks need to be registered in WSL's own home directory. Run inside WSL:
+
+```bash
+git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
+cd clawd-on-desk
+
+# Claude Code
+node hooks/install.js
+
+# Kiro CLI - registers hooks for all custom agents under ~/.kiro/agents/,
+# and auto-creates a clawd agent
+node hooks/kiro-install.js
+
+# Cursor Agent
+node hooks/cursor-install.js
+
+# Gemini CLI
+node hooks/gemini-install.js
+
+# opencode
+node hooks/opencode-install.js
+```
+
+> **Tip:** If the repo is cloned inside WSL (e.g. `~/clawd-on-desk`), hook scripts will automatically use WSL's Node.js path. If the repo is on a Windows drive (e.g. `/mnt/c/...`), make sure `node` is in WSL's `PATH`.
+
 ## macOS Notes
 
 - **From source** (`npm start`): works out of the box on Intel and Apple Silicon.
