@@ -277,17 +277,17 @@ function notImplemented(name) {
 //
 // Returns `{ status, commit }`. The controller applies `commit` atomically
 // after the effects succeed.
+const _validateAgentId = requireString("setAgentEnabled.agentId");
+const _validateAgentEnabled = requireBoolean("setAgentEnabled.enabled");
 function setAgentEnabled(payload, deps) {
   if (!payload || typeof payload !== "object") {
     return { status: "error", message: "setAgentEnabled: payload must be an object" };
   }
   const { agentId, enabled } = payload;
-  if (typeof agentId !== "string" || !agentId) {
-    return { status: "error", message: "setAgentEnabled: agentId must be a non-empty string" };
-  }
-  if (typeof enabled !== "boolean") {
-    return { status: "error", message: "setAgentEnabled: enabled must be a boolean" };
-  }
+  const idCheck = _validateAgentId(agentId);
+  if (idCheck.status !== "ok") return idCheck;
+  const enabledCheck = _validateAgentEnabled(enabled);
+  if (enabledCheck.status !== "ok") return enabledCheck;
   const snapshot = deps && deps.snapshot;
   const currentAgents = (snapshot && snapshot.agents) || {};
   const currentEntry = currentAgents[agentId];

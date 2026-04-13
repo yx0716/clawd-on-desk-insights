@@ -519,13 +519,17 @@ const _stateCtx = {
   buildContextMenu: () => buildContextMenu(),
   buildTrayMenu: () => buildTrayMenu(),
   hasAnyEnabledAgent: () => {
-    const snap = _settingsController.getSnapshot();
-    const agents = snap && snap.agents;
+    // `get("agents")` returns the live reference (no clone) — we're only
+    // reading. Missing agents field falls back to "assume enabled" (the
+    // legacy default-true contract for unconfigured installs); but an
+    // explicit empty object means every agent was cleared, so return
+    // false. Without that distinction, a user who wiped the field would
+    // still trigger startup-recovery process scans.
+    const agents = _settingsController.get("agents");
     if (!agents || typeof agents !== "object") return true;
+    const probe = { agents };
     for (const id of Object.keys(agents)) {
-      const entry = agents[id];
-      if (!entry || typeof entry !== "object") { return true; }
-      if (entry.enabled !== false) return true;
+      if (_isAgentEnabled(probe, id)) return true;
     }
     return false;
   },
@@ -603,7 +607,11 @@ const _serverCtx = {
   get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
   get STATE_SVGS() { return _state.STATE_SVGS; },
   get sessions() { return sessions; },
-  isAgentEnabled: (agentId) => _isAgentEnabled(_settingsController.getSnapshot(), agentId),
+  // Every /state and /permission hook hit lands here; cloning the full
+  // snapshot each time just to read one boolean wastes ~1KB per request
+  // on a moderately populated prefs. `get("agents")` returns the live
+  // reference; we wrap it back into the shape isAgentEnabled expects.
+  isAgentEnabled: (agentId) => _isAgentEnabled({ agents: _settingsController.get("agents") }, agentId),
   setState,
   updateSession,
   resolvePermissionEntry,

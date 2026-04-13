@@ -233,32 +233,13 @@ function buildAgentRow(agent) {
   const enabled = currentEntry ? currentEntry.enabled !== false : true;
   if (enabled) sw.classList.add("on");
   sw.setAttribute("aria-checked", enabled ? "true" : "false");
-  const toggle = () => {
-    if (sw.classList.contains("pending")) return;
+  attachSwitchToggle(sw, () => {
     const curEntry = snapshot && snapshot.agents && snapshot.agents[agent.id];
     const curEnabled = curEntry ? curEntry.enabled !== false : true;
-    const next = !curEnabled;
-    sw.classList.add("pending");
-    window.settingsAPI
-      .command("setAgentEnabled", { agentId: agent.id, enabled: next })
-      .then((result) => {
-        sw.classList.remove("pending");
-        if (!result || result.status !== "ok") {
-          const msg = (result && result.message) || "unknown error";
-          showToast(t("toastSaveFailed") + msg, { error: true });
-        }
-      })
-      .catch((err) => {
-        sw.classList.remove("pending");
-        showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-      });
-  };
-  sw.addEventListener("click", toggle);
-  sw.addEventListener("keydown", (ev) => {
-    if (ev.key === " " || ev.key === "Enter") {
-      ev.preventDefault();
-      toggle();
-    }
+    return window.settingsAPI.command("setAgentEnabled", {
+      agentId: agent.id,
+      enabled: !curEnabled,
+    });
   });
   ctrl.appendChild(sw);
   row.appendChild(ctrl);
@@ -347,6 +328,38 @@ function buildSection(title, rows) {
   return section;
 }
 
+// Wire click + Space/Enter keydown on a `.switch` to an async invoker that
+// returns a `Promise<{status, message?}>`. Handles pending state, error
+// toasts, and keyboard activation identically across all rows — so
+// `buildSwitchRow` (pure prefs) and `buildAgentRow` (command-backed) share
+// a single toggle behavior.
+function attachSwitchToggle(sw, invoke) {
+  const run = () => {
+    if (sw.classList.contains("pending")) return;
+    sw.classList.add("pending");
+    Promise.resolve()
+      .then(invoke)
+      .then((result) => {
+        sw.classList.remove("pending");
+        if (!result || result.status !== "ok") {
+          const msg = (result && result.message) || "unknown error";
+          showToast(t("toastSaveFailed") + msg, { error: true });
+        }
+      })
+      .catch((err) => {
+        sw.classList.remove("pending");
+        showToast(t("toastSaveFailed") + (err && err.message), { error: true });
+      });
+  };
+  sw.addEventListener("click", run);
+  sw.addEventListener("keydown", (ev) => {
+    if (ev.key === " " || ev.key === "Enter") {
+      ev.preventDefault();
+      run();
+    }
+  });
+}
+
 function buildSwitchRow({ key, labelKey, descKey, invert = false }) {
   const row = document.createElement("div");
   row.className = "row";
@@ -363,33 +376,13 @@ function buildSwitchRow({ key, labelKey, descKey, invert = false }) {
   const visualOn = invert ? !rawValue : rawValue;
   if (visualOn) sw.classList.add("on");
   sw.setAttribute("aria-checked", visualOn ? "true" : "false");
-  const toggle = () => {
-    if (sw.classList.contains("pending")) return;
+  // No optimistic update — visual state flips on broadcast, not on click.
+  // If the action fails, the broadcast never fires and the switch stays.
+  attachSwitchToggle(sw, () => {
     const currentRaw = !!(snapshot && snapshot[key]);
     const currentVisual = invert ? !currentRaw : currentRaw;
-    const nextVisual = !currentVisual;
-    const nextRaw = invert ? !nextVisual : nextVisual;
-    sw.classList.add("pending");
-    window.settingsAPI.update(key, nextRaw).then((result) => {
-      sw.classList.remove("pending");
-      if (!result || result.status !== "ok") {
-        const msg = (result && result.message) || "unknown error";
-        showToast(t("toastSaveFailed") + msg, { error: true });
-      }
-      // No optimistic update — re-render once the broadcast lands. If it
-      // never lands (action failed), the visual state stays correct because
-      // we never touched it.
-    }).catch((err) => {
-      sw.classList.remove("pending");
-      showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-    });
-  };
-  sw.addEventListener("click", toggle);
-  sw.addEventListener("keydown", (ev) => {
-    if (ev.key === " " || ev.key === "Enter") {
-      ev.preventDefault();
-      toggle();
-    }
+    const nextRaw = invert ? currentVisual : !currentVisual;
+    return window.settingsAPI.update(key, nextRaw);
   });
   return row;
 }
