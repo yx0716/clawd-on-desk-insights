@@ -50,12 +50,14 @@
 
     .container {
       --sessions-panel-width: 45%;
+      --charts-row-height: 200px;
       max-width: 1200px;
       margin: 0 auto;
       padding: 20px;
       display: grid;
       grid-template-columns: minmax(320px, var(--sessions-panel-width)) 12px minmax(360px, 1fr);
-      grid-template-areas: "header header header" "tabs tabs tabs" "onboarding onboarding onboarding" "timeline timeline timeline" "sessions split analysis" "charts charts charts";
+      grid-template-rows: auto auto auto auto auto 12px var(--charts-row-height);
+      grid-template-areas: "header header header" "tabs tabs tabs" "onboarding onboarding onboarding" "timeline timeline timeline" "sessions split analysis" "row-split row-split row-split" "charts charts charts";
       gap: 16px 16px;
     }
 
@@ -678,6 +680,33 @@
 
     .layout-splitter:hover::before,
     .layout-splitter.dragging::before {
+      background: var(--accent);
+    }
+
+    /* ── Row splitter (vertical resize: sessions/analysis ↕ charts) ── */
+    .row-splitter {
+      grid-area: row-split;
+      justify-self: stretch;
+      position: relative;
+      cursor: ns-resize;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(240, 230, 216, 0.2), rgba(240, 230, 216, 0.8), rgba(240, 230, 216, 0.2));
+    }
+
+    .row-splitter::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 2px;
+      transform: translateY(-50%);
+      background: var(--border);
+      border-radius: 999px;
+    }
+
+    .row-splitter:hover::before,
+    .row-splitter.dragging::before {
       background: var(--accent);
     }
 
@@ -1703,9 +1732,12 @@
     @media (max-width: 840px) {
       .container {
         grid-template-columns: 1fr;
+        grid-template-rows: auto;
         grid-template-areas: "header" "tabs" "onboarding" "timeline" "charts" "sessions" "analysis";
         max-width: 880px;
       }
+
+      .row-splitter { display: none; }
 
       .events-card,
       .analysis-panel {
@@ -1861,6 +1893,8 @@
 
     <div class="layout-splitter" id="layoutSplitter" role="separator" aria-orientation="vertical" aria-label="Resize sessions and analysis panels"></div>
 
+    <div class="row-splitter" id="rowSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize charts panel"></div>
+
     <!-- Two panels: Distribution + Trend -->
     <div class="panels-row" style="grid-template-columns:1fr 1fr">
       <div class="panel">
@@ -2014,6 +2048,8 @@
     const LANG_STORAGE_KEY = "clawd-analytics-lang";
     const ONBOARDING_HINT_STORAGE_KEY = "clawd-analytics-onboarding-dismissed-v2";
     const PANEL_WIDTH_STORAGE_KEY = "clawd-analytics-sessions-panel-width-v1";
+    const CHARTS_HEIGHT_STORAGE_KEY = "clawd-analytics-charts-row-height-v1";
+    const SESSIONS_HEIGHT_STORAGE_KEY = "clawd-analytics-sessions-max-height-v1";
     const I18N = {
       zh: {
         documentTitle: "Agent 时间轴",
@@ -2566,6 +2602,82 @@
       panelResizeCleanup = () => splitter.removeEventListener("pointerdown", onPointerDown);
     }
 
+    function applySavedChartsHeight() {
+      const rawCharts = localStorage.getItem(CHARTS_HEIGHT_STORAGE_KEY);
+      const rawSessions = localStorage.getItem(SESSIONS_HEIGHT_STORAGE_KEY);
+      const container = document.querySelector(".container");
+      const sessionsEl = document.querySelector(".events-card");
+      const analysisEl = document.querySelector(".analysis-panel");
+
+      if (rawCharts) {
+        const h = Number(rawCharts);
+        if (Number.isFinite(h) && h >= 80) {
+          // Clamp: viewport minus rough header/tabs/timeline overhead and 12px splitter
+          const maxAllowed = Math.max(80, window.innerHeight - 160 - 12 - 250);
+          container.style.setProperty("--charts-row-height", Math.min(h, maxAllowed) + "px");
+        }
+      }
+      if (rawSessions) {
+        const h = Number(rawSessions);
+        if (Number.isFinite(h) && h >= 160) {
+          if (sessionsEl) sessionsEl.style.maxHeight = h + "px";
+          if (analysisEl) analysisEl.style.maxHeight = h + "px";
+        }
+      }
+    }
+
+    function initRowResizer() {
+      const rowSplitter = document.getElementById("rowSplitter");
+      const container = document.querySelector(".container");
+      if (!rowSplitter || !container) return;
+
+      rowSplitter.addEventListener("pointerdown", (event) => {
+        if (window.matchMedia("(max-width: 840px)").matches) return;
+        event.preventDefault();
+        rowSplitter.classList.add("dragging");
+
+        const sessionsEl = document.querySelector(".events-card");
+        const analysisEl = document.querySelector(".analysis-panel");
+        const panelsRow = document.querySelector(".panels-row");
+
+        const startY = event.clientY;
+        const rawCharts = getComputedStyle(container).getPropertyValue("--charts-row-height").trim();
+        const startChartsH = parseFloat(rawCharts) || (panelsRow ? panelsRow.getBoundingClientRect().height : 200) || 200;
+        const startSessionsH = sessionsEl ? sessionsEl.getBoundingClientRect().height : 300;
+        // Total pool to distribute between sessions row and charts row
+        const totalH = startChartsH + startSessionsH;
+        const MIN_CHARTS = 80;
+        const MIN_SESSIONS = 160;
+
+        const onPointerMove = (moveEvent) => {
+          // Drag up → splitter moves up → charts grows, sessions shrinks
+          const delta = startY - moveEvent.clientY;
+          const newChartsH = Math.max(MIN_CHARTS, Math.min(totalH - MIN_SESSIONS, startChartsH + delta));
+          const newSessionsH = Math.max(MIN_SESSIONS, totalH - newChartsH);
+          container.style.setProperty("--charts-row-height", newChartsH + "px");
+          if (sessionsEl) sessionsEl.style.maxHeight = newSessionsH + "px";
+          if (analysisEl) analysisEl.style.maxHeight = newSessionsH + "px";
+        };
+
+        const onPointerUp = () => {
+          rowSplitter.classList.remove("dragging");
+          const currentCharts = parseFloat(getComputedStyle(container).getPropertyValue("--charts-row-height"));
+          const currentSessions = sessionsEl ? parseFloat(sessionsEl.style.maxHeight) : NaN;
+          if (Number.isFinite(currentCharts) && currentCharts >= MIN_CHARTS) {
+            localStorage.setItem(CHARTS_HEIGHT_STORAGE_KEY, String(Math.round(currentCharts)));
+          }
+          if (Number.isFinite(currentSessions) && currentSessions >= MIN_SESSIONS) {
+            localStorage.setItem(SESSIONS_HEIGHT_STORAGE_KEY, String(Math.round(currentSessions)));
+          }
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+        };
+
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp, { once: true });
+      });
+    }
+
     function syncSelectedExportSessionsWithCurrentData() {
       const visibleIds = new Set(((currentData && currentData.sessions) || []).map(s => s.id));
       for (const sid of [...selectedExportSessionIds]) {
@@ -2630,7 +2742,7 @@
     }
 
     // localStorage persistence so analysis results survive window close.
-    const LS_CACHE_KEY = "clawd-analysis-cache-v1";
+    const LS_CACHE_KEY = "clawd-analysis-cache-v2";
     function loadCacheFromStorage() {
       try {
         const raw = localStorage.getItem(LS_CACHE_KEY);
@@ -3958,6 +4070,8 @@
     }
     applySavedPanelWidth();
     initPanelResizer();
+    applySavedChartsHeight();
+    initRowResizer();
     loadData().then(() => offerBatchAnalysis());
     window.analyticsAPI.getAnalysisProvider().then(p => {
       analysisProvider = p;

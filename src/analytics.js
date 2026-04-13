@@ -235,7 +235,9 @@ module.exports = function initAnalytics(ctx) {
     const detail = ctx.analyticsScan.getSessionDetail(sessionId, agent);
     if (!detail) return null;
     if (preferredProvider) detail._preferredProvider = preferredProvider;
-    return ctx.analyticsAI.analyzeSession(detail, mode);
+    const result = await ctx.analyticsAI.analyzeSession(detail, mode);
+    try { return result ? JSON.parse(JSON.stringify(result)) : result; }
+    catch { return result; }
   });
 
   ipcMain.handle("analytics-get-analysis-provider", async () => {
