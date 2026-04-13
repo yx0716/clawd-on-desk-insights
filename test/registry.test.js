@@ -35,7 +35,7 @@ describe("Agent Registry", () => {
     assert.deepStrictEqual(cc.processNames.mac, ["claude"]);
 
     const codex = registry.getAgent("codex");
-    assert.deepStrictEqual(codex.processNames.win, ["codex.exe"]);
+    assert.deepStrictEqual(codex.processNames.win, ["codex.exe", "Codex.exe"]);
 
     const copilot = registry.getAgent("copilot-cli");
     assert.deepStrictEqual(copilot.processNames.win, ["copilot.exe"]);
@@ -52,7 +52,7 @@ describe("Agent Registry", () => {
     assert.deepStrictEqual(cc.processNames.linux, ["claude"]);
 
     const codex = registry.getAgent("codex");
-    assert.deepStrictEqual(codex.processNames.linux, ["codex"]);
+    assert.deepStrictEqual(codex.processNames.linux, ["codex", "Codex"]);
 
     const copilot = registry.getAgent("copilot-cli");
     assert.deepStrictEqual(copilot.processNames.linux, ["copilot"]);

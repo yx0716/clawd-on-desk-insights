@@ -1,10 +1,16 @@
-// Codex CLI agent configuration
+// Codex CLI / Codex Desktop agent configuration
 // Windows hooks completely disabled — uses JSONL log polling instead
+// Codex Desktop (Codex.app / Codex.exe) is an Electron GUI that spawns
+// the same codex-cli binary internally, so JSONL log polling works for both.
 
 module.exports = {
   id: "codex",
   name: "Codex CLI",
-  processNames: { win: ["codex.exe"], mac: ["codex"], linux: ["codex"] },
+  processNames: {
+    win: ["codex.exe", "Codex.exe"],
+    mac: ["codex", "Codex"],
+    linux: ["codex", "Codex"],
+  },
   eventSource: "log-poll",
   // JSONL record type:subtype → pet state mapping
   // ⚠️ Also duplicated in hooks/codex-remote-monitor.js (zero-dep requirement) — keep in sync
