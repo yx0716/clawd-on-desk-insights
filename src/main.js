@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut } = require("electron");
+const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut, nativeTheme } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
@@ -954,7 +954,10 @@ function openSettingsWindow() {
     skipTaskbar: false,
     alwaysOnTop: false,
     title: "Clawd Settings",
-    backgroundColor: "#f5f5f7",
+    // Match settings.html's dark-mode palette to avoid a white flash before
+    // CSS media query kicks in. Hex values must stay in sync with the
+    // `--bg` CSS variable in settings.html for each theme.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1c1f" : "#f5f5f7",
     webPreferences: {
       preload: path.join(__dirname, "preload-settings.js"),
       nodeIntegration: false,

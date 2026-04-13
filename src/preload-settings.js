@@ -6,9 +6,10 @@
 //
 //   getSnapshot()                       Promise<snapshot>
 //   update(key, value)                  Promise<{ status, message? }>
+//   command(action, payload)            Promise<{ status, message? }>
+//   listAgents()                        Promise<Array<{id, name, ...}>>
 //   onChanged(cb)                       cb({ changes, snapshot? }) — fires for
 //                                       every settings-changed broadcast
-//   offChanged(cb)                      remove a previously-added listener
 //
 // All writes go through ipcMain.handle("settings:update") in main.js, which
 // routes through the controller. The renderer never owns state — it always
@@ -32,8 +33,5 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   listAgents: () => ipcRenderer.invoke("settings:list-agents"),
   onChanged: (cb) => {
     if (typeof cb === "function") listeners.add(cb);
-  },
-  offChanged: (cb) => {
-    listeners.delete(cb);
   },
 });

@@ -80,6 +80,22 @@ function createSettingsController({
 
   const store = createStore(initialSnapshot);
 
+  // Per-key async serialization. When an async action is in flight for a key,
+  // later writes on the same key queue after it instead of racing — otherwise
+  // a slow-resolving effect could commit after a fast-resolving one and flip
+  // the store back. Sync actions on an idle key skip the lock entirely so the
+  // common path stays synchronous (menu setters rely on that). The Map self-
+  // cleans: once a tracked promise settles, its entry is removed unless
+  // another call has already chained a newer one on top.
+  const _asyncLocks = new Map();
+  function _trackAsyncLock(lockKey, p) {
+    _asyncLocks.set(lockKey, p);
+    const cleanup = () => {
+      if (_asyncLocks.get(lockKey) === p) _asyncLocks.delete(lockKey);
+    };
+    Promise.resolve(p).then(cleanup, cleanup);
+  }
+
   // ── Internal helpers ──
 
   function buildDeps() {
@@ -194,7 +210,31 @@ function createSettingsController({
 
   // Sync-or-Promise: returns a plain result object when the action is sync,
   // a Promise wrapping one when the action is async. See file header.
+  //
+  // Per-key serialization: if an async action is already in flight for this
+  // key, wait behind it before starting — even sync calls become async here,
+  // because returning sync `{ok}` while a pending commit is about to stomp
+  // the same key would be a lie.
   function applyUpdate(key, value) {
+    const pending = _asyncLocks.get(key);
+    if (pending) {
+      const next = pending.then(
+        () => _doApplyUpdate(key, value),
+        () => _doApplyUpdate(key, value)
+      );
+      _trackAsyncLock(key, next);
+      return next;
+    }
+    const actionResult = invokeAction(key, value);
+    if (!isThenable(actionResult)) {
+      return finishSingle(key, value, actionResult);
+    }
+    const next = actionResult.then((r) => finishSingle(key, value, r));
+    _trackAsyncLock(key, next);
+    return next;
+  }
+
+  function _doApplyUpdate(key, value) {
     const actionResult = invokeAction(key, value);
     if (isThenable(actionResult)) {
       return actionResult.then((r) => finishSingle(key, value, r));
@@ -208,6 +248,22 @@ function createSettingsController({
   function applyBulk(partial) {
     if (!partial || typeof partial !== "object") {
       return { status: "error", message: "applyBulk: partial must be an object" };
+    }
+    // Effect-bearing keys belong on applyUpdate's single-field path: bulk
+    // interleaves validators with effects, so a failure on key N leaves
+    // keys 0..N-1 with their effects already executed and no rollback
+    // hook. Reject at the boundary — callers (menu/runtime state flush)
+    // only ever bulk pure-data fields. If a real use case appears, the
+    // fix is to run all validators first, then all effects with explicit
+    // rollback — not to relax this guard.
+    for (const key of Object.keys(partial)) {
+      const entry = updates[key];
+      if (entry && resolveEffect(entry)) {
+        return {
+          status: "error",
+          message: `${key}: effect-bearing keys cannot be updated via applyBulk — use applyUpdate`,
+        };
+      }
     }
     const entries = Object.keys(partial).map((key) => ({
       key,
@@ -304,7 +360,20 @@ function createSettingsController({
     ).then(finishBulk);
   }
 
-  async function applyCommand(name, payload) {
+  // Serialize commands by name. Two rapid toggles of the same command (e.g.
+  // `setAgentEnabled` with the same agent) would otherwise race — later
+  // effect resolves first, earlier effect commits over it. Different commands
+  // can still run in parallel; only same-name same-time is queued.
+  function applyCommand(name, payload) {
+    const lockKey = `cmd:${name}`;
+    const prev = _asyncLocks.get(lockKey);
+    const run = () => _doApplyCommand(name, payload);
+    const next = prev ? prev.then(run, run) : run();
+    _trackAsyncLock(lockKey, next);
+    return next;
+  }
+
+  async function _doApplyCommand(name, payload) {
     const command = commands[name];
     if (!command) {
       return {
@@ -328,6 +397,43 @@ function createSettingsController({
       };
     }
     if (result.commit && typeof result.commit === "object") {
+      // Defensive validate: commands produce arbitrary commit payloads, but
+      // they still have to pass the same schema gates `applyUpdate` enforces.
+      // Without this, a buggy command could persist a prefs snapshot the
+      // validator would have rejected (e.g. setAgentEnabled writing a
+      // non-object `agents` field). We re-run the validator against a merged
+      // snapshot so cross-field checks (showTray/showDock) see the final
+      // state.
+      const mergedSnapshot = { ...store.getSnapshot(), ...result.commit };
+      const commitDeps = { ...injectedDeps, snapshot: mergedSnapshot };
+      for (const key of Object.keys(result.commit)) {
+        const entry = updates[key];
+        if (!entry) {
+          return {
+            status: "error",
+            message: `${name} commit: unknown settings key ${key}`,
+          };
+        }
+        const validator = resolveValidator(entry);
+        if (!validator) continue;
+        const recheck = runStep(
+          `${name} commit validate ${key}`,
+          validator,
+          result.commit[key],
+          commitDeps
+        );
+        // Validators today are sync — commands are one-shots and defensive
+        // validation is meant to be a cheap gate, not an effect pipeline.
+        // If a real async validator appears later we can refactor; for now
+        // treat it as a programming error.
+        if (isThenable(recheck)) {
+          return {
+            status: "error",
+            message: `${name} commit ${key}: async validators unsupported in commit path`,
+          };
+        }
+        if (!recheck || recheck.status !== "ok") return recheck;
+      }
       const { changed } = store._commit(result.commit);
       if (changed) {
         const persisted = persistInternal();

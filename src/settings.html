@@ -233,6 +233,10 @@ html, body {
 .switch.on { background: var(--switch-on); }
 .switch.on::after { left: 16px; }
 .switch.pending { opacity: 0.5; cursor: wait; }
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ── Agent badges ── */
 .agent-badges {

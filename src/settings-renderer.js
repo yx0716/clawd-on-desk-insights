@@ -24,8 +24,8 @@ const STRINGS = {
     sidebarAnimMap: "Animation Map",
     sidebarShortcuts: "Shortcuts",
     sidebarAbout: "About",
+    sidebarSoon: "Soon",
     sectionAppearance: "Appearance",
-    sectionAlerts: "Alerts",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
     agentsTitle: "Agents",
@@ -64,8 +64,8 @@ const STRINGS = {
     sidebarAnimMap: "动画映射",
     sidebarShortcuts: "快捷键",
     sidebarAbout: "关于",
+    sidebarSoon: "待推出",
     sectionAppearance: "外观",
-    sectionAlerts: "提示",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
     agentsTitle: "Agent 管理",
@@ -148,7 +148,7 @@ function renderSidebar() {
     item.innerHTML =
       `<span class="sidebar-item-icon">${tab.icon}</span>` +
       `<span class="sidebar-item-label">${escapeHtml(t(tab.labelKey))}</span>` +
-      (tab.available ? "" : `<span class="sidebar-item-soon">soon</span>`);
+      (tab.available ? "" : `<span class="sidebar-item-soon">${escapeHtml(t("sidebarSoon"))}</span>`);
     if (tab.available) {
       item.addEventListener("click", () => {
         activeTab = tab.id;
@@ -228,10 +228,12 @@ function buildAgentRow(agent) {
   const sw = document.createElement("div");
   sw.className = "switch";
   sw.setAttribute("role", "switch");
+  sw.setAttribute("tabindex", "0");
   const currentEntry = snapshot && snapshot.agents && snapshot.agents[agent.id];
   const enabled = currentEntry ? currentEntry.enabled !== false : true;
   if (enabled) sw.classList.add("on");
-  sw.addEventListener("click", () => {
+  sw.setAttribute("aria-checked", enabled ? "true" : "false");
+  const toggle = () => {
     if (sw.classList.contains("pending")) return;
     const curEntry = snapshot && snapshot.agents && snapshot.agents[agent.id];
     const curEnabled = curEntry ? curEntry.enabled !== false : true;
@@ -250,6 +252,13 @@ function buildAgentRow(agent) {
         sw.classList.remove("pending");
         showToast(t("toastSaveFailed") + (err && err.message), { error: true });
       });
+  };
+  sw.addEventListener("click", toggle);
+  sw.addEventListener("keydown", (ev) => {
+    if (ev.key === " " || ev.key === "Enter") {
+      ev.preventDefault();
+      toggle();
+    }
   });
   ctrl.appendChild(sw);
   row.appendChild(ctrl);
@@ -346,14 +355,15 @@ function buildSwitchRow({ key, labelKey, descKey, invert = false }) {
       `<span class="row-label"></span>` +
       `<span class="row-desc"></span>` +
     `</div>` +
-    `<div class="row-control"><div class="switch" role="switch"></div></div>`;
+    `<div class="row-control"><div class="switch" role="switch" tabindex="0"></div></div>`;
   row.querySelector(".row-label").textContent = t(labelKey);
   row.querySelector(".row-desc").textContent = t(descKey);
   const sw = row.querySelector(".switch");
   const rawValue = !!(snapshot && snapshot[key]);
   const visualOn = invert ? !rawValue : rawValue;
   if (visualOn) sw.classList.add("on");
-  sw.addEventListener("click", () => {
+  sw.setAttribute("aria-checked", visualOn ? "true" : "false");
+  const toggle = () => {
     if (sw.classList.contains("pending")) return;
     const currentRaw = !!(snapshot && snapshot[key]);
     const currentVisual = invert ? !currentRaw : currentRaw;
@@ -373,6 +383,13 @@ function buildSwitchRow({ key, labelKey, descKey, invert = false }) {
       sw.classList.remove("pending");
       showToast(t("toastSaveFailed") + (err && err.message), { error: true });
     });
+  };
+  sw.addEventListener("click", toggle);
+  sw.addEventListener("keydown", (ev) => {
+    if (ev.key === " " || ev.key === "Enter") {
+      ev.preventDefault();
+      toggle();
+    }
   });
   return row;
 }
@@ -407,6 +424,8 @@ function buildLanguageRow() {
           const msg = (result && result.message) || "unknown error";
           showToast(t("toastSaveFailed") + msg, { error: true });
         }
+      }).catch((err) => {
+        showToast(t("toastSaveFailed") + (err && err.message), { error: true });
       });
     });
   }
@@ -426,6 +445,10 @@ window.settingsAPI.onChanged((payload) => {
   } else if (payload && payload.changes && snapshot) {
     snapshot = { ...snapshot, ...payload.changes };
   }
+  // Guard against an early broadcast that lands before `getSnapshot()`
+  // resolves — rendering with a null snapshot blanks the UI and the
+  // initial render later would need to re-fetch static language state.
+  if (!snapshot) return;
   renderSidebar();
   renderContent();
 });

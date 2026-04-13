@@ -74,7 +74,43 @@ describe("applyUpdate sync invariant", () => {
     const r = await ret;
     assert.strictEqual(r.status, "ok");
   });
+
+  it("serializes concurrent async updates on the same key (no race)", async () => {
+    // Two rapid toggles on an async-effect key must run in order — otherwise
+    // the slow one resolves last and stomps the quick one's commit.
+    const order = [];
+    let tick = 0;
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      updates: {
+        lang: requireEnumSync(),
+        size: {
+          validate: () => ({ status: "ok" }),
+          effect: async (v) => {
+            const mine = ++tick;
+            order.push(`start:${mine}:${v}`);
+            // First call takes longer, so without the lock it'd finish
+            // after the second and overwrite the store.
+            await new Promise((r) => setTimeout(r, mine === 1 ? 25 : 1));
+            order.push(`end:${mine}:${v}`);
+            return { status: "ok" };
+          },
+        },
+      },
+    });
+    const first = ctrl.applyUpdate("size", "S");
+    const second = ctrl.applyUpdate("size", "M");
+    await Promise.all([first, second]);
+    assert.deepStrictEqual(order, ["start:1:S", "end:1:S", "start:2:M", "end:2:M"]);
+    assert.strictEqual(ctrl.get("size"), "M");
+  });
 });
+
+// Tiny helper — must be sync because controller's applyUpdate stays sync
+// when the entry is a plain function.
+function requireEnumSync() {
+  return (v) => (typeof v === "string" ? { status: "ok" } : { status: "error" });
+}
 
 describe("applyUpdate", () => {
   it("commits valid pure-data updates and persists to disk", async () => {
@@ -190,6 +226,31 @@ describe("applyBulk", () => {
     assert.strictEqual(ctrl.get("showTray"), false);
     assert.strictEqual(ctrl.get("showDock"), true);
   });
+
+  it("rejects effect-bearing keys to protect the no-rollback commit path", async () => {
+    // applyBulk interleaves validators with effects; if a later key fails,
+    // earlier effects have already executed. Callers should reach for
+    // applyUpdate for system-backed keys. Enforced at the boundary so a
+    // future bulk-window-bounds flush can't quietly sneak in a login item.
+    let effectRan = false;
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      updates: {
+        x: (v) => (typeof v === "number" ? { status: "ok" } : { status: "error" }),
+        dangerous: {
+          validate: (v) => (typeof v === "boolean" ? { status: "ok" } : { status: "error" }),
+          effect: () => {
+            effectRan = true;
+            return { status: "ok" };
+          },
+        },
+      },
+    });
+    const r = await ctrl.applyBulk({ x: 100, dangerous: true });
+    assert.strictEqual(r.status, "error");
+    assert.ok(/applyBulk|applyUpdate/.test(r.message));
+    assert.strictEqual(effectRan, false, "effect must not run on rejected bulk");
+  });
 });
 
 describe("applyCommand", () => {
@@ -224,6 +285,55 @@ describe("applyCommand", () => {
     const r = await ctrl.applyCommand("boom", {});
     assert.strictEqual(r.status, "error");
     assert.strictEqual(r.message, "denied");
+  });
+
+  it("defensive-validates commit payloads against the updateRegistry", async () => {
+    // A buggy command could return an invalid commit; without the guard,
+    // that shape would land in the store and persist to disk.
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      commands: {
+        naughty: () => ({ status: "ok", commit: { lang: "klingon" } }),
+      },
+    });
+    const r = await ctrl.applyCommand("naughty", {});
+    assert.strictEqual(r.status, "error");
+    assert.ok(/klingon|lang/.test(r.message));
+    // Store must remain at the default (unchanged)
+    assert.strictEqual(ctrl.get("lang"), "en");
+  });
+
+  it("rejects commit keys unknown to the updateRegistry", async () => {
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      commands: {
+        writeJunk: () => ({ status: "ok", commit: { notARealKey: 42 } }),
+      },
+    });
+    const r = await ctrl.applyCommand("writeJunk", {});
+    assert.strictEqual(r.status, "error");
+    assert.ok(/notARealKey/.test(r.message));
+  });
+
+  it("serializes same-name commands so later calls see earlier effects", async () => {
+    // Without per-key locking, two async calls could race and the
+    // later-resolving effect would commit over the earlier one.
+    const order = [];
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      commands: {
+        slow: async (payload) => {
+          order.push(`start:${payload.tag}`);
+          await new Promise((r) => setTimeout(r, payload.tag === "a" ? 20 : 1));
+          order.push(`end:${payload.tag}`);
+          return { status: "ok" };
+        },
+      },
+    });
+    const a = ctrl.applyCommand("slow", { tag: "a" });
+    const b = ctrl.applyCommand("slow", { tag: "b" });
+    await Promise.all([a, b]);
+    assert.deepStrictEqual(order, ["start:a", "end:a", "start:b", "end:b"]);
   });
 });
 
