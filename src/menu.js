@@ -40,8 +40,23 @@ module.exports = function initMenu(ctx) {
       type: "radio",
       checked: theme.id === activeId,
       click: () => {
-        if (theme.id !== activeId && ctx.switchTheme) {
-          ctx.switchTheme(theme.id);
+        if (theme.id === activeId) return;
+        // Route through the controller so menu + settings panel share one
+        // commit gate. Failure (malformed theme.json, etc.) leaves the
+        // store untouched; the broadcast never fires so the radio stays
+        // on the previous theme, which is the right UX for a menu click.
+        const result = ctx.settings.applyUpdate("theme", theme.id);
+        const onDone = (r) => {
+          if (r && r.status === "error") {
+            console.warn("Clawd: theme switch failed:", r.message);
+          }
+        };
+        if (result && typeof result.then === "function") {
+          result.then(onDone, (err) =>
+            console.warn("Clawd: theme switch threw:", err && err.message)
+          );
+        } else {
+          onDone(result);
         }
       },
     }));

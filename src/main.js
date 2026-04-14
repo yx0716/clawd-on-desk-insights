@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut, nativeTheme } = require("electron");
+const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut, nativeTheme, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
@@ -121,6 +121,10 @@ const _settingsController = createSettingsController({
     stopMonitorForAgent: _deferredStopMonitorForAgent,
     clearSessionsByAgent: _deferredClearSessionsByAgent,
     dismissPermissionsByAgent: _deferredDismissPermissionsByAgent,
+    // Theme deps — defined much later in the file, wrapped in lazy closures.
+    activateTheme: (id) => _deferredActivateTheme(id),
+    getThemeInfo: (id) => _deferredGetThemeInfo(id),
+    removeThemeDir: (id) => _deferredRemoveThemeDir(id),
   },
 });
 
@@ -194,7 +198,17 @@ function stopMonitorForAgent(agentId) {
 const themeLoader = require("./theme-loader");
 themeLoader.init(__dirname, app.getPath("userData"));
 
+// Startup: lenient loadTheme so a missing/corrupt user-selected theme can't
+// brick the app. If loadTheme fell back to "clawd", the store still thinks
+// the old theme is active — hydrate it back to "clawd" so the "store is
+// truth" invariant holds and the next menu render shows the right check.
 let activeTheme = themeLoader.loadTheme(_settingsController.get("theme") || "clawd");
+if (activeTheme && activeTheme._fellBack) {
+  const result = _settingsController.hydrate({ theme: activeTheme._id });
+  if (result && result.status === "error") {
+    console.warn("Clawd: theme hydrate after fallback failed:", result.message);
+  }
+}
 
 // ── CSS <object> sizing (from theme) ──
 function getObjRect(bounds) {
@@ -764,7 +778,6 @@ const _menuCtx = {
   clampToScreen,
   getNearestWorkArea,
   reapplyMacVisibility,
-  switchTheme: (id) => switchTheme(id),
   discoverThemes: () => themeLoader.discoverThemes(),
   getActiveThemeId: () => activeTheme ? activeTheme._id : "clawd",
   ensureUserThemesDir: () => themeLoader.ensureUserThemesDir(),
@@ -879,6 +892,67 @@ ipcMain.handle("settings:command", async (_event, payload) => {
 // row per agent. Static because it comes from agents/registry.js — no runtime
 // state involved — so the renderer can cache the result and never has to
 // re-fetch.
+// Theme list for the Phase 3a Theme tab. Pulls discover + getThemeMetadata
+// per id + flags the active one. Static-ish (no snapshot field), so the
+// renderer re-fetches on demand (after command removeTheme + on broadcasts
+// that touch `theme` or `themeOverrides`). Not in the snapshot because the
+// on-disk theme list is unbounded and prefs shouldn't carry derived state.
+ipcMain.handle("settings:list-themes", () => {
+  try {
+    const activeId = activeTheme ? activeTheme._id : "clawd";
+    const list = themeLoader.discoverThemes();
+    return list.map((t) => {
+      const meta = themeLoader.getThemeMetadata(t.id) || {};
+      return {
+        id: t.id,
+        name: meta.name || t.name,
+        builtin: !!t.builtin,
+        active: t.id === activeId,
+        previewFileUrl: meta.previewFileUrl || null,
+      };
+    });
+  } catch (err) {
+    console.warn("Clawd: settings:list-themes failed:", err && err.message);
+    return [];
+  }
+});
+
+// Native "are you sure?" dialog for theme deletion. Kept in main because
+// `dialog.showMessageBox` takes a BrowserWindow reference the renderer can't
+// hand over. Returns `{ confirmed: boolean }`. Renderer calls this before
+// issuing `settings:command removeTheme`.
+ipcMain.handle("settings:confirm-remove-theme", async (event, themeId) => {
+  if (typeof themeId !== "string" || !themeId) {
+    return { confirmed: false };
+  }
+  const meta = themeLoader.getThemeMetadata(themeId);
+  const displayName = (meta && meta.name) || themeId;
+  const parent = BrowserWindow.fromWebContents(event.sender) || settingsWindow || null;
+  const primaryLabel = lang === "zh" ? "删除" : "Delete";
+  const cancelLabel = lang === "zh" ? "取消" : "Cancel";
+  const message = lang === "zh"
+    ? `确认删除主题 "${displayName}"？`
+    : `Delete theme "${displayName}"?`;
+  const detail = lang === "zh"
+    ? "此操作不可撤销。主题的所有文件将从磁盘移除。"
+    : "This cannot be undone. All files for this theme will be removed from disk.";
+  try {
+    const { response } = await dialog.showMessageBox(parent, {
+      type: "warning",
+      buttons: [primaryLabel, cancelLabel],
+      defaultId: 1,
+      cancelId: 1,
+      message,
+      detail,
+      noLink: true,
+    });
+    return { confirmed: response === 0 };
+  } catch (err) {
+    console.warn("Clawd: confirm-remove-theme dialog failed:", err && err.message);
+    return { confirmed: false };
+  }
+});
+
 ipcMain.handle("settings:list-agents", () => {
   try {
     const { getAllAgents } = require("../agents/registry");
@@ -1372,20 +1446,37 @@ Object.defineProperties(this || {}, {}); // no-op placeholder
 // Mini state is accessed via _mini getters in ctx objects below
 
 // ── Theme switching ──
-function switchTheme(themeId) {
-  if (!win || win.isDestroyed()) return;
+//
+// `activateTheme` is the pre-commit effect invoked by the `theme` settings
+// action. It MUST throw on failure — the controller treats a thrown effect
+// as commit rejection, so a bad theme id never lands in prefs and the UI
+// stays on the previously-selected theme + surfaces a toast.
+//
+// Strict load (no silent fallback to "clawd"): if the user picks theme X
+// and X is malformed, they must see the error, not have the pet quietly
+// render clawd while prefs say X. Startup recovery takes the lenient path
+// elsewhere.
+//
+// This function does NOT write `theme` back to prefs — the controller
+// commits after the effect returns ok. Persisting here would infinite-loop.
+function activateTheme(themeId) {
+  if (!win || win.isDestroyed()) {
+    throw new Error("theme switch requires ready windows");
+  }
   if (activeTheme && activeTheme._id === themeId) return;
+
+  // Strict load FIRST — if it throws, nothing downstream has mutated yet.
+  const newTheme = themeLoader.loadTheme(themeId, { strict: true });
 
   // 1. Cleanup timers in all modules
   _state.cleanup();
   _tick.cleanup();
   _mini.cleanup();
   // ⚠️ Don't clear pendingPermissions — permission bubbles are independent BrowserWindows
-  // ��️ Don't clear sessions — keep active session tracking
-  // ��️ Don't clear displayHint — semantic tokens resolve through new theme's map
+  // ⚠️ Don't clear sessions — keep active session tracking
+  // ⚠️ Don't clear displayHint — semantic tokens resolve through new theme's map
 
   // 2. If currently in mini mode and new theme doesn't support mini, exit first
-  const newTheme = themeLoader.loadTheme(themeId);
   if (_mini.getMiniMode() && !newTheme.miniMode.supported) {
     _mini.exitMiniMode();
   }
@@ -1415,12 +1506,41 @@ function switchTheme(themeId) {
   win.webContents.once("did-finish-load", onReady);
   hitWin.webContents.once("did-finish-load", onReady);
 
-  // Persist theme choice through the controller so it survives restarts.
-  // flushRuntimeStateToPrefs only captures window bounds + mini state;
-  // user-selected prefs like `theme` must be written explicitly.
-  _settingsController.applyBulk({ theme: themeId });
+  // Flush runtime state (window bounds, mini) — the theme key itself is
+  // committed by the controller after this effect returns.
   flushRuntimeStateToPrefs();
-  rebuildAllMenus();
+}
+
+// Inject theme deps into the settings controller now that activateTheme,
+// themeLoader, and activeTheme are all defined. Uses lazy closures because
+// these references are captured at call time (inside an effect or command).
+function _deferredActivateTheme(themeId) {
+  return activateTheme(themeId);
+}
+function _deferredGetThemeInfo(themeId) {
+  const all = themeLoader.discoverThemes();
+  const entry = all.find((t) => t.id === themeId);
+  if (!entry) return null;
+  return {
+    builtin: !!entry.builtin,
+    active: activeTheme && activeTheme._id === themeId,
+  };
+}
+function _deferredRemoveThemeDir(themeId) {
+  const userThemesDir = themeLoader.ensureUserThemesDir();
+  if (!userThemesDir) throw new Error("user themes directory unavailable");
+  // Re-verify path containment as a defensive check — settings-actions
+  // already rejects built-in / active themes, and ensureUserThemesDir only
+  // ever returns the userData subtree, but belt + suspenders on an fs.rm
+  // call is worth the two lines.
+  const target = path.resolve(path.join(userThemesDir, themeId));
+  const root = path.resolve(userThemesDir);
+  if (!target.startsWith(root + path.sep)) {
+    throw new Error(`theme path escapes user themes directory: ${themeId}`);
+  }
+  fs.rmSync(target, { recursive: true, force: true });
+  // Rebuild menus so Theme submenu reflects the deleted entry.
+  try { rebuildAllMenus(); } catch { /* best-effort */ }
 }
 
 // ── Auto-install VS Code / Cursor terminal-focus extension ──

@@ -56,6 +56,17 @@ const STRINGS = {
     toastSaveFailed: "Couldn't save: ",
     langEnglish: "English",
     langChinese: "中文",
+    themeTitle: "Theme",
+    themeSubtitle: "Pick a theme for Clawd. Community themes land in your user themes folder and can be removed from here.",
+    themeEmpty: "No themes available.",
+    themeBadgeBuiltin: "Built-in",
+    themeBadgeActive: "Active",
+    themeActiveIndicator: "\u2713 Active",
+    themeThumbMissing: "\u{1F3AD}",
+    themeDeleteLabel: "Delete theme",
+    toastThemeDeleted: "Theme deleted.",
+    toastThemeDeleteFailed: "Couldn't delete theme: ",
+    themeOpenFolderLabel: "Open user themes folder",
   },
   zh: {
     settingsTitle: "设置",
@@ -98,6 +109,17 @@ const STRINGS = {
     toastSaveFailed: "保存失败：",
     langEnglish: "English",
     langChinese: "中文",
+    themeTitle: "主题",
+    themeSubtitle: "为 Clawd 选择一个主题。社区主题会放在你的用户主题目录里，可以在此删除。",
+    themeEmpty: "没有可用的主题。",
+    themeBadgeBuiltin: "内建",
+    themeBadgeActive: "当前",
+    themeActiveIndicator: "\u2713 当前",
+    themeThumbMissing: "\u{1F3AD}",
+    themeDeleteLabel: "删除主题",
+    toastThemeDeleted: "主题已删除。",
+    toastThemeDeleteFailed: "删除主题失败：",
+    themeOpenFolderLabel: "打开用户主题目录",
   },
 };
 
@@ -107,6 +129,11 @@ let activeTab = "general";
 // Fetched once at boot (since it can't change while the app is running).
 // Null until hydrated — renderAgentsTab() renders an empty placeholder.
 let agentMetadata = null;
+
+// Theme list cache. Unlike agents, this CAN change at runtime (user deletes
+// a theme, drops a new one into the folder). Null until first fetch; refreshed
+// on tab open, after removeTheme succeeds, and on `theme` broadcasts.
+let themeList = null;
 
 function t(key) {
   const lang = (snapshot && snapshot.lang) || "en";
@@ -135,7 +162,7 @@ function showToast(message, { error = false, ttl = 3500 } = {}) {
 const SIDEBAR_TABS = [
   { id: "general", icon: "\u2699", labelKey: "sidebarGeneral", available: true },
   { id: "agents", icon: "\u26A1", labelKey: "sidebarAgents", available: true },
-  { id: "theme", icon: "\u{1F3A8}", labelKey: "sidebarTheme", available: false },
+  { id: "theme", icon: "\u{1F3A8}", labelKey: "sidebarTheme", available: true },
   { id: "animMap", icon: "\u{1F3AC}", labelKey: "sidebarAnimMap", available: false },
   { id: "shortcuts", icon: "\u2328", labelKey: "sidebarShortcuts", available: false },
   { id: "about", icon: "\u2139", labelKey: "sidebarAbout", available: false },
@@ -172,9 +199,193 @@ function renderContent() {
     renderGeneralTab(content);
   } else if (activeTab === "agents") {
     renderAgentsTab(content);
+  } else if (activeTab === "theme") {
+    renderThemeTab(content);
   } else {
     renderPlaceholder(content);
   }
+}
+
+// ── Theme tab ──
+
+function fetchThemes() {
+  if (!window.settingsAPI || typeof window.settingsAPI.listThemes !== "function") {
+    themeList = [];
+    return Promise.resolve([]);
+  }
+  return window.settingsAPI.listThemes().then((list) => {
+    themeList = Array.isArray(list) ? list : [];
+    return themeList;
+  }).catch((err) => {
+    console.warn("settings: listThemes failed", err);
+    themeList = [];
+    return [];
+  });
+}
+
+function renderThemeTab(parent) {
+  const h1 = document.createElement("h1");
+  h1.textContent = t("themeTitle");
+  parent.appendChild(h1);
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "subtitle";
+  subtitle.textContent = t("themeSubtitle");
+  parent.appendChild(subtitle);
+
+  // First render: kick off an async fetch, show an empty shell in the
+  // meantime. Subsequent renders use the cached list so tab-flip stays
+  // instant.
+  if (themeList === null) {
+    const loading = document.createElement("div");
+    loading.className = "placeholder-desc";
+    parent.appendChild(loading);
+    fetchThemes().then(() => {
+      if (activeTab === "theme") renderContent();
+    });
+    return;
+  }
+
+  if (themeList.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "placeholder";
+    empty.innerHTML = `<div class="placeholder-desc">${escapeHtml(t("themeEmpty"))}</div>`;
+    parent.appendChild(empty);
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "theme-grid";
+  for (const theme of themeList) grid.appendChild(buildThemeCard(theme));
+  parent.appendChild(grid);
+}
+
+function buildThemeCard(theme) {
+  const card = document.createElement("div");
+  card.className = "theme-card";
+  card.setAttribute("role", "radio");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-checked", theme.active ? "true" : "false");
+  if (theme.active) card.classList.add("active");
+
+  // Thumbnail — img with file:// URL if preview resolved, otherwise a
+  // neutral glyph. APNG thumbnails animate inside the <img>; acceptable
+  // as a "degraded but working" behavior per Phase 3a decision.
+  const thumb = document.createElement("div");
+  thumb.className = "theme-thumb";
+  if (theme.previewFileUrl) {
+    const img = document.createElement("img");
+    img.src = theme.previewFileUrl;
+    img.alt = "";
+    img.draggable = false;
+    thumb.appendChild(img);
+  } else {
+    const glyph = document.createElement("span");
+    glyph.className = "theme-thumb-empty";
+    glyph.textContent = t("themeThumbMissing");
+    thumb.appendChild(glyph);
+  }
+  card.appendChild(thumb);
+
+  // Name + builtin badge on same row.
+  const name = document.createElement("div");
+  name.className = "theme-card-name";
+  const nameText = document.createElement("span");
+  nameText.className = "theme-card-name-text";
+  nameText.textContent = theme.name || theme.id;
+  name.appendChild(nameText);
+  if (theme.builtin) {
+    const badge = document.createElement("span");
+    badge.className = "theme-card-badge";
+    badge.textContent = t("themeBadgeBuiltin");
+    name.appendChild(badge);
+  }
+  card.appendChild(name);
+
+  // Footer: active indicator on the left, delete button on the right.
+  // Delete is hidden for built-ins (safety) and for the active theme
+  // (must switch away first). Those two rules are also enforced by the
+  // settings-actions removeTheme gate — the UI just avoids offering
+  // the button in the first place.
+  const footer = document.createElement("div");
+  footer.className = "theme-card-footer";
+  const indicator = document.createElement("span");
+  indicator.className = "theme-card-check";
+  indicator.textContent = theme.active ? t("themeActiveIndicator") : "";
+  footer.appendChild(indicator);
+  if (!theme.builtin && !theme.active) {
+    const btn = document.createElement("button");
+    btn.className = "theme-delete-btn";
+    btn.type = "button";
+    btn.textContent = "\u{1F5D1}";
+    btn.title = t("themeDeleteLabel");
+    btn.setAttribute("aria-label", t("themeDeleteLabel"));
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      handleDeleteTheme(theme);
+    });
+    footer.appendChild(btn);
+  }
+  card.appendChild(footer);
+
+  // Click / keyboard anywhere on the card (except the delete button, which
+  // stopPropagation'd) selects the theme.
+  const select = () => {
+    if (theme.active) return;
+    if (card.classList.contains("pending")) return;
+    card.classList.add("pending");
+    Promise.resolve()
+      .then(() => window.settingsAPI.update("theme", theme.id))
+      .then((result) => {
+        card.classList.remove("pending");
+        if (!result || result.status !== "ok") {
+          const msg = (result && result.message) || "unknown error";
+          showToast(t("toastSaveFailed") + msg, { error: true });
+        }
+        // On success the broadcast re-renders and marks this card active.
+      })
+      .catch((err) => {
+        card.classList.remove("pending");
+        showToast(t("toastSaveFailed") + (err && err.message), { error: true });
+      });
+  };
+  card.addEventListener("click", select);
+  card.addEventListener("keydown", (ev) => {
+    if (ev.key === " " || ev.key === "Enter") {
+      ev.preventDefault();
+      select();
+    }
+  });
+  return card;
+}
+
+function handleDeleteTheme(theme) {
+  if (!window.settingsAPI) return;
+  // Main-process native dialog — renderer never owns the confirmation
+  // decision. Returns { confirmed: boolean }.
+  window.settingsAPI
+    .confirmRemoveTheme(theme.id)
+    .then((res) => {
+      if (!res || !res.confirmed) return null;
+      return window.settingsAPI.command("removeTheme", theme.id);
+    })
+    .then((result) => {
+      if (result == null) return; // dialog cancelled
+      if (result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastThemeDeleteFailed") + msg, { error: true });
+        return;
+      }
+      showToast(t("toastThemeDeleted"));
+      // Re-fetch since the deleted theme won't show up in discoverThemes
+      // anymore. Then re-render if still on this tab.
+      fetchThemes().then(() => {
+        if (activeTab === "theme") renderContent();
+      });
+    })
+    .catch((err) => {
+      showToast(t("toastThemeDeleteFailed") + (err && err.message), { error: true });
+    });
 }
 
 function renderAgentsTab(parent) {
@@ -480,6 +691,17 @@ window.settingsAPI.onChanged((payload) => {
   // resolves — rendering with a null snapshot blanks the UI and the
   // initial render later would need to re-fetch static language state.
   if (!snapshot) return;
+  // If the theme changed (menu-side switch, startup fallback hydrate, etc.)
+  // the list's `active` flags are stale — refetch then re-render. Cheap:
+  // discoverThemes + getThemeMetadata is just a handful of fs stats.
+  const changes = payload && payload.changes;
+  if (changes && ("theme" in changes || "themeOverrides" in changes)) {
+    fetchThemes().then(() => {
+      renderSidebar();
+      renderContent();
+    });
+    return;
+  }
   renderSidebar();
   renderContent();
 });

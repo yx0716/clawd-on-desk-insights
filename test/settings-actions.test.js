@@ -5,6 +5,7 @@ const assert = require("node:assert");
 
 const {
   updateRegistry,
+  commandRegistry,
   requireBoolean,
   requireFiniteNumber,
   requireEnum,
@@ -97,11 +98,43 @@ describe("updateRegistry pure-data validators", () => {
     }
   });
 
-  it("theme requires a non-empty string", () => {
+  it("theme validator requires a non-empty string", () => {
+    // theme is now an object-form entry ({ validate, effect }); access
+    // the validator directly — the effect needs an activateTheme dep
+    // and is covered separately.
+    const entry = updateRegistry.theme;
+    assert.strictEqual(typeof entry, "object");
+    assert.strictEqual(typeof entry.validate, "function");
+    assert.strictEqual(typeof entry.effect, "function");
     const deps = { snapshot: baseSnapshot };
-    assert.strictEqual(updateRegistry.theme("clawd", deps).status, "ok");
-    assert.strictEqual(updateRegistry.theme("", deps).status, "error");
-    assert.strictEqual(updateRegistry.theme(null, deps).status, "error");
+    assert.strictEqual(entry.validate("clawd", deps).status, "ok");
+    assert.strictEqual(entry.validate("", deps).status, "error");
+    assert.strictEqual(entry.validate(null, deps).status, "error");
+  });
+
+  it("theme effect proxies to deps.activateTheme and maps throws to error", () => {
+    const entry = updateRegistry.theme;
+    const calls = [];
+    const deps = {
+      snapshot: baseSnapshot,
+      activateTheme: (id) => {
+        calls.push(id);
+        if (id === "bad") throw new Error("boom");
+      },
+    };
+    assert.deepStrictEqual(entry.effect("clawd", deps), { status: "ok" });
+    assert.deepStrictEqual(calls, ["clawd"]);
+
+    const err = entry.effect("bad", deps);
+    assert.strictEqual(err.status, "error");
+    assert.match(err.message, /boom/);
+  });
+
+  it("theme effect errors when activateTheme dep missing", () => {
+    const entry = updateRegistry.theme;
+    const result = entry.effect("clawd", { snapshot: baseSnapshot });
+    assert.strictEqual(result.status, "error");
+    assert.match(result.message, /activateTheme/);
   });
 
   it("agents/themeOverrides require plain objects", () => {
@@ -205,6 +238,95 @@ describe("updateRegistry cross-field validators (showTray/showDock)", () => {
     const snap = { ...prefs.getDefaults(), showTray: false, showDock: false };
     assert.strictEqual(updateRegistry.showTray(true, { snapshot: snap }).status, "ok");
     assert.strictEqual(updateRegistry.showDock(true, { snapshot: snap }).status, "ok");
+  });
+});
+
+describe("removeTheme command", () => {
+  const baseSnapshot = { ...prefs.getDefaults(), themeOverrides: {} };
+
+  function makeDeps(overrides = {}) {
+    const calls = { removeThemeDir: [], getThemeInfo: [] };
+    const deps = {
+      snapshot: baseSnapshot,
+      getThemeInfo: (id) => {
+        calls.getThemeInfo.push(id);
+        if (id === "cat") return { builtin: false, active: false };
+        if (id === "clawd") return { builtin: true, active: true };
+        if (id === "activeUser") return { builtin: false, active: true };
+        if (id === "missing") return null;
+        return { builtin: false, active: false };
+      },
+      removeThemeDir: async (id) => {
+        calls.removeThemeDir.push(id);
+      },
+      ...overrides,
+    };
+    return { deps, calls };
+  }
+
+  it("rejects non-string payloads", async () => {
+    const { deps } = makeDeps();
+    const r = await commandRegistry.removeTheme(null, deps);
+    assert.strictEqual(r.status, "error");
+  });
+
+  it("rejects built-in themes", async () => {
+    const { deps, calls } = makeDeps();
+    const r = await commandRegistry.removeTheme("clawd", deps);
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /built-in/);
+    assert.deepStrictEqual(calls.removeThemeDir, []);
+  });
+
+  it("rejects the active theme", async () => {
+    const { deps, calls } = makeDeps();
+    const r = await commandRegistry.removeTheme("activeUser", deps);
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /active/);
+    assert.deepStrictEqual(calls.removeThemeDir, []);
+  });
+
+  it("rejects unknown themes", async () => {
+    const { deps, calls } = makeDeps();
+    const r = await commandRegistry.removeTheme("missing", deps);
+    assert.strictEqual(r.status, "error");
+    assert.deepStrictEqual(calls.removeThemeDir, []);
+  });
+
+  it("deletes the dir for a valid user theme", async () => {
+    const { deps, calls } = makeDeps();
+    const r = await commandRegistry.removeTheme("cat", deps);
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(calls.removeThemeDir, ["cat"]);
+    // No overrides to clean up → no commit field
+    assert.strictEqual(r.commit, undefined);
+  });
+
+  it("strips themeOverrides entry on success when one exists", async () => {
+    const snapshotWithOverride = {
+      ...baseSnapshot,
+      themeOverrides: { cat: { attention: { sourceThemeId: "cat", file: "x.svg" } } },
+    };
+    const { deps } = makeDeps({ snapshot: snapshotWithOverride });
+    const r = await commandRegistry.removeTheme("cat", deps);
+    assert.strictEqual(r.status, "ok");
+    assert.ok(r.commit, "commit field expected");
+    assert.deepStrictEqual(r.commit.themeOverrides, {});
+  });
+
+  it("surfaces removeThemeDir throws as error status", async () => {
+    const { deps } = makeDeps({
+      removeThemeDir: async () => { throw new Error("EBUSY"); },
+    });
+    const r = await commandRegistry.removeTheme("cat", deps);
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /EBUSY/);
+  });
+
+  it("errors when required deps missing", async () => {
+    const r = await commandRegistry.removeTheme("cat", { snapshot: baseSnapshot });
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /getThemeInfo/);
   });
 });
 
