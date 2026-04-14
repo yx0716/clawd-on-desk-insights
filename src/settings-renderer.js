@@ -317,10 +317,9 @@ function buildThemeCard(theme) {
     card.appendChild(footer);
   }
 
-  attachActivation(card, () => {
-    if (theme.active) return { status: "ok", noop: true };
-    return window.settingsAPI.update("theme", theme.id);
-  });
+  if (!theme.active) {
+    attachActivation(card, () => window.settingsAPI.update("theme", theme.id));
+  }
   return card;
 }
 
