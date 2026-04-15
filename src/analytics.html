@@ -761,13 +761,30 @@
       color: #fff;
     }
 
+    /* Count pill doubles as the "clear selection" affordance: clicking it
+       deselects everything (see evtSelectedCount click handler). Styled as
+       a clickable pill so the hover state hints at the action. */
     .evt-selection-count {
       font-size: 10px;
       font-weight: 700;
       color: var(--accent);
       background: var(--accent-light);
+      border: 1px solid transparent;
       border-radius: 999px;
       padding: 4px 8px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+
+    .evt-selection-count:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .evt-selection-count:active {
+      transform: scale(0.97);
     }
 
     .events-status {
@@ -1909,6 +1926,48 @@
       color: var(--text-muted);
     }
 
+    /* One-click "select all sessions in this day" button. Sits in the day
+       header next to the count; clicking toggles the day's selection state
+       (all or none). Gets an .active look when every session in that day is
+       currently selected so users can tell at a glance. */
+    .evt-day-select-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border: 1px solid var(--border-light);
+      border-radius: 5px;
+      background: var(--bg-card);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s, color .15s, border-color .15s, transform .1s;
+    }
+
+    .evt-day-select-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .evt-day-select-btn:active {
+      transform: scale(0.9);
+    }
+
+    .evt-day-select-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .evt-day-select-btn svg {
+      display: block;
+      width: 12px;
+      height: 12px;
+    }
+
     .evt-day-grid {
       display: flex;
       flex-direction: column;
@@ -2107,9 +2166,8 @@
         <span class="panel-title" id="sessionsTitle">Sessions</span>
         <span class="panel-badge" id="evtCount"></span>
         <div class="events-actions">
-          <span class="evt-selection-count" id="evtSelectedCount" style="display:none"></span>
+          <button class="evt-selection-count" id="evtSelectedCount" type="button" style="display:none"></button>
           <button class="events-action-btn" id="evtSelectAllBtn" type="button">全选可见</button>
-          <button class="events-action-btn" id="evtClearSelectionBtn" type="button">清空</button>
           <button class="events-action-btn primary" id="evtKnowledgeBtn" type="button" disabled>知识复利</button>
           <button class="events-action-btn primary" id="evtExportBtn" type="button" disabled>导出 AI 分析</button>
         </div>
@@ -2274,6 +2332,7 @@
         selectVisibleSessions: "全选可见",
         clearSelection: "清空",
         selectedSessionsCount: "已选 {count}",
+        selectDaySessions: "全选当天 session（再点取消）",
         knowledgeCompound: "知识复利",
         knowledgeCompoundRunning: "提炼中…",
         knowledgeCompoundTitle: "知识复利沉淀",
@@ -2432,6 +2491,7 @@
         selectVisibleSessions: "Select Visible",
         clearSelection: "Clear",
         selectedSessionsCount: "{count} selected",
+        selectDaySessions: "Select all sessions this day (click again to deselect)",
         knowledgeCompound: "Knowledge Compound",
         knowledgeCompoundRunning: "Extracting…",
         knowledgeCompoundTitle: "Knowledge Compound Interest",
@@ -2643,7 +2703,6 @@
       document.getElementById("distCenterLabel").textContent = t("total");
       document.getElementById("sessionsTitle").textContent = t("sessionsTitle");
       document.getElementById("evtSelectAllBtn").textContent = t("selectVisibleSessions");
-      document.getElementById("evtClearSelectionBtn").textContent = t("clearSelection");
       document.getElementById("evtExportBtn").textContent = exportRunning ? t("exportingAnalyses") : t("exportAnalyses");
       document.getElementById("evtKnowledgeBtn").textContent = knowledgeRunning ? t("knowledgeCompoundRunning") : t("knowledgeCompound");
       document.getElementById("reportSub").textContent = t("reportSub");
@@ -2939,7 +2998,6 @@
     function updateExportSelectionUI() {
       const countEl = document.getElementById("evtSelectedCount");
       const selectAllBtn = document.getElementById("evtSelectAllBtn");
-      const clearBtn = document.getElementById("evtClearSelectionBtn");
       const exportBtn = document.getElementById("evtExportBtn");
       const total = (currentData && currentData.sessions ? currentData.sessions.length : 0);
       const selectedCount = selectedExportSessionIds.size;
@@ -2947,9 +3005,12 @@
       if (countEl) {
         countEl.textContent = selectedCount ? t("selectedSessionsCount", { count: selectedCount }) : "";
         countEl.style.display = selectedCount ? "" : "none";
+        // Tooltip hints that the count pill is actionable — clicking clears.
+        countEl.title = selectedCount ? t("clearSelection") : "";
       }
-      if (selectAllBtn) selectAllBtn.disabled = exportRunning || !total || selectedCount === total;
-      if (clearBtn) clearBtn.disabled = exportRunning || !selectedCount;
+      // Select-all is now a toggle (click again to deselect-all-visible), so it
+      // stays enabled even when all visible sessions are already selected.
+      if (selectAllBtn) selectAllBtn.disabled = exportRunning || !total;
       if (exportBtn) {
         exportBtn.disabled = exportRunning || !selectedCount;
         exportBtn.textContent = exportRunning ? t("exportingAnalyses") : t("exportAnalyses");
@@ -2968,9 +3029,37 @@
       updateExportSelectionUI();
     }
 
-    function selectAllVisibleSessions() {
+    // Toggle selection for every session whose dayStart matches `dk`. Same
+    // toggle semantics as selectAllVisibleSessions — click once to select
+    // the whole day, click again to clear it. Called by the per-day check
+    // icon in the session list's day headers.
+    function toggleDaySelection(dk) {
       if (!currentData || !Array.isArray(currentData.sessions)) return;
-      currentData.sessions.forEach(session => selectedExportSessionIds.add(session.id));
+      const daySessions = currentData.sessions.filter(s => {
+        const ts = s.firstTs || s.lastTs || 0;
+        return dayStart(ts) === dk;
+      });
+      if (!daySessions.length) return;
+      const ids = daySessions.map(s => s.id);
+      const allSelected = ids.every(id => selectedExportSessionIds.has(id));
+      if (allSelected) ids.forEach(id => selectedExportSessionIds.delete(id));
+      else ids.forEach(id => selectedExportSessionIds.add(id));
+      renderEvents(currentData);
+    }
+
+    // Toggle: if every visible session is already selected, deselect all of
+    // them; otherwise, select all visible. Selections in the set that aren't
+    // currently visible (e.g. stale entries from a prior filter) are left
+    // alone — only the visible scope toggles.
+    function selectAllVisibleSessions() {
+      if (!currentData || !Array.isArray(currentData.sessions) || !currentData.sessions.length) return;
+      const visibleIds = currentData.sessions.map(s => s.id);
+      const allSelected = visibleIds.every(id => selectedExportSessionIds.has(id));
+      if (allSelected) {
+        visibleIds.forEach(id => selectedExportSessionIds.delete(id));
+      } else {
+        visibleIds.forEach(id => selectedExportSessionIds.add(id));
+      }
       renderEvents(currentData);
     }
 
@@ -3612,7 +3701,14 @@
         const d = new Date(dk);
         const dayLabel = `${weekdayLabel(d)} ${d.getMonth() + 1}/${d.getDate()}`;
         const daySessions = dayMap.get(dk);
-        html += `<div class="evt-day-header">${dayLabel}<span class="evt-day-count">${escapeHtml(t("daySessionsCount", { count: daySessions.length }))}</span></div>`;
+        // Day-level bulk-select toggle: lights up (.active) when every session
+        // of this day is already ticked, hinting that clicking will deselect.
+        const dayAllSelected = daySessions.every(s => selectedExportSessionIds.has(s.id));
+        const daySelectBtn = `<button type="button" class="evt-day-select-btn${dayAllSelected ? ' active' : ''}" data-day-select="${dk}" title="${escapeHtml(t("selectDaySessions"))}" aria-label="${escapeHtml(t("selectDaySessions"))}" aria-pressed="${dayAllSelected ? "true" : "false"}">`
+          + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
+          + `<polyline points="20 6 9 17 4 12"></polyline>`
+          + `</svg></button>`;
+        html += `<div class="evt-day-header">${dayLabel}<span class="evt-day-count">${escapeHtml(t("daySessionsCount", { count: daySessions.length }))}</span>${daySelectBtn}</div>`;
         html += '<div class="evt-day-grid">';
         for (const s of daySessions) {
           const dur = sessDur(s);
@@ -3665,6 +3761,14 @@
           e.stopPropagation();
           toggleSessionExportSelection(input.getAttribute("data-select-sid"), !!input.checked);
           input.closest(".evt-card")?.classList.toggle("multi-selected", !!input.checked);
+        });
+      });
+      // Day-level select-all icon — per day header.
+      el.querySelectorAll("[data-day-select]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const dk = Number(btn.getAttribute("data-day-select"));
+          if (Number.isFinite(dk)) toggleDaySelection(dk);
         });
       });
       // Pencil rename buttons — stop propagation so the click doesn't also select
@@ -4893,7 +4997,10 @@
     document.getElementById("dailyReportBtn").addEventListener("click", () => openReportModal("day"));
     document.getElementById("weeklyReportBtn").addEventListener("click", () => openReportModal("week"));
     document.getElementById("evtSelectAllBtn").addEventListener("click", selectAllVisibleSessions);
-    document.getElementById("evtClearSelectionBtn").addEventListener("click", clearSelectedSessions);
+    // Clicking the "已选 N" pill clears the selection — replaces the old 清空
+    // button. The pill is visible only when there's a non-zero selection,
+    // so there's no "ghost click" worry when nothing is selected.
+    document.getElementById("evtSelectedCount").addEventListener("click", clearSelectedSessions);
     document.getElementById("evtExportBtn").addEventListener("click", exportSelectedSessionAnalyses);
     document.getElementById("evtKnowledgeBtn").addEventListener("click", runKnowledgeCompound);
     // Copy button + provider-pill dropdown both live inside the (re-rendered)
