@@ -1080,6 +1080,104 @@
       height: 14px;
     }
 
+    /* Provider pill — replaces the old read-only <span> + separate
+       "换分析器" button. The pill itself is now a dropdown trigger;
+       clicking it reveals .provider-pill-menu anchored underneath. */
+    .provider-pill-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .analysis-provider-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 1px solid var(--border-light);
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+      /* reset user-agent button styles so it reads as a pill, not a chunky button */
+      font-family: inherit;
+      line-height: 1.35;
+    }
+
+    .analysis-provider-pill:hover:not(:disabled) {
+      background: var(--bg-card);
+      border-color: var(--border);
+    }
+
+    .analysis-provider-pill:disabled {
+      cursor: default;
+    }
+
+    .analysis-provider-pill .caret {
+      font-size: 8px;
+      color: var(--text-muted);
+      transform: translateY(-1px);
+    }
+
+    .analysis-provider-pill.open {
+      background: var(--accent-light);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .analysis-provider-pill.open .caret {
+      color: var(--accent);
+    }
+
+    .provider-pill-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 160px;
+      max-width: 260px;
+      max-height: 240px;
+      overflow-y: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow-md);
+      padding: 4px;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .provider-pill-menu.open {
+      display: flex;
+    }
+
+    .provider-pill-menu button {
+      text-align: left;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .1s, color .1s;
+      font-family: inherit;
+    }
+
+    .provider-pill-menu button:hover {
+      background: var(--accent-light);
+    }
+
+    .provider-pill-menu button.active {
+      background: var(--accent-light);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
     /* Flex row wrapping the summary text / kc-title + copy button so
        the button aligns with the first content line. */
     .analysis-summary-row,
@@ -3003,35 +3101,57 @@
       return getAnalysisOptionById(selectedAnalysisAgent) || analysisOptions[0] || null;
     }
 
-    async function openAnalysisProviderPicker(currentProviderId) {
+    // ── Provider-pill dropdown ──
+    // Populate + open the dropdown for a given pill button. The menu is
+    // rendered as a sibling <div data-role="provider-pill-menu"> that the
+    // header-render included next to the pill. We fill its HTML on-open so
+    // the option list always reflects the current analysisOptions.
+    function toggleProviderPillMenu(pillBtn) {
+      if (!pillBtn) return;
+      const wrap = pillBtn.closest(".provider-pill-wrap");
+      if (!wrap) return;
+      const menu = wrap.querySelector('[data-role="provider-pill-menu"]');
+      if (!menu) return;
+      const isOpen = menu.classList.contains("open");
+      closeAllProviderPillMenus();
+      if (isOpen) return; // toggled off — leave closed
       const opts = analysisOptions && analysisOptions.length
         ? analysisOptions
         : (analysisProvider ? [analysisProvider] : []);
-      if (!opts || opts.length <= 1) return null;
-      return new Promise(resolve => {
-        const o = document.createElement("div");
-        o.className = "confirm-overlay";
-        const optionsHtml = opts.map(opt => {
-          const id = opt.id || opt.provider;
-          const active = id === currentProviderId;
-          return `<button data-provider-id="${escapeHtml(id)}" style="padding:8px 10px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};border-radius:8px;background:${active ? 'var(--accent-light)' : 'var(--bg-card)'};color:${active ? 'var(--accent)' : 'var(--text)'};cursor:pointer;text-align:left;font-size:12px">${escapeHtml(formatAnalysisProviderShort(opt))}</button>`;
-        }).join("");
-        o.innerHTML = `<div class="confirm-dialog" style="max-width:320px;text-align:left">
-      <p style="margin-bottom:10px">${escapeHtml(t("switchAnalyzer"))}</p>
-      <div style="display:flex;flex-direction:column;gap:8px">${optionsHtml}</div>
-      <div class="confirm-btns" style="margin-top:12px"><button class="btn-cancel">${escapeHtml(t("cancel"))}</button></div>
-    </div>`;
-        document.body.appendChild(o);
-        o.querySelectorAll("[data-provider-id]").forEach(btn => {
-          btn.onclick = () => {
-            const providerId = btn.getAttribute("data-provider-id");
-            o.remove();
-            resolve(providerId);
-          };
-        });
-        o.querySelector(".btn-cancel").onclick = () => { o.remove(); resolve(null); };
+      const currentId = pillBtn.getAttribute("data-current-provider") || "";
+      menu.innerHTML = opts.map(opt => {
+        const id = opt.id || opt.provider;
+        const active = id === currentId;
+        return `<button type="button" data-provider-id="${escapeHtml(id)}" class="${active ? "active" : ""}" role="option" aria-selected="${active ? "true" : "false"}">${escapeHtml(formatAnalysisProviderShort(opt))}</button>`;
+      }).join("");
+      menu.classList.add("open");
+      pillBtn.classList.add("open");
+      pillBtn.setAttribute("aria-expanded", "true");
+    }
+
+    function closeAllProviderPillMenus() {
+      document.querySelectorAll('.provider-pill-menu.open').forEach(m => m.classList.remove("open"));
+      document.querySelectorAll('.analysis-provider-pill.open').forEach(b => {
+        b.classList.remove("open");
+        b.setAttribute("aria-expanded", "false");
       });
     }
+
+    // Consolidated provider-switch used by the dropdown (and previously by the
+    // now-removed "换分析器" button). Updates selectedAnalysisAgent, re-renders
+    // the sessions list (so provider-tag colors refresh), and re-loads the
+    // analysis for the currently-selected session under the new provider.
+    async function switchAnalysisProvider(nextProvider) {
+      if (!nextProvider || nextProvider === selectedAnalysisAgent) return;
+      selectedAnalysisAgent = nextProvider;
+      if (currentData) renderEvents(currentData);
+      if (!selectedSessionId) return;
+      await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), currentAnalysisMode);
+    }
+
+    // Note: the old modal-based provider picker (openAnalysisProviderPicker)
+    // was removed when the provider pill became a dropdown — see
+    // toggleProviderPillMenu / switchAnalysisProvider above.
 
     function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent, pendingMode = null) {
       const providerLabel = formatAnalysisProviderShort(providerId);
@@ -3039,15 +3159,27 @@
       const detailActive = effectiveMode === "detail";
       const briefPending = pendingMode === "brief";
       const detailPending = pendingMode === "detail";
-      const showProviderSwitch = (analysisOptions && analysisOptions.length > 1) || false;
+      // Pill is clickable only when there's more than one provider to choose
+      // from; otherwise it's a static label. The caret hints at the dropdown.
+      const hasProviderChoices = !!(analysisOptions && analysisOptions.length > 1);
+      const pillTitleAttr = hasProviderChoices
+        ? ` title="${escapeHtml(t("switchAnalyzer"))}" aria-haspopup="listbox" aria-label="${escapeHtml(t("switchAnalyzer"))}"`
+        : "";
+      const pillHtml = `<span class="provider-pill-wrap">`
+        + `<button type="button" class="analysis-provider-pill" data-role="provider-pill" data-current-provider="${escapeHtml(providerId || "")}"${hasProviderChoices ? "" : " disabled"}${pillTitleAttr}>`
+        + `<span>${escapeHtml(providerLabel)}</span>`
+        + (hasProviderChoices ? `<span class="caret">&#9662;</span>` : "")
+        + `</button>`
+        + `<div class="provider-pill-menu" data-role="provider-pill-menu" role="listbox"></div>`
+        + `</span>`;
       const regenLabel = targetProviderId && targetProviderId !== providerId ? `改用 ${formatAnalysisProviderShort(targetProviderId)}` : "";
       return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     <div style="display:flex;gap:4px;padding:2px;background:var(--border);border-radius:999px">
       <button data-analysis-mode="brief" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'transparent' : 'var(--bg-card)'};color:${detailActive ? 'var(--text-secondary)' : 'var(--accent)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${briefPending ? '0.9' : '1'}">${escapeHtml(briefPending ? `${t("brief")}…` : t("brief"))}</button>
       <button data-analysis-mode="detail" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'var(--bg-card)' : 'transparent'};color:${detailActive ? 'var(--accent)' : 'var(--text-secondary)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${detailPending ? '0.9' : '1'}">${escapeHtml(detailPending ? `${t("detail")}…` : t("detail"))}</button>
     </div>
-    <span style="font-size:10px;padding:3px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border-light);color:var(--text);font-weight:700">${escapeHtml(providerLabel)}</span>
-    ${showProviderSwitch ? `<button id="analysisProviderSwitchBtn" style="margin-left:auto;border:none;background:none;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 0">${escapeHtml(t("switchAnalyzer"))}</button>` : '<span style="margin-left:auto"></span>'}
+    ${pillHtml}
+    <span style="margin-left:auto"></span>
     ${regenLabel ? `<button id="analysisRegenerateBtn" style="border:none;background:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 0">${escapeHtml(t("regenerateWith", { provider: formatAnalysisProviderShort(targetProviderId) }))}</button>` : ""}
   </div>`;
     }
@@ -4592,17 +4724,9 @@
       ct.querySelectorAll("[data-analysis-mode]").forEach(btn => {
         btn.addEventListener("click", () => runAnalysisMode(btn.getAttribute("data-analysis-mode")));
       });
-      const providerSwitchBtn = ct.querySelector("#analysisProviderSwitchBtn");
-      if (providerSwitchBtn) {
-        providerSwitchBtn.addEventListener("click", async () => {
-          const nextProvider = await openAnalysisProviderPicker(targetProviderId);
-          if (!nextProvider || nextProvider === selectedAnalysisAgent) return;
-          selectedAnalysisAgent = nextProvider;
-          if (currentData) renderEvents(currentData);
-          if (!selectedSessionId) return;
-          await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), currentAnalysisMode);
-        });
-      }
+      // Provider pill / dropdown is wired via event delegation on
+      // #analysisPanel so it survives re-renders (see the listener at the
+      // bottom of the file). Nothing to attach per-render here.
       const regenerateBtn = ct.querySelector("#analysisRegenerateBtn");
       if (regenerateBtn) {
         regenerateBtn.addEventListener("click", async () => {
@@ -4772,12 +4896,46 @@
     document.getElementById("evtClearSelectionBtn").addEventListener("click", clearSelectedSessions);
     document.getElementById("evtExportBtn").addEventListener("click", exportSelectedSessionAnalyses);
     document.getElementById("evtKnowledgeBtn").addEventListener("click", runKnowledgeCompound);
-    // Copy button is rendered inside analysisContent (inline with the summary
-    // or kc-title), so we use event delegation — the button comes and goes
-    // with every renderAnalysis / renderKnowledgeCompoundResult call.
+    // Copy button + provider-pill dropdown both live inside the (re-rendered)
+    // analysisContent, so we use event delegation on #analysisPanel — the
+    // buttons come and go with every renderAnalysis / renderKnowledgeCompoundResult
+    // call.
     document.getElementById("analysisPanel").addEventListener("click", (e) => {
-      const btn = e.target && e.target.closest && e.target.closest(".analysis-copy-btn");
-      if (btn) copyAnalysisToClipboard();
+      if (!e.target || !e.target.closest) return;
+
+      // Copy button
+      if (e.target.closest(".analysis-copy-btn")) {
+        copyAnalysisToClipboard();
+        return;
+      }
+
+      // Provider pill — toggle its adjacent dropdown.
+      const pill = e.target.closest('[data-role="provider-pill"]');
+      if (pill && !pill.disabled) {
+        e.stopPropagation();
+        toggleProviderPillMenu(pill);
+        return;
+      }
+
+      // Provider menu option — switch and close.
+      const menuOption = e.target.closest('[data-role="provider-pill-menu"] [data-provider-id]');
+      if (menuOption) {
+        e.stopPropagation();
+        const nextId = menuOption.getAttribute("data-provider-id");
+        closeAllProviderPillMenus();
+        switchAnalysisProvider(nextId);
+        return;
+      }
+    });
+
+    // Outside click / Esc → close any open provider dropdown.
+    document.addEventListener("click", (e) => {
+      if (!e.target || !e.target.closest) { closeAllProviderPillMenus(); return; }
+      if (e.target.closest('.provider-pill-wrap')) return; // click was inside a pill/menu
+      closeAllProviderPillMenus();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeAllProviderPillMenus();
     });
     document.getElementById("reportCloseBtn").addEventListener("click", closeReportModal);
     document.getElementById("reportCopyBtn").addEventListener("click", copyReportText);
