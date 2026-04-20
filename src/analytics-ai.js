@@ -42,6 +42,20 @@ Ignore the marker above. It is only used by Clawd to hide this internal summary 
 ${prompt}`;
 }
 
+// On Windows, `where <cmd>` returns every matching file in PATH. npm-installed
+// CLIs produce three sibling shims side-by-side: an extensionless POSIX script
+// (`claude`), a `.cmd`, and a `.ps1`. `where` lists the extensionless one
+// first, but Node's spawn() without shell:true can't execute a POSIX shell
+// script on Windows — it throws ENOENT with the extensionless path. Prefer
+// .cmd/.bat/.exe/.ps1 when present so downstream spawn() calls work out of
+// the box (the existing isWindowsShellShim check already adds shell:true for
+// .cmd/.bat).
+function preferWindowsExecutable(paths) {
+  if (!paths || !paths.length) return null;
+  const windowsExec = paths.find(p => /\.(cmd|bat|exe|ps1)$/i.test(p));
+  return windowsExec || paths[0];
+}
+
 function resolvePreferredAnalysisProvider(options, config) {
   const opts = Array.isArray(options) ? options : [];
   if (!opts.length) return null;
@@ -497,8 +511,9 @@ module.exports = function initAnalyticsAI(ctx) {
         env: buildCliEnv(),
       });
       const lines = parseLocatorOutput(result);
-      const hit = lines.find(file => fs.existsSync(file));
-      if (hit) return hit;
+      const existing = lines.filter(file => fs.existsSync(file));
+      if (!existing.length) return null;
+      return isWin ? preferWindowsExecutable(existing) : existing[0];
     } catch { /* not in PATH */ }
     return null;
   }
@@ -1685,8 +1700,16 @@ module.exports = function initAnalyticsAI(ctx) {
   function callClaudeCLI(claudePath, prompt) {
     return new Promise((resolve, reject) => {
       const fullPrompt = buildInternalCliAnalysisPrompt(prompt);
+      // On Windows, spawning the .cmd shim requires shell:true, which routes
+      // through cmd.exe. cmd.exe truncates multi-line args at the first
+      // newline (our analysis prompt has 20+ lines), so Claude only sees the
+      // internal marker and replies "What would you like me to do?". Pipe the
+      // prompt via stdin to bypass the cmd.exe parser entirely. Other
+      // platforms keep the -p path (no shell, no truncation, and stdin-based
+      // invocation has subtly different behavior with some CLI versions).
+      const viaStdin = isWindowsShellShim(claudePath);
       const args = [
-        "-p", fullPrompt,
+        "-p", ...(viaStdin ? [""] : [fullPrompt]),
         "--output-format", "stream-json",
         "--verbose",                                            // required by Claude CLI 2.2+ with -p + stream-json
         "--tools", "",                                          // disable all built-in tools (-25K tokens)
@@ -1695,7 +1718,7 @@ module.exports = function initAnalyticsAI(ctx) {
       ];
       const child = spawnCli(claudePath, args, {
         env: buildCliEnv({ CLAUDE_CODE_ENTRYPOINT: "cli" }),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
       });
       const timeoutMs = 90000;
       const maxBytes = 2 * 1024 * 1024;
@@ -1785,6 +1808,15 @@ module.exports = function initAnalyticsAI(ctx) {
         settled = true;
         resolve({ text, usage, model, costUsd });
       });
+
+      if (viaStdin) {
+        child.stdin.on("error", (err) => fail(`claude stdin error: ${err.message}`, { stdout, stderr }));
+        try {
+          child.stdin.end(fullPrompt);
+        } catch (err) {
+          fail(`claude stdin write failed: ${err.message}`, { stdout, stderr });
+        }
+      }
     });
   }
 
@@ -2201,8 +2233,10 @@ module.exports = function initAnalyticsAI(ctx) {
   function callClaudeCLIWithSystem(claudePath, prompt, systemPrompt) {
     return new Promise((resolve, reject) => {
       const fullPrompt = buildInternalCliAnalysisPrompt(prompt);
+      // See callClaudeCLI for rationale: cmd.exe truncates multi-line args.
+      const viaStdin = isWindowsShellShim(claudePath);
       const args = [
-        "-p", fullPrompt,
+        "-p", ...(viaStdin ? [""] : [fullPrompt]),
         "--output-format", "stream-json",
         "--verbose",
         "--tools", "",
@@ -2211,7 +2245,7 @@ module.exports = function initAnalyticsAI(ctx) {
       ];
       const child = spawnCli(claudePath, args, {
         env: buildCliEnv({ CLAUDE_CODE_ENTRYPOINT: "cli" }),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
       });
       const timeoutMs = 120000; // longer timeout for multi-session
       const maxBytes = 4 * 1024 * 1024;
@@ -2261,6 +2295,15 @@ module.exports = function initAnalyticsAI(ctx) {
         settled = true;
         resolve({ text, usage, model, costUsd });
       });
+
+      if (viaStdin) {
+        child.stdin.on("error", (err) => fail(`claude stdin error: ${err.message}`));
+        try {
+          child.stdin.end(fullPrompt);
+        } catch (err) {
+          fail(`claude stdin write failed: ${err.message}`);
+        }
+      }
     });
   }
 
@@ -2271,4 +2314,5 @@ module.exports.__test = {
   buildSessionContext,
   getDetailContextEntryCount,
   resolvePreferredAnalysisProvider,
+  preferWindowsExecutable,
 };
