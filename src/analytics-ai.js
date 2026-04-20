@@ -42,6 +42,20 @@ Ignore the marker above. It is only used by Clawd to hide this internal summary 
 ${prompt}`;
 }
 
+// On Windows, `where <cmd>` returns every matching file in PATH. npm-installed
+// CLIs produce three sibling shims side-by-side: an extensionless POSIX script
+// (`claude`), a `.cmd`, and a `.ps1`. `where` lists the extensionless one
+// first, but Node's spawn() without shell:true can't execute a POSIX shell
+// script on Windows — it throws ENOENT with the extensionless path. Prefer
+// .cmd/.bat/.exe/.ps1 when present so downstream spawn() calls work out of
+// the box (the existing isWindowsShellShim check already adds shell:true for
+// .cmd/.bat).
+function preferWindowsExecutable(paths) {
+  if (!paths || !paths.length) return null;
+  const windowsExec = paths.find(p => /\.(cmd|bat|exe|ps1)$/i.test(p));
+  return windowsExec || paths[0];
+}
+
 function resolvePreferredAnalysisProvider(options, config) {
   const opts = Array.isArray(options) ? options : [];
   if (!opts.length) return null;
@@ -497,8 +511,9 @@ module.exports = function initAnalyticsAI(ctx) {
         env: buildCliEnv(),
       });
       const lines = parseLocatorOutput(result);
-      const hit = lines.find(file => fs.existsSync(file));
-      if (hit) return hit;
+      const existing = lines.filter(file => fs.existsSync(file));
+      if (!existing.length) return null;
+      return isWin ? preferWindowsExecutable(existing) : existing[0];
     } catch { /* not in PATH */ }
     return null;
   }
@@ -2271,4 +2286,5 @@ module.exports.__test = {
   buildSessionContext,
   getDetailContextEntryCount,
   resolvePreferredAnalysisProvider,
+  preferWindowsExecutable,
 };

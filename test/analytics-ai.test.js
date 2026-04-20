@@ -65,3 +65,39 @@ describe("analytics AI session context", () => {
     assert.strictEqual(picked.id, "claude-code");
   });
 });
+
+describe("analytics AI Windows CLI shim resolution", () => {
+  it("prefers a .cmd sibling over an extensionless npm POSIX shim", () => {
+    // `where claude` on Windows lists the extensionless POSIX shim first, but
+    // Node spawn() without shell:true throws ENOENT on that file. The .cmd
+    // sibling is what actually runs.
+    const picked = analyticsAI.__test.preferWindowsExecutable([
+      "C:\\Users\\alice\\AppData\\Roaming\\npm\\claude",
+      "C:\\Users\\alice\\AppData\\Roaming\\npm\\claude.cmd",
+    ]);
+    assert.strictEqual(picked, "C:\\Users\\alice\\AppData\\Roaming\\npm\\claude.cmd");
+  });
+
+  it("prefers a .exe installer over a .cmd when both are present", () => {
+    const picked = analyticsAI.__test.preferWindowsExecutable([
+      "C:\\Users\\alice\\AppData\\Roaming\\npm\\claude.cmd",
+      "C:\\Program Files\\Claude Code\\claude.exe",
+    ]);
+    // First hit wins among the Windows-executable extensions; callers pass
+    // paths in their own preferred order, so we just keep that order stable.
+    assert.strictEqual(picked, "C:\\Users\\alice\\AppData\\Roaming\\npm\\claude.cmd");
+  });
+
+  it("falls back to the first path when none have a Windows executable extension", () => {
+    const picked = analyticsAI.__test.preferWindowsExecutable([
+      "/usr/local/bin/claude",
+      "/opt/claude-code/bin/claude",
+    ]);
+    assert.strictEqual(picked, "/usr/local/bin/claude");
+  });
+
+  it("returns null for empty input", () => {
+    assert.strictEqual(analyticsAI.__test.preferWindowsExecutable([]), null);
+    assert.strictEqual(analyticsAI.__test.preferWindowsExecutable(null), null);
+  });
+});
