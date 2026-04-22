@@ -50,13 +50,14 @@
 
     .container {
       --sessions-panel-width: 45%;
+      --sessions-row-height: clamp(420px, 64vh, 720px);
       --charts-row-height: 200px;
       max-width: 1200px;
       margin: 0 auto;
       padding: 20px;
       display: grid;
       grid-template-columns: minmax(320px, var(--sessions-panel-width)) 12px minmax(360px, 1fr);
-      grid-template-rows: auto auto auto auto auto 12px var(--charts-row-height);
+      grid-template-rows: auto auto auto auto var(--sessions-row-height) 12px var(--charts-row-height);
       grid-template-areas: "header header header" "tabs tabs tabs" "onboarding onboarding onboarding" "timeline timeline timeline" "sessions split analysis" "row-split row-split row-split" "charts charts charts";
       gap: 16px 16px;
     }
@@ -652,9 +653,10 @@
       border-radius: var(--radius);
       padding: 16px;
       box-shadow: var(--shadow);
-      max-height: 70vh;
+      height: 100%;
+      min-height: 0;
       overflow-y: auto;
-      align-self: start;
+      align-self: stretch;
     }
 
     .layout-splitter {
@@ -1050,9 +1052,10 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px;
-      max-height: 70vh;
+      height: 100%;
+      min-height: 0;
       overflow-y: auto;
-      align-self: start;
+      align-self: stretch;
       position: relative;
     }
 
@@ -1987,6 +1990,8 @@
 
       .events-card,
       .analysis-panel {
+        height: auto;
+        min-height: 0;
         max-height: none;
         overflow-y: visible;
       }
@@ -2296,6 +2301,8 @@
     const PANEL_WIDTH_STORAGE_KEY = "clawd-analytics-sessions-panel-width-v1";
     const CHARTS_HEIGHT_STORAGE_KEY = "clawd-analytics-charts-row-height-v1";
     const SESSIONS_HEIGHT_STORAGE_KEY = "clawd-analytics-sessions-max-height-v1";
+    const MIN_CHARTS_ROW_HEIGHT = 80;
+    const MIN_SESSIONS_ROW_HEIGHT = 240;
     const I18N = {
       zh: {
         documentTitle: "Agent 洞察",
@@ -2897,27 +2904,28 @@
       panelResizeCleanup = () => splitter.removeEventListener("pointerdown", onPointerDown);
     }
 
+    function setSessionsRowHeight(height) {
+      const container = document.querySelector(".container");
+      if (!container || !Number.isFinite(height)) return;
+      const nextHeight = Math.max(MIN_SESSIONS_ROW_HEIGHT, Math.round(height));
+      container.style.setProperty("--sessions-row-height", nextHeight + "px");
+    }
+
     function applySavedChartsHeight() {
       const rawCharts = localStorage.getItem(CHARTS_HEIGHT_STORAGE_KEY);
       const rawSessions = localStorage.getItem(SESSIONS_HEIGHT_STORAGE_KEY);
       const container = document.querySelector(".container");
-      const sessionsEl = document.querySelector(".events-card");
-      const analysisEl = document.querySelector(".analysis-panel");
+      if (!container) return;
 
       if (rawCharts) {
         const h = Number(rawCharts);
-        if (Number.isFinite(h) && h >= 80) {
-          // Clamp: viewport minus rough header/tabs/timeline overhead and 12px splitter
-          const maxAllowed = Math.max(80, window.innerHeight - 160 - 12 - 250);
-          container.style.setProperty("--charts-row-height", Math.min(h, maxAllowed) + "px");
+        if (Number.isFinite(h) && h >= MIN_CHARTS_ROW_HEIGHT) {
+          container.style.setProperty("--charts-row-height", Math.round(h) + "px");
         }
       }
       if (rawSessions) {
         const h = Number(rawSessions);
-        if (Number.isFinite(h) && h >= 160) {
-          if (sessionsEl) sessionsEl.style.maxHeight = h + "px";
-          if (analysisEl) analysisEl.style.maxHeight = h + "px";
-        }
+        if (Number.isFinite(h) && h >= MIN_SESSIONS_ROW_HEIGHT) setSessionsRowHeight(h);
       }
     }
 
@@ -2932,7 +2940,6 @@
         rowSplitter.classList.add("dragging");
 
         const sessionsEl = document.querySelector(".events-card");
-        const analysisEl = document.querySelector(".analysis-panel");
         const panelsRow = document.querySelector(".panels-row");
 
         const startY = event.clientY;
@@ -2941,27 +2948,25 @@
         const startSessionsH = sessionsEl ? sessionsEl.getBoundingClientRect().height : 300;
         // Total pool to distribute between sessions row and charts row
         const totalH = startChartsH + startSessionsH;
-        const MIN_CHARTS = 80;
-        const MIN_SESSIONS = 160;
+        const maxChartsH = Math.max(MIN_CHARTS_ROW_HEIGHT, totalH - MIN_SESSIONS_ROW_HEIGHT);
 
         const onPointerMove = (moveEvent) => {
           // Drag up → splitter moves up → charts grows, sessions shrinks
           const delta = startY - moveEvent.clientY;
-          const newChartsH = Math.max(MIN_CHARTS, Math.min(totalH - MIN_SESSIONS, startChartsH + delta));
-          const newSessionsH = Math.max(MIN_SESSIONS, totalH - newChartsH);
-          container.style.setProperty("--charts-row-height", newChartsH + "px");
-          if (sessionsEl) sessionsEl.style.maxHeight = newSessionsH + "px";
-          if (analysisEl) analysisEl.style.maxHeight = newSessionsH + "px";
+          const newChartsH = Math.max(MIN_CHARTS_ROW_HEIGHT, Math.min(maxChartsH, startChartsH + delta));
+          const newSessionsH = Math.max(MIN_SESSIONS_ROW_HEIGHT, totalH - newChartsH);
+          container.style.setProperty("--charts-row-height", Math.round(newChartsH) + "px");
+          setSessionsRowHeight(newSessionsH);
         };
 
         const onPointerUp = () => {
           rowSplitter.classList.remove("dragging");
           const currentCharts = parseFloat(getComputedStyle(container).getPropertyValue("--charts-row-height"));
-          const currentSessions = sessionsEl ? parseFloat(sessionsEl.style.maxHeight) : NaN;
-          if (Number.isFinite(currentCharts) && currentCharts >= MIN_CHARTS) {
+          const currentSessions = sessionsEl ? sessionsEl.getBoundingClientRect().height : NaN;
+          if (Number.isFinite(currentCharts) && currentCharts >= MIN_CHARTS_ROW_HEIGHT) {
             localStorage.setItem(CHARTS_HEIGHT_STORAGE_KEY, String(Math.round(currentCharts)));
           }
-          if (Number.isFinite(currentSessions) && currentSessions >= MIN_SESSIONS) {
+          if (Number.isFinite(currentSessions) && currentSessions >= MIN_SESSIONS_ROW_HEIGHT) {
             localStorage.setItem(SESSIONS_HEIGHT_STORAGE_KEY, String(Math.round(currentSessions)));
           }
           window.removeEventListener("pointermove", onPointerMove);
