@@ -79,6 +79,9 @@ function buildSessionContext(detail) {
   p += `Agent: ${detail.agent}\n`;
   if (detail.title) p += `Title: ${detail.title}\n`;
   if (detail.cwd) p += `Project: ${detail.cwd}\n`;
+  if (detail.scope && Number.isFinite(detail.scope.start) && Number.isFinite(detail.scope.end)) {
+    p += `Scope: ${new Date(detail.scope.start).toISOString()} - ${new Date(detail.scope.end).toISOString()}\n`;
+  }
   if (detail.timestamps.length >= 2) {
     const sorted = [...detail.timestamps].sort((a, b) => a - b);
     const mins = Math.round((sorted[sorted.length - 1] - sorted[0]) / 60000);
@@ -1831,9 +1834,10 @@ module.exports = function initAnalyticsAI(ctx) {
     if (!detail) return null;
     const analysisMode = mode || "brief";
     const preferredProvider = detail._preferredProvider || "claude-code";
+    const analysisSubjectId = detail.analysisId || detail.sessionId;
 
     // Check cache — invalidate if message count or provider changed
-    const cacheKey = analysisCacheKey(detail.sessionId, preferredProvider) + ":" + analysisMode;
+    const cacheKey = analysisCacheKey(analysisSubjectId, preferredProvider) + ":" + analysisMode;
     if (sessionAnalysisCache.has(cacheKey)) {
       const cached = sessionAnalysisCache.get(cacheKey);
       if (

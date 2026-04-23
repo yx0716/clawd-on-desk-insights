@@ -885,6 +885,13 @@
       cursor: pointer;
     }
 
+    .evt-date {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
     .evt-time {
       font-size: 11px;
       color: var(--text);
@@ -982,6 +989,35 @@
       margin-top: 2px;
       text-transform: uppercase;
       letter-spacing: 0.3px;
+    }
+
+    .evt-dur-date {
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      font-weight: 700;
+    }
+
+    .evt-scope-row {
+      margin-top: 6px;
+    }
+
+    .evt-scope-select {
+      max-width: 100%;
+      border: 1px solid var(--border-light);
+      border-radius: 999px;
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 22px 3px 8px;
+      cursor: pointer;
+    }
+
+    .evt-scope-select:hover {
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     .evt-agent {
@@ -1196,6 +1232,24 @@
       background: var(--accent-light);
       color: var(--accent);
       font-weight: 700;
+    }
+
+    .analysis-scope-select {
+      max-width: min(260px, 100%);
+      border: 1px solid var(--border-light);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 24px 3px 8px;
+      cursor: pointer;
+    }
+
+    .analysis-scope-select:hover {
+      background: var(--bg-card);
+      border-color: var(--border);
     }
 
     /* Flex row wrapping the summary text / kc-title + copy button so
@@ -2418,6 +2472,8 @@
         suggestions: "建议",
         showingCachedFrom: "当前显示的是 {provider} 的缓存",
         switchAnalyzer: "换分析器",
+        fullSessionScope: "整段 Session",
+        switchScope: "切换分析范围",
         regenerateWith: "改用 {provider}",
         brief: "速览",
         detail: "深入",
@@ -2577,6 +2633,8 @@
         suggestions: "Suggestions",
         showingCachedFrom: "Showing cached analysis from {provider}",
         switchAnalyzer: "Switch analyzer",
+        fullSessionScope: "Full session",
+        switchScope: "Switch analysis scope",
         regenerateWith: "Use {provider}",
         brief: "Brief",
         detail: "Detail",
@@ -2641,7 +2699,7 @@
       return currentLang === "zh" ? WEEKDAYS_ZH[date.getDay()] : WEEKDAYS_EN[date.getDay()];
     }
 
-    let currentRange = "week", currentData = null, selectedSessionId = null;
+    let currentRange = "week", currentData = null, selectedSessionId = null, selectedAnalysisScope = null;
     let analysisConsented = false, analysisProvider = null, selectedAnalysisAgent = "claude-code";
     // Month tab state — null when not on the Month tab. Lazy-loaded on first
     // Month-tab click via getAvailableMonths(), then cached for the session.
@@ -2784,7 +2842,46 @@
       if (card) card.classList.remove("analyzing");
     }
 
-    function analysisCacheKey(sessionId, provider = selectedAnalysisAgent, mode) { return `${provider || "claude-code"}:${sessionId}${mode ? ":" + mode : ""}`; }
+    function scopeKey(scope) {
+      if (!scope || !Number.isFinite(Number(scope.start)) || !Number.isFinite(Number(scope.end))) return "full";
+      return `${Math.round(Number(scope.start))}-${Math.round(Number(scope.end))}`;
+    }
+
+    function selectedScopeKey() {
+      return scopeKey(selectedAnalysisScope);
+    }
+
+    function analysisSubjectKey(sessionId, scope = selectedAnalysisScope) {
+      const key = scopeKey(scope);
+      return key === "full" ? sessionId : `${sessionId}@${key}`;
+    }
+
+    function analysisCacheKey(sessionId, provider = selectedAnalysisAgent, mode, scope = selectedAnalysisScope) {
+      return `${provider || "claude-code"}:${analysisSubjectKey(sessionId, scope)}${mode ? ":" + mode : ""}`;
+    }
+
+    function normalizeAnalysisScope(scope) {
+      if (!scope || typeof scope !== "object") return null;
+      const start = Number(scope.start);
+      const end = Number(scope.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+      return { start, end };
+    }
+
+    function sameAnalysisScope(a, b) {
+      return scopeKey(a) === scopeKey(b);
+    }
+
+    function getSessionById(sessionId) {
+      return currentData && currentData.sessions ? currentData.sessions.find(s => s.id === sessionId) : null;
+    }
+
+    function scopeFromKey(sessionId, key) {
+      if (!key || key === "full") return null;
+      const session = getSessionById(sessionId);
+      if (!session) return null;
+      return normalizeAnalysisScope(selectableSessionBlocks(session).find(block => scopeKey(block) === key));
+    }
 
     function getAnalysisOptionById(providerId) {
       const opts = analysisOptions && analysisOptions.length
@@ -3111,32 +3208,33 @@
     }
     loadCacheFromStorage();
 
-    function getCachedAnalysis(sessionId, provider = selectedAnalysisAgent, mode) {
+    function getCachedAnalysis(sessionId, provider = selectedAnalysisAgent, mode, scope = selectedAnalysisScope) {
       // If mode specified, look for exact match first
       if (mode) {
-        const exact = batchCache[analysisCacheKey(sessionId, provider, mode)];
+        const exact = batchCache[analysisCacheKey(sessionId, provider, mode, scope)];
         if (exact && isFrontendCacheFresh(exact, sessionId)) return stampAnalysisProvider(exact, provider);
         // Legacy keys without an explicit mode predate the brief/detail split.
         // Treat them as brief-only so they don't block a real detail request.
         if (mode !== "brief") return null;
         // Fallback 2: legacy key without explicit mode for the current provider.
-        const legacy = batchCache[analysisCacheKey(sessionId, provider)];
+        const legacy = batchCache[analysisCacheKey(sessionId, provider, null, scope)];
         if (legacy && isFrontendCacheFresh(legacy, sessionId)) return stampAnalysisProvider(legacy, provider);
         return null;
       }
       // No mode specified: try mode-specific keys first (prefer brief), then legacy key without mode
-      let cached = batchCache[analysisCacheKey(sessionId, provider, "brief")]
-        || batchCache[analysisCacheKey(sessionId, provider, "detail")]
-        || batchCache[analysisCacheKey(sessionId, provider)];
+      let cached = batchCache[analysisCacheKey(sessionId, provider, "brief", scope)]
+        || batchCache[analysisCacheKey(sessionId, provider, "detail", scope)]
+        || batchCache[analysisCacheKey(sessionId, provider, null, scope)];
       if (!cached) return null;
       if (!isFrontendCacheFresh(cached, sessionId)) return null;
       return stampAnalysisProvider(cached, provider);
     }
 
-    function findAlternateCachedAnalysis(sessionId, mode, excludeProvider = selectedAnalysisAgent) {
+    function findAlternateCachedAnalysis(sessionId, mode, excludeProvider = selectedAnalysisAgent, scope = selectedAnalysisScope) {
+      const subject = analysisSubjectKey(sessionId, scope);
       const suffixes = mode
-        ? [`:${sessionId}:${mode}`, `:${sessionId}`]
-        : [`:${sessionId}:brief`, `:${sessionId}:detail`, `:${sessionId}`];
+        ? [`:${subject}:${mode}`, `:${subject}`]
+        : [`:${subject}:brief`, `:${subject}:detail`, `:${subject}`];
       for (const suffix of suffixes) {
         for (const [key, candidate] of Object.entries(batchCache)) {
           if (!key.endsWith(suffix)) continue;
@@ -3151,13 +3249,14 @@
       }
       return null;
     }
-    function setCachedAnalysis(sessionId, provider, result) {
+    function setCachedAnalysis(sessionId, provider, result, scope = selectedAnalysisScope) {
       const mode = result && result._mode ? result._mode : null;
-      const key = analysisCacheKey(sessionId, provider, mode);
+      const key = analysisCacheKey(sessionId, provider, mode, scope);
       if (result && result._cacheable !== false) {
         const sess = (currentData && currentData.sessions || []).find(s => s.id === sessionId);
         if (sess) result._frontendMsgCount = sess.messages;
         result._selectedProvider = provider;
+        result._scopeKey = scopeKey(scope);
         result._ts = Date.now();
         batchCache[key] = result;
         persistCacheToStorage();
@@ -3245,9 +3344,34 @@
       await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), currentAnalysisMode);
     }
 
+    async function switchAnalysisScope(scopeValue) {
+      if (!selectedSessionId) return;
+      const nextScope = scopeValue === "full" ? null : scopeFromKey(selectedSessionId, scopeValue);
+      if (scopeValue !== "full" && !nextScope) return;
+      if (sameAnalysisScope(nextScope, selectedAnalysisScope)) return;
+      selectedAnalysisScope = nextScope;
+      refreshSel();
+      await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), currentAnalysisMode);
+    }
+
     // Note: the old modal-based provider picker (openAnalysisProviderPicker)
     // was removed when the provider pill became a dropdown — see
     // toggleProviderPillMenu / switchAnalysisProvider above.
+
+    function renderAnalysisScopeSelect() {
+      const session = selectedSessionId ? getSessionById(selectedSessionId) : null;
+      if (!session) return "";
+      const blocks = selectableSessionBlocks(session);
+      if (blocks.length < 2) return "";
+      const currentKey = selectedScopeKey();
+      const options = [`<option value="full"${currentKey === "full" ? " selected" : ""}>${escapeHtml(t("fullSessionScope"))}</option>`];
+      for (const block of blocks) {
+        const key = scopeKey(block);
+        const label = rangeScopeLabel(block.start, block.end);
+        options.push(`<option value="${escapeHtml(key)}"${currentKey === key ? " selected" : ""}>${escapeHtml(label)}</option>`);
+      }
+      return `<select class="analysis-scope-select" id="analysisScopeSelect" title="${escapeHtml(t("switchScope"))}" aria-label="${escapeHtml(t("switchScope"))}">${options.join("")}</select>`;
+    }
 
     function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent, pendingMode = null) {
       const providerLabel = formatAnalysisProviderShort(providerId);
@@ -3269,12 +3393,14 @@
         + `<div class="provider-pill-menu" data-role="provider-pill-menu" role="listbox"></div>`
         + `</span>`;
       const regenLabel = targetProviderId && targetProviderId !== providerId ? `改用 ${formatAnalysisProviderShort(targetProviderId)}` : "";
+      const scopeSelect = renderAnalysisScopeSelect();
       return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     <div style="display:flex;gap:4px;padding:2px;background:var(--border);border-radius:999px">
       <button data-analysis-mode="brief" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'transparent' : 'var(--bg-card)'};color:${detailActive ? 'var(--text-secondary)' : 'var(--accent)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${briefPending ? '0.9' : '1'}">${escapeHtml(briefPending ? `${t("brief")}…` : t("brief"))}</button>
       <button data-analysis-mode="detail" ${pendingMode ? 'disabled' : ''} style="padding:4px 10px;border:none;border-radius:999px;background:${detailActive ? 'var(--bg-card)' : 'transparent'};color:${detailActive ? 'var(--accent)' : 'var(--text-secondary)'};font-size:11px;font-weight:700;cursor:${pendingMode ? 'progress' : 'pointer'};opacity:${detailPending ? '0.9' : '1'}">${escapeHtml(detailPending ? `${t("detail")}…` : t("detail"))}</button>
     </div>
     ${pillHtml}
+    ${scopeSelect}
     <span style="margin-left:auto"></span>
     ${regenLabel ? `<button id="analysisRegenerateBtn" style="border:none;background:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 0">${escapeHtml(t("regenerateWith", { provider: formatAnalysisProviderShort(targetProviderId) }))}</button>` : ""}
   </div>`;
@@ -3283,6 +3409,20 @@
     function fmtDur(ms) { if (!ms || ms <= 0) return "0m"; const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return h > 0 ? `${h}h${m > 0 ? m + "m" : ""}` : m + "m"; }
     function fmtTime(ts) { const d = new Date(ts); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
     function fmtDate(ts) { const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`; }
+    function sameDate(a, b) { return dayStart(a) === dayStart(b); }
+    function rangeDateLabel(start, end) {
+      if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end))) return "--";
+      return sameDate(start, end) ? fmtDate(start) : `${fmtDate(start)}-${fmtDate(end)}`;
+    }
+    function rangeTimeLabel(start, end) {
+      if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end))) return "--";
+      return `${fmtTime(start)}-${fmtTime(end)}`;
+    }
+    function rangeScopeLabel(start, end) {
+      if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end))) return "--";
+      if (sameDate(start, end)) return `${fmtDate(start)} ${fmtTime(start)}-${fmtTime(end)}`;
+      return `${fmtDate(start)} ${fmtTime(start)} - ${fmtDate(end)} ${fmtTime(end)}`;
+    }
     function agentColor(a) { return AGENT_COLORS[a] || "#A0AEC0"; }
     function agentLabel(a) { return AGENT_LABELS[a] || a; }
     function agentClass(a) { return (a || "unknown").replace(/[^a-z0-9-]/g, ""); }
@@ -3321,6 +3461,35 @@
       if (session.blocks && session.blocks.length) return session.blocks;
       if (session.firstTs) return [{ start: session.firstTs, end: session.lastTs || session.firstTs, msgs: session.messages || 0 }];
       return [];
+    }
+    function selectableSessionBlocks(session) {
+      return (sessionBlocks(session) || [])
+        .filter(block => Number.isFinite(Number(block.start)) && Number.isFinite(Number(block.end)))
+        .slice()
+        .sort((a, b) => (
+          Number(b.start) - Number(a.start) ||
+          Number(b.end) - Number(a.end)
+        ));
+    }
+    function sessionDateLabel(session) {
+      if (!session || !session.firstTs || !session.lastTs) return "--";
+      return rangeDateLabel(session.firstTs, session.lastTs);
+    }
+    function sessionTimeLabel(session) {
+      if (!session || !session.firstTs || !session.lastTs) return "--";
+      return rangeTimeLabel(session.firstTs, session.lastTs);
+    }
+    function renderEventScopeSelect(session) {
+      const blocks = selectableSessionBlocks(session);
+      if (blocks.length < 2) return "";
+      const currentKey = selectedSessionId === session.id ? selectedScopeKey() : "full";
+      const options = [`<option value="full"${currentKey === "full" ? " selected" : ""}>${escapeHtml(t("fullSessionScope"))}</option>`];
+      for (const block of blocks) {
+        const key = scopeKey(block);
+        const label = `${rangeScopeLabel(block.start, block.end)} · ${fmtDur(Number(block.end) - Number(block.start))}`;
+        options.push(`<option value="${escapeHtml(key)}"${currentKey === key ? " selected" : ""}>${escapeHtml(label)}</option>`);
+      }
+      return `<div class="evt-scope-row"><select class="evt-scope-select" data-scope-select-sid="${escapeHtml(session.id)}" data-agent="${escapeHtml(session.agent)}" title="${escapeHtml(t("switchScope"))}" aria-label="${escapeHtml(t("switchScope"))}">${options.join("")}</select></div>`;
     }
     function sessionToolCount(session) {
       return Object.values(session.toolCalls || {}).reduce((sum, count) => sum + count, 0);
@@ -3614,7 +3783,9 @@
             const tipDetail = escapeHtml(t("tooltipDetail", { agent: agentLabel(s.agent), time: `${fmtTime(b.start)}-${fmtTime(b.end)}`, duration: dur, messages: s.messages }));
             // Always show session name; CSS overflow:hidden + ellipsis handles narrow blocks
             const lbl = wp > 10 ? `${safeProj} · ${escapeHtml(dur)}` : safeProj;
-            bhtml += `<div class="time-block${selectedSessionId === s.id ? " selected" : ""}" style="left:${lp}%;width:${wp}%;background:${projColor(s.project || s.title || 'unknown')};opacity:${opacity.toFixed(2)};box-shadow:inset 0 0 0 1px ${agentColor(s.agent)}" data-sid="${s.id}" data-agent="${s.agent}" data-tip-title="${tipTitle}" data-tip-detail="${tipDetail}">${lbl}</div>`;
+            const blockScopeKey = scopeKey(b);
+            const isSelectedBlock = selectedSessionId === s.id && (selectedScopeKey() === "full" || selectedScopeKey() === blockScopeKey);
+            bhtml += `<div class="time-block${isSelectedBlock ? " selected" : ""}" style="left:${lp}%;width:${wp}%;background:${projColor(s.project || s.title || 'unknown')};opacity:${opacity.toFixed(2)};box-shadow:inset 0 0 0 1px ${agentColor(s.agent)}" data-sid="${s.id}" data-agent="${s.agent}" data-scope-key="${blockScopeKey}" data-scope-start="${Number(b.start)}" data-scope-end="${Number(b.end)}" data-tip-title="${tipTitle}" data-tip-detail="${tipDetail}">${lbl}</div>`;
           }
           return `<div class="timeline-lane">${bhtml}</div>`;
         }).join("");
@@ -3719,12 +3890,13 @@
         html += '<div class="evt-day-grid">';
         for (const s of daySessions) {
           const dur = sessDur(s);
-          const timeRange = s.firstTs && s.lastTs ? `${fmtTime(s.firstTs)}-${fmtTime(s.lastTs)}` : "--";
+          const dateRange = sessionDateLabel(s);
+          const timeRange = sessionTimeLabel(s);
           // Resolve display title via priority chain — see resolveTitle() comment
           const resolved = resolveTitle(s);
           const proj = resolved.text;
           const titleSource = resolved.source;
-          const cached = getCachedAnalysis(s.id);
+          const cached = getCachedAnalysis(s.id, selectedAnalysisAgent, null, null);
           const isAnalyzed = !!cached;
           const isAnalyzing = analyzingSessionIds.has(s.id);
           const desc = isAnalyzed ? (cached.summary || "").slice(0, 100) : (s.firstUserMsg || `${agentLabel(s.agent)} · ${t("messageCount", { count: s.messages })}`);
@@ -3737,17 +3909,20 @@
               : titleSource === 'firstMsg' ? t("renameHintFirstMsg")
                 : t("renameHintProject");
           const isChecked = selectedExportSessionIds.has(s.id);
+          const scopeSelect = renderEventScopeSelect(s);
           html += `<div class="evt-card${selectedSessionId === s.id ? " selected" : ""}${isChecked ? " multi-selected" : ""}${isAnalyzed ? " analyzed" : ""}${isAnalyzing ? " analyzing" : ""}" data-sid="${s.id}" data-agent="${s.agent}">
         <div class="evt-check">
           <input type="checkbox" data-select-sid="${s.id}" ${isChecked ? "checked" : ""} aria-label="Select session">
         </div>
         <div class="evt-col">
+          <div class="evt-date">${escapeHtml(dateRange)}</div>
           <div class="evt-time">${escapeHtml(timeRange)}</div>
           <div class="evt-meta">${escapeHtml(metaLine)}</div>
         </div>
         <div class="evt-col">
           <div class="evt-dur">${escapeHtml(fmtDur(dur))}</div>
           <div class="evt-dur-label">${escapeHtml(t("activeSpan"))}</div>
+          <div class="evt-dur-date">${escapeHtml(dateRange)}</div>
         </div>
         <div class="evt-col">
           <div class="evt-agent"><span class="evt-agent-dot" style="background:${agentColor(s.agent)}"></span>${escapeHtml(agentLabel(s.agent))}</div>
@@ -3755,6 +3930,7 @@
         <div class="evt-main">
           <div class="evt-title"><button class="evt-rename-btn" data-rename-sid="${s.id}" title="${escapeHtml(t("renameSession"))}" aria-label="${escapeHtml(t("renameSession"))}">✎</button><span class="edot" style="background:${projColor(s.project || s.title || 'unknown')}"></span><span class="evt-title-text" data-source="${titleSource}" title="${escapeHtml(renameTitle)}">${escapeHtml(proj)}</span>${isAnalyzing ? `<span class="evt-tag evt-tag-running">${escapeHtml(t("analyzingTag"))}</span>` : (isAnalyzed ? `<span class="evt-tag">${escapeHtml(t("analyzed"))}</span>` : "")}</div>
           <div class="evt-desc" id="desc-${s.id}">${escapeHtml(desc)}</div>
+          ${scopeSelect}
         </div>
       </div>`;
         }
@@ -3768,6 +3944,16 @@
           e.stopPropagation();
           toggleSessionExportSelection(input.getAttribute("data-select-sid"), !!input.checked);
           input.closest(".evt-card")?.classList.toggle("multi-selected", !!input.checked);
+        });
+      });
+      el.querySelectorAll("[data-scope-select-sid]").forEach(select => {
+        select.addEventListener("pointerdown", e => e.stopPropagation());
+        select.addEventListener("click", e => e.stopPropagation());
+        select.addEventListener("change", e => {
+          e.stopPropagation();
+          const sid = select.getAttribute("data-scope-select-sid");
+          const agent = select.getAttribute("data-agent");
+          selectSession(sid, agent, scopeFromKey(sid, select.value));
         });
       });
       // Day-level select-all icon — per day header.
@@ -3899,7 +4085,18 @@
     document.addEventListener("mousemove", e => { const t = document.getElementById("tooltip"); if (t.style.display === "block") posTip(e); });
 
     // ── Click → Analysis ──
-    function onBlockClick(e) { selectSession(e.currentTarget.dataset.sid, e.currentTarget.dataset.agent); }
+    function onBlockClick(e) {
+      const el = e.currentTarget;
+      const session = getSessionById(el.dataset.sid);
+      if (!session || selectableSessionBlocks(session).length < 2) {
+        selectSession(el.dataset.sid, el.dataset.agent);
+        return;
+      }
+      selectSession(el.dataset.sid, el.dataset.agent, {
+        start: el.dataset.scopeStart,
+        end: el.dataset.scopeEnd,
+      });
+    }
     function onCardClick(e) { const c = e.currentTarget; selectSession(c.dataset.sid, c.dataset.agent); }
 
     // Holds plain-text/markdown copy of whatever's currently rendered in the
@@ -3985,14 +4182,17 @@
 
     async function requestSessionAnalysis(sessionId, agent, providerId, mode, opts = {}) {
       const trackUi = opts.trackUi !== false;
+      const scope = Object.prototype.hasOwnProperty.call(opts, "scope")
+        ? normalizeAnalysisScope(opts.scope)
+        : selectedAnalysisScope;
       if (trackUi) markAnalyzing(sessionId);
       try {
-        let result = await window.analyticsAPI.analyzeSession(sessionId, agent, providerId, mode);
+        let result = await window.analyticsAPI.analyzeSession(sessionId, agent, providerId, mode, scope);
         if (mode === "detail" && result && !result.keyTopics && !result.outcomes) {
           console.warn("Detail analysis returned unstructured fallback, retrying as brief");
-          result = await window.analyticsAPI.analyzeSession(sessionId, agent, providerId, "brief");
+          result = await window.analyticsAPI.analyzeSession(sessionId, agent, providerId, "brief", scope);
         }
-        if (result) setCachedAnalysis(sessionId, providerId, result);
+        if (result) setCachedAnalysis(sessionId, providerId, result, scope);
         return result;
       } finally {
         if (trackUi) unmarkAnalyzing(sessionId);
@@ -4003,15 +4203,16 @@
       return mode === "detail" ? "brief" : "detail";
     }
 
-    async function prefetchAlternateAnalysisMode(sessionId, agent, currentMode, providerId = selectedAnalysisAgent) {
+    async function prefetchAlternateAnalysisMode(sessionId, agent, currentMode, providerId = selectedAnalysisAgent, scope = selectedAnalysisScope) {
       if (!analysisConsented || !sessionId || !agent || !providerId) return;
+      const targetScope = normalizeAnalysisScope(scope);
       const targetMode = getAlternateAnalysisMode(currentMode || "brief");
-      if (getCachedAnalysis(sessionId, providerId, targetMode)) return;
-      const prefetchKey = `${analysisCacheKey(sessionId, providerId, targetMode)}:prefetch`;
+      if (getCachedAnalysis(sessionId, providerId, targetMode, targetScope)) return;
+      const prefetchKey = `${analysisCacheKey(sessionId, providerId, targetMode, targetScope)}:prefetch`;
       if (analysisPrefetchInFlight.has(prefetchKey)) return;
       analysisPrefetchInFlight.add(prefetchKey);
       try {
-        await requestSessionAnalysis(sessionId, agent, providerId, targetMode, { trackUi: false });
+        await requestSessionAnalysis(sessionId, agent, providerId, targetMode, { trackUi: false, scope: targetScope });
         if (currentData) renderEvents(currentData);
       } catch {
         // Ignore prefetch failures; interactive mode switches still work on demand.
@@ -4065,9 +4266,9 @@
     }
 
     async function getExactAnalysisForExport(session, providerId, mode) {
-      const cached = getCachedAnalysis(session.id, providerId, mode);
+      const cached = getCachedAnalysis(session.id, providerId, mode, null);
       if (cached) return cached;
-      const result = await requestSessionAnalysis(session.id, session.agent, providerId, mode);
+      const result = await requestSessionAnalysis(session.id, session.agent, providerId, mode, { scope: null });
       return result || null;
     }
 
@@ -4537,23 +4738,25 @@
       return html;
     }
 
-    async function loadAnalysisForSession(sessionId, agent, mode = "brief") {
+    async function loadAnalysisForSession(sessionId, agent, mode = "brief", scope = selectedAnalysisScope) {
       const targetMode = mode || "brief";
+      const targetScope = normalizeAnalysisScope(scope);
       currentAnalysisMode = targetMode;
       const ct = document.getElementById("analysisContent");
-      const cached = getCachedAnalysis(sessionId, selectedAnalysisAgent, targetMode);
+      const cached = getCachedAnalysis(sessionId, selectedAnalysisAgent, targetMode, targetScope);
       if (cached) {
         showAnalysisContent();
         ensureAnalysisPanelVisible();
         renderAnalysis(cached);
         bindAnalysisErrorLinks(ct);
-        void prefetchAlternateAnalysisMode(sessionId, agent, targetMode, selectedAnalysisAgent);
+        void prefetchAlternateAnalysisMode(sessionId, agent, targetMode, selectedAnalysisAgent, targetScope);
         return;
       }
       const consent = await ensureAnalysisConsent(selectedAnalysisAgent);
       if (!consent) {
-        if (consent === false && selectedSessionId === sessionId) {
+        if (consent === false && selectedSessionId === sessionId && sameAnalysisScope(selectedAnalysisScope, targetScope)) {
           selectedSessionId = null;
+          selectedAnalysisScope = null;
           showAnalysisPlaceholder();
           refreshSel();
         }
@@ -4562,8 +4765,8 @@
       showAnalysisLoading();
       ensureAnalysisPanelVisible();
       try {
-        const result = await requestSessionAnalysis(sessionId, agent, selectedAnalysisAgent, targetMode);
-        if (selectedSessionId !== sessionId) return;
+        const result = await requestSessionAnalysis(sessionId, agent, selectedAnalysisAgent, targetMode, { scope: targetScope });
+        if (selectedSessionId !== sessionId || !sameAnalysisScope(selectedAnalysisScope, targetScope)) return;
         showAnalysisContent();
         ensureAnalysisPanelVisible();
         if (!result) {
@@ -4574,7 +4777,7 @@
         renderAnalysis(result);
         bindAnalysisErrorLinks(ct);
         if (currentData) renderEvents(currentData);
-        void prefetchAlternateAnalysisMode(sessionId, agent, currentAnalysisMode, selectedAnalysisAgent);
+        void prefetchAlternateAnalysisMode(sessionId, agent, currentAnalysisMode, selectedAnalysisAgent, targetScope);
       } catch (err) {
         showAnalysisContent();
         ensureAnalysisPanelVisible();
@@ -4585,9 +4788,18 @@
       }
     }
 
-    async function selectSession(sid, agent) {
-      if (selectedSessionId === sid) { selectedSessionId = null; showAnalysisPlaceholder(); refreshSel(); return; }
-      selectedSessionId = sid; refreshSel();
+    async function selectSession(sid, agent, scope = null) {
+      const nextScope = normalizeAnalysisScope(scope);
+      if (selectedSessionId === sid && sameAnalysisScope(selectedAnalysisScope, nextScope)) {
+        selectedSessionId = null;
+        selectedAnalysisScope = null;
+        showAnalysisPlaceholder();
+        refreshSel();
+        return;
+      }
+      selectedSessionId = sid;
+      selectedAnalysisScope = nextScope;
+      refreshSel();
       await loadAnalysisForSession(sid, agent, "brief");
     }
 
@@ -4831,6 +5043,10 @@
       ct.querySelectorAll("[data-analysis-mode]").forEach(btn => {
         btn.addEventListener("click", () => runAnalysisMode(btn.getAttribute("data-analysis-mode")));
       });
+      const scopeSelect = ct.querySelector("#analysisScopeSelect");
+      if (scopeSelect) {
+        scopeSelect.addEventListener("change", () => switchAnalysisScope(scopeSelect.value));
+      }
       // Provider pill / dropdown is wired via event delegation on
       // #analysisPanel so it survives re-renders (see the listener at the
       // bottom of the file). Nothing to attach per-render here.
@@ -4839,11 +5055,12 @@
         regenerateBtn.addEventListener("click", async () => {
           if (!selectedSessionId) return;
           const agent = getSessionAgent(selectedSessionId);
+          const scope = selectedAnalysisScope;
           if (!(await ensureAnalysisConsent(targetProviderId))) return;
           showAnalysisLoading();
           try {
-            const result = await requestSessionAnalysis(selectedSessionId, agent, targetProviderId, currentAnalysisMode);
-            if (selectedSessionId == null) return;
+            const result = await requestSessionAnalysis(selectedSessionId, agent, targetProviderId, currentAnalysisMode, { scope });
+            if (selectedSessionId == null || !sameAnalysisScope(selectedAnalysisScope, scope)) return;
             showAnalysisContent();
             if (!result) {
               ct.innerHTML = `<div style="color:var(--text-secondary)">${escapeHtml(t("couldNotAnalyze"))}</div>`;
@@ -4851,7 +5068,7 @@
             }
             renderAnalysis(result);
             if (currentData) renderEvents(currentData);
-            void prefetchAlternateAnalysisMode(selectedSessionId, agent, currentAnalysisMode, targetProviderId);
+            void prefetchAlternateAnalysisMode(selectedSessionId, agent, currentAnalysisMode, targetProviderId, scope);
           } catch (err) {
             showAnalysisContent();
             currentRenderedAnalysis = null;
@@ -4870,7 +5087,20 @@
       await loadAnalysisForSession(selectedSessionId, getSessionAgent(selectedSessionId), mode);
     }
 
-    function refreshSel() { document.querySelectorAll(".time-block,.evt-card").forEach(el => { el.classList.toggle("selected", el.dataset.sid === selectedSessionId); }); }
+    function refreshSel() {
+      const currentScope = selectedScopeKey();
+      document.querySelectorAll(".time-block,.evt-card").forEach(el => {
+        const sameSession = el.dataset.sid === selectedSessionId;
+        if (el.classList.contains("time-block")) {
+          const sameScope = currentScope === "full" || el.dataset.scopeKey === currentScope;
+          el.classList.toggle("selected", sameSession && sameScope);
+        } else {
+          el.classList.toggle("selected", sameSession);
+          const scopeSelect = el.querySelector("[data-scope-select-sid]");
+          if (scopeSelect) scopeSelect.value = sameSession ? currentScope : "full";
+        }
+      });
+    }
 
     async function openReportModal(scope) {
       const overlay = document.getElementById("reportOverlay");
@@ -4960,6 +5190,7 @@
         tab.classList.add("active");
         currentRange = tab.dataset.range;
         selectedSessionId = null;
+        selectedAnalysisScope = null;
         selectedExportSessionIds.clear();
         updateExportSelectionUI();
         userOverrideRange = false; // reset zoom so autoDetectRange covers all sessions
@@ -5406,6 +5637,7 @@
         }
         currentAnalysisMode = "brief";
         selectedSessionId = null;
+        selectedAnalysisScope = null;
         showAnalysisPlaceholder();
         refreshSel();
         if (currentData) renderEvents(currentData);
@@ -5670,7 +5902,7 @@
       // provider. Results are now provider-scoped in the UI, so switching
       // analyzers means opting into a new set of cached outputs.
       const totalRequested = sessionsToAnalyze.length;
-      sessionsToAnalyze = sessionsToAnalyze.filter(s => !getCachedAnalysis(s.id, selectedAnalysisAgent));
+      sessionsToAnalyze = sessionsToAnalyze.filter(s => !getCachedAnalysis(s.id, selectedAnalysisAgent, null, null));
       const skipped = totalRequested - sessionsToAnalyze.length;
       if (skipped > 0) {
         console.log(`[batch] skipping ${skipped} already-analyzed sessions, running ${sessionsToAnalyze.length} new`);
@@ -5698,7 +5930,7 @@
           const result = await window.analyticsAPI.analyzeSession(s.id, s.agent, selectedAnalysisAgent);
           unmarkAnalyzing(s.id);
           if (result && result.summary) {
-            setCachedAnalysis(s.id, selectedAnalysisAgent, result);
+            setCachedAnalysis(s.id, selectedAnalysisAgent, result, null);
             if (currentData) renderEvents(currentData);
           }
         } catch (e) { unmarkAnalyzing(s.id); console.warn("Batch analysis failed for", s.id, e); }

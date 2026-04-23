@@ -701,7 +701,37 @@ module.exports = function initAnalyticsScan(ctx) {
     return null;
   }
 
-  function getSessionDetail(sessionId, agent) {
+  function normalizeDetailScope(scope) {
+    if (!scope || typeof scope !== "object") return null;
+    const start = Number(scope.start);
+    const end = Number(scope.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    if (end < start) return null;
+    return { start, end };
+  }
+
+  function inDetailScope(ts, scope) {
+    if (!scope) return true;
+    if (!Number.isFinite(ts)) return false;
+    return ts >= scope.start && ts <= scope.end;
+  }
+
+  function applyDetailScope(detail, rawScope) {
+    const scope = normalizeDetailScope(rawScope);
+    if (!scope) return detail;
+    const scoped = {
+      ...detail,
+      analysisId: `${detail.sessionId}@${scope.start}-${scope.end}`,
+      scope,
+      conversation: (detail.conversation || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
+      userMessages: (detail.userMessages || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
+      toolCalls: (detail.toolCalls || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
+      timestamps: (detail.timestamps || []).filter(ts => inDetailScope(Number(ts), scope)),
+    };
+    return scoped;
+  }
+
+  function getSessionDetail(sessionId, agent, scope) {
     const filePath = findSessionFile(sessionId, agent);
     if (!filePath) return null;
 
@@ -843,7 +873,7 @@ module.exports = function initAnalyticsScan(ctx) {
     // Use agent-name as title fallback when no custom-title was set
     if (!detail.title && agentNameFallback) detail.title = agentNameFallback;
 
-    return detail;
+    return applyDetailScope(detail, scope);
   }
 
   function invalidateCache() {

@@ -245,9 +245,9 @@ module.exports = function initAnalytics(ctx) {
     return { ok };
   });
 
-  ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider, mode) => {
+  ipcMain.handle("analytics-analyze-session", async (_event, sessionId, agent, preferredProvider, mode, scope) => {
     if (!ctx.analyticsScan || !ctx.analyticsAI) return null;
-    const detail = ctx.analyticsScan.getSessionDetail(sessionId, agent);
+    const detail = ctx.analyticsScan.getSessionDetail(sessionId, agent, scope);
     if (!detail) return null;
     if (preferredProvider) detail._preferredProvider = preferredProvider;
     const result = await ctx.analyticsAI.analyzeSession(detail, mode);

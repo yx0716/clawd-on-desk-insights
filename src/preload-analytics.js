@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld("analyticsAPI", {
   getConversations: (range) => ipcRenderer.invoke("analytics-get-conversations", range),
   getTimeline: (range, year, month) => ipcRenderer.invoke("analytics-get-timeline", range, year, month),
   getAvailableMonths: () => ipcRenderer.invoke("analytics-get-available-months"),
-  analyzeSession: (sessionId, agent, provider, mode) => ipcRenderer.invoke("analytics-analyze-session", sessionId, agent, provider, mode),
+  analyzeSession: (sessionId, agent, provider, mode, scope) => ipcRenderer.invoke("analytics-analyze-session", sessionId, agent, provider, mode, scope),
   getAnalysisProvider: () => ipcRenderer.invoke("analytics-get-analysis-provider"),
   getAnalysisOptions: () => ipcRenderer.invoke("analytics-get-analysis-options"),
   getOneLiners: (sessionIds) => ipcRenderer.invoke("analytics-get-oneliners", sessionIds),

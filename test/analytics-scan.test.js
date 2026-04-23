@@ -211,4 +211,30 @@ describe("analytics scan", () => {
       ]
     );
   });
+
+  it("can scope codex session detail to a selected time range", () => {
+    const sessionId = "019d629b-5f09-73f1-b73c-7fd96130fad0";
+    const rolloutId = `rollout-2026-04-06T19-44-02-${sessionId}`;
+    const cwd = "/Users/jyx/Documents/1_explore/project-alpha";
+    writeCodexSession(tempHome, sessionId, cwd);
+
+    const initAnalyticsScan = require("../src/analytics-scan");
+    const analyticsScan = initAnalyticsScan({});
+    const start = new Date("2026-04-06T11:44:05.000Z").getTime();
+    const end = new Date("2026-04-06T11:44:06.000Z").getTime();
+    const detail = analyticsScan.getSessionDetail(rolloutId, "codex", { start, end });
+
+    assert.ok(detail);
+    assert.strictEqual(detail.analysisId, `${rolloutId}@${start}-${end}`);
+    assert.deepStrictEqual(detail.scope, { start, end });
+    assert.deepStrictEqual(
+      detail.conversation.map(entry => [entry.role, entry.text]),
+      [
+        ["user", "second prompt"],
+        ["assistant", "second reply"],
+      ]
+    );
+    assert.deepStrictEqual(detail.userMessages.map(entry => entry.text), ["second prompt"]);
+    assert.deepStrictEqual(detail.timestamps, [start, end]);
+  });
 });
