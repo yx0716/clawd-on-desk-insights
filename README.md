@@ -59,7 +59,7 @@ A small crab appears on your desktop — on macOS, right-click it to open the **
 | **Timeline view** | Visualize every session by date / project / agent / duration — at a glance, see when you worked, on what, and for how long |
 | **Local history scan** | Reads `~/.claude/projects/`, `~/.codex/sessions/`, `~/.cursor/projects/` directly. No upload, no telemetry |
 | **AI session review** | Per-session summary from the *user's* point of view: what you were trying to do, what you walked away with, key topics, time breakdown |
-| **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys |
+| **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys. Add any number of **custom OpenAI-compatible endpoints** (Zhipu AI, DeepSeek, OpenRouter…) for cheap session analysis |
 | **Batch pre-analysis** | Pre-compute summaries for recent sessions and reuse provider-aware cached results |
 | **Cost tracking** | See token usage and cost per analysis run |
 | **Quick access** | Open from the tray menu, the right-click menu on the desktop pet, or a global shortcut |
@@ -143,8 +143,39 @@ The dialog has two sections:
 
 - **LOCAL CLI DETECTION** — shows whether the dashboard found `claude` and `codex` on your machine. Green dot = found (with version + path); red dot = missing. **If you see green dots, everything is working — proceed to the next step.**
 - **API PROVIDER (FALLBACK)** — if no local CLI is installed, you can use an API key for AI session analysis (Claude / OpenAI / Ollama / …) — just paste the key and you're set.
+- **CUSTOM ANALYSIS PROVIDERS** — add any number of OpenAI-compatible endpoints (Zhipu AI, DeepSeek, OpenRouter, university APIs, etc.) as dedicated analysis backends. See below.
 
 > **Tip**: if your `claude` or `codex` was installed via **NVM, fnm, or Volta**, auto-detection may miss it. Run `which claude` or `which codex` in your terminal and paste the output into the **Claude binary path** / **Codex binary path** override field.
+
+### Custom Analysis Providers
+
+You can add cheap, dedicated API endpoints specifically for session analysis — keeping your expensive coding models for actual work.
+
+**Why this matters**: your coding sessions use Claude Code or Codex (subscription or pay-per-token). Session *analysis* is a much simpler task — a `glm-4-flash` call costs ~$0.0001 vs ~$0.01 for a Sonnet call. Adding a cheap custom provider lets you analyze hundreds of sessions for pennies.
+
+#### Adding a custom provider
+
+1. Open the Analytics Dashboard → click the **gear icon ⚙** → **AI Provider Settings**
+2. Scroll to **Custom Analysis Providers** → click **+ Add Provider**
+3. Fill in the form:
+   - **Provider Name** — a friendly label (e.g. `Zhipu AI GLM-4-Flash`)
+   - **Type** — `OpenAI-Compatible` for most providers; `Claude` for Anthropic-format; `Ollama` for local
+   - **API Endpoint** — your provider's base URL (the `/v1/chat/completions` path is appended automatically for OpenAI-compatible)
+   - **API Key** — your key (stored locally in your prefs file, never uploaded)
+   - **Model** — the model identifier
+4. Click **Test Connection** to verify, then **Save**
+
+The provider immediately appears in the **provider pill** dropdown on every session card — click it to switch which backend analyzes that session.
+
+#### Popular cheap providers
+
+| Provider | Type | Endpoint | Recommended model |
+|---|---|---|---|
+| **Zhipu AI (智谱)** | OpenAI-Compatible | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| **DeepSeek** | OpenAI-Compatible | `https://api.deepseek.com` | `deepseek-chat` |
+| **OpenRouter** | OpenAI-Compatible | `https://openrouter.ai/api/v1` | `google/gemini-flash-1.5` |
+| **Ollama (local)** | Ollama | `http://localhost:11434` | `qwen2.5:7b` |
+| **University API** | OpenAI-Compatible | your institution's endpoint | `gpt-4o-mini` |
 
 ### Quick self-check
 

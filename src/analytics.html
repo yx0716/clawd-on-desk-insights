@@ -1828,6 +1828,49 @@
       margin-bottom: 8px;
     }
 
+    /* Custom provider list */
+    .btn-add-provider {
+      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px dashed var(--border);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-add-provider:hover { background: var(--accent-light); }
+
+    .provider-card {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      background: var(--bg);
+      font-size: 11px;
+    }
+    .provider-card-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .provider-card-dot.enabled { background: #48BB78; }
+    .provider-card-dot.disabled { background: var(--text-muted); }
+    .provider-card-info { flex: 1; min-width: 0; }
+    .provider-card-name { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .provider-card-meta { color: var(--text-muted); font-size: 10px; }
+    .provider-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .provider-card-actions button {
+      font-size: 10px; padding: 3px 7px;
+      border-radius: 4px; border: 1px solid var(--border);
+      background: var(--bg-card); color: var(--text-secondary); cursor: pointer;
+    }
+    .provider-card-actions button:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+    .provider-card-actions .btn-del:hover { background: #FDECEA; color: #C62828; border-color: #C62828; }
+
     .cli-diag {
       background: var(--bg);
       border: 1px solid var(--border-light);
@@ -2334,11 +2377,66 @@
         </div>
       </div>
 
+      <!-- Section 3: Custom Analysis Providers -->
+      <div class="settings-section" id="customProvidersSection">
+        <h3 id="customProvidersTitle">Custom Analysis Providers</h3>
+        <div class="settings-sub" id="customProvidersSub" style="margin-bottom:10px">Add OpenAI-compatible endpoints, Zhipu AI, DeepSeek, or any local model for cheaper session analysis.</div>
+
+        <div id="customProviderList" style="margin-bottom:8px"></div>
+
+        <button type="button" class="btn-add-provider" id="addCustomProviderBtn">+ Add Provider</button>
+      </div>
+
       <div class="settings-btns">
         <button class="btn-clear" id="settingsClearCacheBtn" type="button">Clear Analysis Cache</button>
         <button class="btn-clear" id="settingsClearBtn" type="button">Clear</button>
         <button class="btn-cancel" id="settingsCancelBtn" type="button">Cancel</button>
         <button class="btn-save" id="settingsSaveBtn" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Provider Add/Edit Dialog -->
+  <div class="confirm-overlay" id="providerDialogOverlay" style="display:none">
+    <div class="settings-dialog" style="max-width:420px">
+      <h2 id="providerDialogTitle">Add Custom Provider</h2>
+      <div class="settings-status" id="providerDialogStatus"></div>
+
+      <div class="settings-field">
+        <label for="providerName" id="providerNameLabel">Provider Name *</label>
+        <input id="providerName" type="text" autocomplete="off" spellcheck="false" placeholder="e.g., Zhipu AI GLM-4-Flash">
+      </div>
+      <div class="settings-field">
+        <label for="providerType" id="providerTypeLabel">Type *</label>
+        <select id="providerType">
+          <option value="openai">OpenAI-Compatible (Zhipu, DeepSeek, OpenRouter…)</option>
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="ollama">Ollama (Local)</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label for="providerBaseUrl" id="providerBaseUrlLabel">API Endpoint *</label>
+        <input id="providerBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://open.bigmodel.cn/api/paas/v4">
+        <div class="field-hint" id="providerBaseUrlHint">For OpenAI-compatible: <code>/v1/chat/completions</code> will be appended (unless your URL already ends with <code>/v1</code> or the full path).</div>
+        <div class="field-hint" id="providerResolvedUrl" style="color:var(--accent);display:none">→ Will call: <code id="providerResolvedUrlText"></code></div>
+      </div>
+      <div class="settings-field" id="providerApiKeyField">
+        <label for="providerApiKey" id="providerApiKeyLabel">API Key</label>
+        <input id="providerApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+      </div>
+      <div class="settings-field">
+        <label for="providerModel" id="providerModelLabel">Model *</label>
+        <input id="providerModel" type="text" autocomplete="off" spellcheck="false" placeholder="e.g., glm-4-flash, gpt-4o-mini, deepseek-chat">
+        <div class="field-hint" id="providerModelHint">Common cheap models: <code>glm-4-flash</code>, <code>gpt-4o-mini</code>, <code>deepseek-chat</code></div>
+      </div>
+      <div class="settings-field" style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="btn-cancel" id="testProviderBtn" style="flex-shrink:0">Test Connection</button>
+        <span id="providerTestResult" style="font-size:11px"></span>
+      </div>
+
+      <div class="settings-btns">
+        <button class="btn-cancel" id="providerDialogCancelBtn" type="button">Cancel</button>
+        <button class="btn-save" id="providerDialogSaveBtn" type="button">Save</button>
       </div>
     </div>
   </div>
@@ -3373,8 +3471,13 @@
       return `<select class="analysis-scope-select" id="analysisScopeSelect" title="${escapeHtml(t("switchScope"))}" aria-label="${escapeHtml(t("switchScope"))}">${options.join("")}</select>`;
     }
 
-    function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent, pendingMode = null) {
+    function renderAnalysisHeader(providerId, mode, targetProviderId = selectedAnalysisAgent, pendingMode = null, modelHint = null) {
       const providerLabel = formatAnalysisProviderShort(providerId);
+      // Show model name in pill when it's a custom provider (UUID id) and a model hint is available
+      const isCustomProvider = providerId && providerId.includes("-") && providerId.length > 20;
+      const pillLabel = (modelHint && isCustomProvider)
+        ? `${providerLabel} · ${modelHint}`
+        : providerLabel;
       const effectiveMode = pendingMode || mode;
       const detailActive = effectiveMode === "detail";
       const briefPending = pendingMode === "brief";
@@ -3387,7 +3490,7 @@
         : "";
       const pillHtml = `<span class="provider-pill-wrap">`
         + `<button type="button" class="analysis-provider-pill" data-role="provider-pill" data-current-provider="${escapeHtml(providerId || "")}"${hasProviderChoices ? "" : " disabled"}${pillTitleAttr}>`
-        + `<span>${escapeHtml(providerLabel)}</span>`
+        + `<span>${escapeHtml(pillLabel)}</span>`
         + (hasProviderChoices ? `<span class="caret">&#9662;</span>` : "")
         + `</button>`
         + `<div class="provider-pill-menu" data-role="provider-pill-menu" role="listbox"></div>`
@@ -4930,7 +5033,7 @@
       analysisModeLoading = pendingMode;
       if (!opts.volatile) currentRenderedAnalysis = { ...r };
 
-      h += renderAnalysisHeader(providerId, mode, targetProviderId, pendingMode);
+      h += renderAnalysisHeader(providerId, mode, targetProviderId, pendingMode, r._model || null);
       if (r._fallbackNotice) {
         h += `<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary)">${escapeHtml(t("showingCachedFrom", { provider: formatAnalysisProviderShort(r._selectedProvider) }))}</div>`;
       }
@@ -5702,7 +5805,167 @@
     // Esc to close
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && _settingsOpen) closeSettings();
+      if (e.key === "Escape" && _providerDialogOpen) closeProviderDialog();
     });
+
+    // ── Custom Provider Management ──
+
+    let _providerDialogOpen = false;
+    let _editingProviderId = null;
+
+    function escHtml(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    async function renderCustomProviderList() {
+      const listEl = document.getElementById("customProviderList");
+      if (!listEl) return;
+      let providers = [];
+      try { providers = await analyticsAPI.listCustomProviders(); } catch { providers = []; }
+      if (!providers.length) {
+        listEl.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:4px 0">No custom providers yet.</div>`;
+        return;
+      }
+      listEl.innerHTML = providers.map(p => `
+        <div class="provider-card">
+          <div class="provider-card-dot ${p.enabled ? "enabled" : "disabled"}"></div>
+          <div class="provider-card-info">
+            <div class="provider-card-name">${escHtml(p.name)}</div>
+            <div class="provider-card-meta">${escHtml(p.type)} · ${escHtml(p.model)}</div>
+          </div>
+          <div class="provider-card-actions">
+            <button data-edit="${escHtml(p.id)}">Edit</button>
+            <button data-del="${escHtml(p.id)}" class="btn-del">Delete</button>
+          </div>
+        </div>
+      `).join("");
+      listEl.querySelectorAll("[data-edit]").forEach(btn => {
+        btn.addEventListener("click", () => openProviderDialog(btn.dataset.edit));
+      });
+      listEl.querySelectorAll("[data-del]").forEach(btn => {
+        btn.addEventListener("click", () => deleteCustomProvider(btn.dataset.del));
+      });
+    }
+
+    function openProviderDialog(editId = null) {
+      _editingProviderId = editId || null;
+      _providerDialogOpen = true;
+      document.getElementById("providerDialogTitle").textContent = editId ? "Edit Provider" : "Add Custom Provider";
+      document.getElementById("providerDialogStatus").textContent = "";
+      document.getElementById("providerTestResult").textContent = "";
+      document.getElementById("providerName").value = "";
+      document.getElementById("providerType").value = "openai";
+      document.getElementById("providerBaseUrl").value = "";
+      document.getElementById("providerApiKey").value = "";
+      document.getElementById("providerModel").value = "";
+      if (editId) {
+        analyticsAPI.getCustomProvider(editId).then(p => {
+          if (!p) return;
+          document.getElementById("providerName").value = p.name || "";
+          document.getElementById("providerType").value = p.type || "openai";
+          document.getElementById("providerBaseUrl").value = p.baseUrl || "";
+          document.getElementById("providerApiKey").value = p.apiKey || "";
+          document.getElementById("providerModel").value = p.model || "";
+        });
+      }
+      document.getElementById("providerDialogOverlay").style.display = "flex";
+    }
+
+    function closeProviderDialog() {
+      _providerDialogOpen = false;
+      document.getElementById("providerDialogOverlay").style.display = "none";
+    }
+
+    function getProviderFormData() {
+      return {
+        name: document.getElementById("providerName").value.trim(),
+        type: document.getElementById("providerType").value,
+        baseUrl: document.getElementById("providerBaseUrl").value.trim(),
+        apiKey: document.getElementById("providerApiKey").value.trim(),
+        model: document.getElementById("providerModel").value.trim(),
+      };
+    }
+
+    function updateResolvedUrlPreview() {
+      const type = document.getElementById("providerType").value;
+      const raw = document.getElementById("providerBaseUrl").value.trim();
+      const previewEl = document.getElementById("providerResolvedUrl");
+      const textEl = document.getElementById("providerResolvedUrlText");
+      if (!raw || type !== "openai") { previewEl.style.display = "none"; return; }
+      const trimmed = raw.replace(/\/+$/, "");
+      let resolved;
+      if (trimmed.endsWith("/chat/completions")) resolved = trimmed;
+      else if (/\/v\d+$/.test(trimmed)) resolved = `${trimmed}/chat/completions`;
+      else resolved = `${trimmed}/v1/chat/completions`;
+      textEl.textContent = resolved;
+      previewEl.style.display = "";
+    }
+
+    document.getElementById("providerBaseUrl").addEventListener("input", updateResolvedUrlPreview);
+    document.getElementById("providerType").addEventListener("change", updateResolvedUrlPreview);
+
+    async function saveProviderDialog() {
+      const statusEl = document.getElementById("providerDialogStatus");
+      const data = getProviderFormData();
+      if (!data.name) { statusEl.textContent = "Provider name is required."; statusEl.className = "settings-status error"; return; }
+      if (!data.baseUrl) { statusEl.textContent = "API endpoint is required."; statusEl.className = "settings-status error"; return; }
+      if (!data.model) { statusEl.textContent = "Model name is required."; statusEl.className = "settings-status error"; return; }
+      statusEl.textContent = "Saving…"; statusEl.className = "settings-status";
+      try {
+        if (_editingProviderId) {
+          await analyticsAPI.updateCustomProvider(_editingProviderId, data);
+        } else {
+          await analyticsAPI.addCustomProvider(data);
+        }
+        closeProviderDialog();
+        await renderCustomProviderList();
+      } catch (err) {
+        statusEl.textContent = err.message || "Save failed.";
+        statusEl.className = "settings-status error";
+      }
+    }
+
+    async function deleteCustomProvider(id) {
+      if (!confirm("Delete this provider?")) return;
+      try {
+        await analyticsAPI.deleteCustomProvider(id);
+        await renderCustomProviderList();
+      } catch (err) {
+        alert(err.message || "Delete failed.");
+      }
+    }
+
+    document.getElementById("addCustomProviderBtn").addEventListener("click", () => openProviderDialog());
+    document.getElementById("providerDialogCancelBtn").addEventListener("click", closeProviderDialog);
+    document.getElementById("providerDialogSaveBtn").addEventListener("click", saveProviderDialog);
+    document.getElementById("providerDialogOverlay").addEventListener("click", function (e) {
+      if (e.target === this) closeProviderDialog();
+    });
+    document.getElementById("testProviderBtn").addEventListener("click", async () => {
+      const resultEl = document.getElementById("providerTestResult");
+      resultEl.textContent = "Testing…";
+      const data = getProviderFormData();
+      try {
+        const r = await analyticsAPI.testCustomProvider(data);
+        if (r && r.success) {
+          resultEl.textContent = `✅ OK (${r.latencyMs}ms)`;
+          resultEl.style.color = "#2E7D32";
+        } else {
+          resultEl.textContent = `❌ ${(r && r.error) || "Failed"}`;
+          resultEl.style.color = "#C62828";
+        }
+      } catch (err) {
+        resultEl.textContent = `❌ ${err.message}`;
+        resultEl.style.color = "#C62828";
+      }
+    });
+
+    // Render provider list when settings opens
+    const _origOpenSettings = openSettings;
+    openSettings = async function () {
+      await _origOpenSettings.apply(this, arguments);
+      renderCustomProviderList();
+    };
 
     // ── Demo mode (Ctrl+Shift+D) — sanitize sensitive data for screen recording ──
     let demoMode = false;

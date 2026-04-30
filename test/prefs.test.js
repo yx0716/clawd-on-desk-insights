@@ -186,7 +186,7 @@ describe("prefs.migrate", () => {
   it("upgrades v0 (no version field) to v1", () => {
     const raw = { lang: "zh", soundMuted: true };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 1);
+    assert.strictEqual(upgraded.version, 2);
     assert.ok(upgraded.agents && typeof upgraded.agents === "object");
     assert.ok(upgraded.themeOverrides && typeof upgraded.themeOverrides === "object");
     // Original fields preserved
@@ -201,7 +201,7 @@ describe("prefs.migrate", () => {
       agents: { "claude-code": { enabled: false } },
     };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 1);
+    assert.strictEqual(upgraded.version, 2);
     assert.strictEqual(upgraded.agents["claude-code"].enabled, false);
   });
 
@@ -256,7 +256,7 @@ describe("prefs.load", () => {
     );
     const { snapshot, locked } = prefs.load(p);
     assert.strictEqual(locked, false);
-    assert.strictEqual(snapshot.version, 1);
+    assert.strictEqual(snapshot.version, 2);
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.x, 100);
     assert.strictEqual(snapshot.y, 200);
@@ -299,7 +299,7 @@ describe("prefs.save", () => {
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.bubbleFollowPet, true);
     assert.strictEqual(snapshot.x, 42);
-    assert.strictEqual(snapshot.version, 1);
+    assert.strictEqual(snapshot.version, 2);
   });
 
   it("validates before writing — bad fields fall back to defaults on disk", () => {

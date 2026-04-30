@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -164,6 +164,47 @@ function migrate(raw) {
       (typeof out.x === "number" && out.x !== 0) ||
       (typeof out.y === "number" && out.y !== 0);
   }
+  // v1 → v2: migrate single-provider aiConfig to multi-provider registry.
+  // The legacy fields (provider, apiKey, baseUrl, model) are preserved for
+  // backward compatibility — only the new providers/defaultProviders arrays
+  // are added. This migration is idempotent: if providers already exists, skip.
+  if (out.version < 2) {
+    const aiCfg = out.aiConfig;
+    if (aiCfg && typeof aiCfg === "object" && !Array.isArray(aiCfg.providers)) {
+      const PROVIDER_DEFAULTS = {
+        claude: { name: "Claude (Anthropic)", baseUrl: "https://api.anthropic.com", model: "claude-haiku-4-5-20251001" },
+        openai: { name: "OpenAI-Compatible", baseUrl: "https://api.openai.com", model: "gpt-4o-mini" },
+        ollama: { name: "Ollama (Local)", baseUrl: "http://localhost:11434", model: "qwen2.5:7b" },
+      };
+      const legacyType = typeof aiCfg.provider === "string" ? aiCfg.provider : null;
+      const defaults = legacyType && PROVIDER_DEFAULTS[legacyType];
+      if (defaults && (legacyType === "ollama" || aiCfg.apiKey)) {
+        // Generate a deterministic-ish ID from the legacy config so re-migration
+        // produces the same ID (avoids duplicate entries on repeated migrations).
+        const legacyId = `legacy-${legacyType}-migrated`;
+        const migratedProvider = {
+          id: legacyId,
+          name: defaults.name,
+          type: legacyType,
+          baseUrl: aiCfg.baseUrl || defaults.baseUrl,
+          apiKey: aiCfg.apiKey || "",
+          model: aiCfg.model || defaults.model,
+          enabled: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        out.aiConfig = {
+          ...aiCfg,
+          providers: [migratedProvider],
+          defaultProviders: { brief: legacyId, detail: legacyId, batch: legacyId },
+        };
+      } else {
+        // No usable legacy provider — just initialize empty registry
+        out.aiConfig = { ...aiCfg, providers: [], defaultProviders: {} };
+      }
+    }
+    out.version = 2;
+  }
   // Future migrations slot in here as `if (out.version < N) { ... out.version = N }`.
   return out;
 }
@@ -237,6 +278,19 @@ function normalizeAIConfig(value, defaultsValue) {
       }
     }
     if (Object.keys(customCliPaths).length) out.customCliPaths = customCliPaths;
+  }
+  // Preserve multi-provider registry fields (added in v2)
+  if (Array.isArray(value.providers)) {
+    out.providers = value.providers.filter(
+      (p) => p && typeof p === "object" && typeof p.id === "string" && typeof p.name === "string"
+    );
+  }
+  if (value.defaultProviders && typeof value.defaultProviders === "object" && !Array.isArray(value.defaultProviders)) {
+    const dp = {};
+    for (const mode of ["brief", "detail", "batch"]) {
+      if (typeof value.defaultProviders[mode] === "string") dp[mode] = value.defaultProviders[mode];
+    }
+    if (Object.keys(dp).length) out.defaultProviders = dp;
   }
   return Object.keys(out).length ? out : defaultsValue;
 }
