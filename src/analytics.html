@@ -474,6 +474,149 @@
       outline-offset: 1px;
     }
 
+    /* ── View toggle (Lanes / Calendar) ── */
+    .timeline-view-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .timeline-view-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+
+    .timeline-view-toggle button + button {
+      border-left: 1px solid var(--border);
+    }
+
+    .timeline-view-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Calendar (vertical week-grid) view ── */
+    .calendar-grid {
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+
+    .calendar-time-gutter {
+      width: 44px;
+      flex-shrink: 0;
+      position: relative;
+      font-size: 9px;
+      color: var(--text-muted);
+      padding-top: 28px;
+    }
+
+    .calendar-time-gutter .calendar-time-tick {
+      position: absolute;
+      right: 4px;
+      transform: translateY(-50%);
+      white-space: nowrap;
+    }
+
+    .calendar-day-col {
+      flex: 1;
+      min-width: 70px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .calendar-day-header {
+      text-align: center;
+      font-size: 11px;
+      padding: 2px 4px 5px;
+      color: var(--text-secondary);
+      line-height: 1.25;
+    }
+
+    .calendar-day-header .wd {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .calendar-day-header .dt {
+      font-size: 10px;
+      opacity: .8;
+    }
+
+    .calendar-day-track {
+      position: relative;
+      height: 480px;
+      background: linear-gradient(180deg, rgba(255, 248, 240, .7), rgba(255, 255, 255, .95));
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .calendar-day-track .gridline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: var(--border-light);
+      opacity: .55;
+      pointer-events: none;
+    }
+
+    .calendar-block {
+      position: absolute;
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-size: 9px;
+      font-weight: 500;
+      color: #fff;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+      transition: transform .15s, opacity .15s;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      line-height: 1.2;
+      box-sizing: border-box;
+    }
+
+    .calendar-block:hover {
+      transform: scale(1.02);
+      z-index: 10;
+      opacity: .9;
+    }
+
+    .calendar-block.selected {
+      outline: 2px solid var(--text);
+      outline-offset: 1px;
+      z-index: 9;
+    }
+
+    .calendar-block .cb-title {
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .calendar-block .cb-meta {
+      font-size: 8px;
+      opacity: .85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     /* ── Three-panel row ── */
     .panels-row {
       grid-area: charts;
@@ -2177,6 +2320,10 @@
         <span style="font-size:10px;color:var(--text-muted)">—</span>
         <select id="rangeEnd"
           style="font-size:11px;border:1px solid var(--border);border-radius:4px;padding:2px 6px;background:var(--bg);color:var(--text)"></select>
+        <div class="timeline-view-toggle" style="margin-left:auto" role="tablist" aria-label="Timeline view mode">
+          <button type="button" data-view="lanes" id="viewLanesBtn" role="tab">Lanes</button>
+          <button type="button" data-view="calendar" id="viewCalendarBtn" role="tab">Calendar</button>
+        </div>
       </div>
       <div class="timeline-hint" id="timelineHint">提示：把鼠标放在时间轴上滚轮缩放，快速展开某一块；按 <kbd>←</kbd> / <kbd>→</kbd> 可左右移动。</div>
       <div class="time-axis">
@@ -2384,6 +2531,8 @@
         onboardingPoint3: "3. 默认 provider 去设置里改",
         onboardingDismiss: "知道了",
         timelineHint: "提示：滚轮缩放时间轴，拖拽或 <kbd>←</kbd> / <kbd>→</kbd> 左右平移。",
+        viewLanes: "横向",
+        viewCalendar: "日历",
         analysisPlaceholder: "← 点击左侧 Session 查看 AI 分析",
         analyzing: "分析中...",
         distribution: "分布",
@@ -2545,6 +2694,8 @@
         onboardingPoint3: "3. Change the default provider in Settings",
         onboardingDismiss: "Got it",
         timelineHint: "Tip: scroll to zoom the timeline; drag or press <kbd>←</kbd> / <kbd>→</kbd> to pan.",
+        viewLanes: "Lanes",
+        viewCalendar: "Calendar",
         analysisPlaceholder: "← Click a session on the left to view AI analysis",
         analyzing: "Analyzing...",
         distribution: "Distribution",
@@ -2700,6 +2851,10 @@
     }
 
     let currentRange = "week", currentData = null, selectedSessionId = null, selectedAnalysisScope = null;
+    let currentView = (() => {
+      try { return localStorage.getItem("clawd-timeline-view") === "calendar" ? "calendar" : "lanes"; }
+      catch { return "lanes"; }
+    })();
     let analysisConsented = false, analysisProvider = null, selectedAnalysisAgent = "claude-code";
     // Month tab state — null when not on the Month tab. Lazy-loaded on first
     // Month-tab click via getAvailableMonths(), then cached for the session.
@@ -2763,6 +2918,8 @@
       document.getElementById("onboardingPoint3").textContent = t("onboardingPoint3");
       document.getElementById("onboardingDismissBtn").textContent = t("onboardingDismiss");
       document.getElementById("timelineHint").innerHTML = t("timelineHint");
+      document.getElementById("viewLanesBtn").textContent = t("viewLanes");
+      document.getElementById("viewCalendarBtn").textContent = t("viewCalendar");
       document.getElementById("analysisPlaceholder").textContent = t("analysisPlaceholder");
       document.getElementById("analysisLoadingText").textContent = t("analyzing");
       document.getElementById("distributionTitle").textContent = t("distribution");
@@ -3552,10 +3709,12 @@
     const WHEEL_THRESHOLD = 100; // px of scroll before triggering one zoom step
 
     function handleTimelineWheel(e) {
-      // Find the .timeline-tracks element that contains the cursor
-      const track = e.target.closest(".timeline-tracks");
+      // Find the track under cursor — supports both lanes (.timeline-tracks)
+      // and calendar (.calendar-day-track) views
+      const track = e.target.closest(".timeline-tracks, .calendar-day-track");
       if (!track) return;
       e.preventDefault();
+      const isCalendar = track.classList.contains("calendar-day-track");
 
       wheelDeltaAccum += e.deltaY;
       if (Math.abs(wheelDeltaAccum) < WHEEL_THRESHOLD) return;
@@ -3578,9 +3737,12 @@
       if (nextIdx === idx) return; // already at min/max
       const nextDuration = ZOOM_LEVELS[nextIdx];
 
-      // Cursor anchoring: the time under the cursor stays at the same screen position
+      // Cursor anchoring: the time under the cursor stays at the same screen position.
+      // Lanes view: X (time flows L→R). Calendar view: Y (time flows top→bottom).
       const rect = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const ratio = isCalendar
+        ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+        : Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const anchorHour = startHour + currentDuration * ratio;
 
       let newStart = anchorHour - nextDuration * ratio;
@@ -3742,7 +3904,33 @@
       if (ss) ss.value = Math.round(startHour); if (se) se.value = Math.round(endHour);
     }
 
+    function applyInitialView() {
+      document.querySelectorAll(".timeline-view-toggle button").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.view === currentView);
+      });
+      const axis = document.querySelector(".time-axis");
+      if (axis) axis.style.display = currentView === "calendar" ? "none" : "";
+    }
+
+    function setView(v) {
+      if (v !== "lanes" && v !== "calendar") return;
+      if (currentView === v) return;
+      currentView = v;
+      try { localStorage.setItem("clawd-timeline-view", v); } catch {}
+      applyInitialView();
+      if (currentData) {
+        renderTimeAxis();
+        renderTimeline(currentData);
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".timeline-view-toggle button");
+      if (btn) setView(btn.dataset.view);
+    });
+
     function renderTimeline(data) {
+      if (currentView === "calendar") return renderCalendar(data);
       const c = document.getElementById("timelineContainer"); const ss = data.sessions || [];
       if (!ss.length) { c.innerHTML = `<div class="empty-state">${escapeHtml(t("noSessions"))}</div>`; return; }
 
@@ -3798,6 +3986,133 @@
       c.querySelectorAll(".timeline-tracks").forEach(el => {
         el.addEventListener("wheel", handleTimelineWheel, { passive: false });
         el.addEventListener("pointerdown", handleTimelinePointerDown);
+      });
+    }
+
+    // ── Calendar (vertical week-grid) view ──
+    // Toggl-style: columns = days, rows = hours, blocks = chunks (sessionBlocks).
+    // Reuses timelineRange / autoDetectRange / projColor / agentColor for symmetry with lanes view.
+    // Pan-via-drag is intentionally disabled here (no pointerdown handler) since horizontal
+    // drag in a vertical-time layout is non-intuitive; wheel zoom + arrow keys still work.
+    function renderCalendar(data) {
+      const c = document.getElementById("timelineContainer");
+      const ss = data.sessions || [];
+      if (!ss.length) {
+        c.innerHTML = `<div class="empty-state">${escapeHtml(t("noSessions"))}</div>`;
+        return;
+      }
+
+      autoDetectRange(ss);
+      initRangeSelectors();
+
+      const dayMap = new Map();
+      let maxBlockDur = 0;
+      for (const s of ss) {
+        for (const b of sessionBlocks(s)) {
+          const dk = dayStart(b.start);
+          if (!dayMap.has(dk)) dayMap.set(dk, []);
+          dayMap.get(dk).push({ session: s, block: b });
+          const bd = b.end - b.start;
+          if (bd > maxBlockDur) maxBlockDur = bd;
+        }
+      }
+      const sortedDays = [...dayMap.keys()].sort((a, b) => a - b);
+      if (!sortedDays.length) {
+        c.innerHTML = `<div class="empty-state">${escapeHtml(t("noSessions"))}</div>`;
+        return;
+      }
+
+      const { startHour, endHour } = timelineRange;
+      const span = endHour - startHour;
+
+      let stepH;
+      if (span > 16) stepH = 3; else if (span > 8) stepH = 2; else if (span > 4) stepH = 1;
+      else if (span > 2) stepH = 0.5; else stepH = 0.25;
+      const firstTick = Math.ceil(startHour / stepH) * stepH;
+      const tickHours = [];
+      for (let h = firstTick; h <= endHour + 0.001; h += stepH) tickHours.push(h);
+      if (tickHours.length === 0 || tickHours[0] > startHour + 0.01) tickHours.unshift(startHour);
+      if (tickHours[tickHours.length - 1] < endHour - 0.01) tickHours.push(endHour);
+
+      const gutterTicks = tickHours.map(h => {
+        const pos = span > 0 ? ((h - startHour) / span) * 100 : 0;
+        const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+        const label = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+        return `<span class="calendar-time-tick" style="top:${pos}%">${label}</span>`;
+      }).join("");
+
+      let cols = "";
+      for (const dts of sortedDays) {
+        const items = dayMap.get(dts);
+        const d = new Date(dts);
+        const axisStart = dts + startHour * 3600000;
+        const axisEnd = dts + endHour * 3600000;
+        const axisLen = axisEnd - axisStart;
+
+        const prepared = items.map(it => {
+          const start = Math.max(it.block.start, axisStart);
+          const end = Math.min(it.block.end, axisEnd);
+          if (end <= start) return null;
+          return { session: it.session, block: it.block, _start: start, _end: end };
+        }).filter(Boolean).sort((a, b) => a._start - b._start || a._end - b._end);
+
+        // Pack overlapping blocks into side-by-side lanes within the column
+        const laneEnds = [];
+        const laneIdx = [];
+        for (const item of prepared) {
+          let i = 0;
+          while (i < laneEnds.length && item._start < laneEnds[i]) i++;
+          if (i === laneEnds.length) laneEnds.push(item._end);
+          else laneEnds[i] = item._end;
+          laneIdx.push(i);
+        }
+        const laneCount = Math.max(1, laneEnds.length);
+
+        let blocksHtml = "";
+        for (const h of tickHours) {
+          if (h <= startHour + 0.001 || h >= endHour - 0.001) continue;
+          const pos = ((h - startHour) / span) * 100;
+          blocksHtml += `<div class="gridline" style="top:${pos}%"></div>`;
+        }
+
+        for (let i = 0; i < prepared.length; i++) {
+          const item = prepared[i];
+          const s = item.session;
+          const b = item.block;
+          const st = item._start, en = item._end;
+          const topPct = ((st - axisStart) / axisLen) * 100;
+          const heightPct = Math.max(((en - st) / axisLen) * 100, 0.6);
+          const widthPct = 100 / laneCount;
+          const leftPct = laneIdx[i] * widthPct;
+
+          const dur = fmtDur(en - st);
+          const proj = resolveTitle(s).text || "session";
+          const blockDur = en - st;
+          const opacity = maxBlockDur > 0 ? 0.55 + 0.45 * (blockDur / maxBlockDur) : 1;
+          const safeProj = escapeHtml(proj);
+          const tipTitle = escapeHtml(proj);
+          const tipDetail = escapeHtml(t("tooltipDetail", { agent: agentLabel(s.agent), time: `${fmtTime(b.start)}-${fmtTime(b.end)}`, duration: dur, messages: s.messages }));
+          const blockScopeKey = scopeKey(b);
+          const isSelected = selectedSessionId === s.id && (selectedScopeKey() === "full" || selectedScopeKey() === blockScopeKey);
+          const showMeta = heightPct > 4;
+          const inner = showMeta
+            ? `<span class="cb-title">${safeProj}</span><span class="cb-meta">${escapeHtml(dur)}</span>`
+            : `<span class="cb-title">${safeProj}</span>`;
+
+          blocksHtml += `<div class="calendar-block${isSelected ? " selected" : ""}" style="top:${topPct.toFixed(2)}%;height:${heightPct.toFixed(2)}%;left:calc(${leftPct.toFixed(2)}% + 1px);width:calc(${widthPct.toFixed(2)}% - 2px);background:${projColor(s.project || s.title || 'unknown')};opacity:${opacity.toFixed(2)};box-shadow:inset 0 0 0 1px ${agentColor(s.agent)},0 1px 2px rgba(0,0,0,.12)" data-sid="${s.id}" data-agent="${s.agent}" data-scope-key="${blockScopeKey}" data-scope-start="${Number(b.start)}" data-scope-end="${Number(b.end)}" data-tip-title="${tipTitle}" data-tip-detail="${tipDetail}">${inner}</div>`;
+        }
+
+        cols += `<div class="calendar-day-col"><div class="calendar-day-header"><div class="wd">${escapeHtml(weekdayLabel(d))}</div><div class="dt">${fmtDate(dts)}</div></div><div class="calendar-day-track">${blocksHtml}</div></div>`;
+      }
+
+      c.innerHTML = `<div class="calendar-grid"><div class="calendar-time-gutter">${gutterTicks}</div>${cols}</div>`;
+      c.querySelectorAll(".calendar-block").forEach(el => {
+        el.addEventListener("mouseenter", showTip);
+        el.addEventListener("mouseleave", hideTip);
+        el.addEventListener("click", onBlockClick);
+      });
+      c.querySelectorAll(".calendar-day-track").forEach(el => {
+        el.addEventListener("wheel", handleTimelineWheel, { passive: false });
       });
     }
 
@@ -5320,6 +5635,7 @@
     initPanelResizer();
     applySavedChartsHeight();
     initRowResizer();
+    applyInitialView();
     loadData().then(() => offerBatchAnalysis());
     // Main-process watcher fires when JSONL files change — pull fresh data.
     // Defer if the user is mid-rename to avoid destroying the inline input.
