@@ -99,11 +99,11 @@ describe("prefs.validate", () => {
   it("keeps dashboard AI config fields", () => {
     const v = prefs.validate({
       aiConfig: {
-        provider: "openai",
+        provider: "openai",        // legacy — stripped by normalizeAIConfig at v3
         defaultAnalysisProvider: "codex",
-        apiKey: "sk-test",
-        baseUrl: "https://example.com/v1",
-        model: "gpt-test",
+        apiKey: "sk-test",         // legacy — stripped
+        baseUrl: "https://example.com/v1", // legacy — stripped
+        model: "gpt-test",         // legacy — stripped
         customCliPaths: {
           claude: "/usr/local/bin/claude",
           codex: "/usr/local/bin/codex",
@@ -111,12 +111,9 @@ describe("prefs.validate", () => {
         ignored: true,
       },
     });
+    // Only non-legacy fields survive normalizeAIConfig
     assert.deepStrictEqual(v.aiConfig, {
-      provider: "openai",
       defaultAnalysisProvider: "codex",
-      apiKey: "sk-test",
-      baseUrl: "https://example.com/v1",
-      model: "gpt-test",
       customCliPaths: {
         claude: "/usr/local/bin/claude",
         codex: "/usr/local/bin/codex",
@@ -186,7 +183,7 @@ describe("prefs.migrate", () => {
   it("upgrades v0 (no version field) to v1", () => {
     const raw = { lang: "zh", soundMuted: true };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 2);
+    assert.strictEqual(upgraded.version, 3);
     assert.ok(upgraded.agents && typeof upgraded.agents === "object");
     assert.ok(upgraded.themeOverrides && typeof upgraded.themeOverrides === "object");
     // Original fields preserved
@@ -201,7 +198,7 @@ describe("prefs.migrate", () => {
       agents: { "claude-code": { enabled: false } },
     };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 2);
+    assert.strictEqual(upgraded.version, 3);
     assert.strictEqual(upgraded.agents["claude-code"].enabled, false);
   });
 
@@ -221,6 +218,184 @@ describe("prefs.migrate", () => {
     const raw = { version: 1, x: 0, y: 0, positionSaved: true };
     const upgraded = prefs.migrate(raw);
     assert.strictEqual(upgraded.positionSaved, true);
+  });
+
+  it("v2→v3: removes legacy flat fields from aiConfig", () => {
+    const raw = {
+      version: 2,
+      aiConfig: {
+        provider: "openai",
+        apiKey: "sk-test",
+        baseUrl: "https://api.example.com",
+        model: "gpt-4o-mini",
+        defaultAnalysisProvider: "codex",
+        providers: [{ id: "abc", name: "Test", type: "openai", baseUrl: "https://x.com", apiKey: "k", model: "m", enabled: true }],
+      },
+    };
+    const upgraded = prefs.migrate(raw);
+    assert.strictEqual(upgraded.version, 3);
+    assert.strictEqual(upgraded.aiConfig.provider, undefined);
+    assert.strictEqual(upgraded.aiConfig.apiKey, undefined);
+    assert.strictEqual(upgraded.aiConfig.baseUrl, undefined);
+    assert.strictEqual(upgraded.aiConfig.model, undefined);
+    // Non-legacy fields preserved
+    assert.strictEqual(upgraded.aiConfig.defaultAnalysisProvider, "codex");
+    assert.strictEqual(upgraded.aiConfig.providers.length, 1);
+  });
+
+  it("v2→v3: handles aiConfig with no legacy fields gracefully", () => {
+    const raw = { version: 2, aiConfig: { providers: [], defaultProviders: {} } };
+    const upgraded = prefs.migrate(raw);
+    assert.strictEqual(upgraded.version, 3);
+    assert.ok(Array.isArray(upgraded.aiConfig.providers));
+  });
+
+  it("v2→v3: handles missing aiConfig without throwing", () => {
+    const raw = { version: 2 };
+    const upgraded = prefs.migrate(raw);
+    assert.strictEqual(upgraded.version, 3);
+  });
+
+  it("v2→v3: is idempotent on v3 snapshots", () => {
+    const raw = { version: 3, aiConfig: { providers: [], defaultProviders: {} } };
+    const once = prefs.migrate(raw);
+    const twice = prefs.migrate(once);
+    assert.deepStrictEqual(once, twice);
+  });
+
+  it("v1→v3: full chain preserves migrated provider and removes legacy fields", () => {
+    const raw = {
+      version: 1,
+      aiConfig: { provider: "claude", apiKey: "sk-ant-test", model: "claude-haiku-4-5-20251001" },
+    };
+    const upgraded = prefs.migrate(raw);
+    assert.strictEqual(upgraded.version, 3);
+    // Legacy fields removed
+    assert.strictEqual(upgraded.aiConfig.provider, undefined);
+    assert.strictEqual(upgraded.aiConfig.apiKey, undefined);
+    assert.strictEqual(upgraded.aiConfig.model, undefined);
+    // Provider promoted into registry
+    assert.ok(Array.isArray(upgraded.aiConfig.providers));
+    assert.strictEqual(upgraded.aiConfig.providers.length, 1);
+    assert.strictEqual(upgraded.aiConfig.providers[0].type, "claude");
+  });
+
+  it("Property 5: v2→v3 migration removes legacy fields and bumps version", () => {
+    const legacyFields = {
+      provider: "openai",
+      apiKey: "sk-test",
+      baseUrl: "https://api.example.com",
+      model: "gpt-4o-mini",
+    };
+
+    for (let mask = 0; mask < 16; mask++) {
+      const aiConfig = {
+        providers: [{ id: "p1", name: "Provider", type: "openai" }],
+        defaultProviders: { brief: "p1" },
+      };
+      Object.keys(legacyFields).forEach((key, idx) => {
+        if (mask & (1 << idx)) aiConfig[key] = legacyFields[key];
+      });
+
+      const upgraded = prefs.migrate({ version: 2, aiConfig });
+
+      assert.strictEqual(upgraded.version, 3);
+      for (const key of Object.keys(legacyFields)) {
+        assert.strictEqual(Object.prototype.hasOwnProperty.call(upgraded.aiConfig, key), false, `${key} should be removed`);
+      }
+    }
+  });
+
+  it("Property 6: v2→v3 migration preserves the providers array", () => {
+    const providerSets = [
+      [],
+      [{ id: "p1", name: "One", type: "openai", model: "m1" }],
+      [
+        { id: "p1", name: "One", type: "openai", model: "m1" },
+        { id: "p2", name: "Two", type: "ollama", model: "m2" },
+      ],
+    ];
+
+    for (const providers of providerSets) {
+      const raw = {
+        version: 2,
+        aiConfig: {
+          provider: "openai",
+          apiKey: "sk-test",
+          providers,
+          defaultProviders: { detail: providers[0] ? providers[0].id : "" },
+        },
+      };
+
+      const upgraded = prefs.migrate(raw);
+
+      assert.strictEqual(upgraded.version, 3);
+      assert.deepStrictEqual(upgraded.aiConfig.providers, providers);
+    }
+  });
+
+  it("Property 7: migrate() is idempotent on v3 snapshots", () => {
+    const snapshots = [
+      { version: 3 },
+      { version: 3, aiConfig: { providers: [], defaultProviders: {} } },
+      {
+        version: 3,
+        lang: "zh",
+        aiConfig: {
+          defaultAnalysisProvider: "codex",
+          customCliPaths: { codex: "/opt/bin/codex" },
+          providers: [{ id: "p1", name: "One", type: "openai" }],
+          defaultProviders: { brief: "p1" },
+        },
+      },
+    ];
+
+    for (const snapshot of snapshots) {
+      const once = prefs.migrate(snapshot);
+      const twice = prefs.migrate(once);
+      assert.deepStrictEqual(twice, once);
+    }
+  });
+
+  it("Property 8: full migration chain v1→v3 preserves migrated provider", () => {
+    const legacyConfigs = [
+      { provider: "claude", apiKey: "sk-ant-test", baseUrl: "https://claude.example.com", model: "claude-test" },
+      { provider: "openai", apiKey: "sk-openai-test", baseUrl: "https://openai.example.com", model: "gpt-test" },
+      { provider: "ollama", baseUrl: "http://localhost:11434", model: "llama-test" },
+    ];
+
+    for (const legacy of legacyConfigs) {
+      const upgraded = prefs.migrate({ version: 1, aiConfig: legacy });
+      const providerId = `legacy-${legacy.provider}-migrated`;
+
+      assert.strictEqual(upgraded.version, 3);
+      assert.strictEqual(upgraded.aiConfig.providers.length, 1);
+      assert.strictEqual(upgraded.aiConfig.providers[0].id, providerId);
+      assert.strictEqual(upgraded.aiConfig.providers[0].type, legacy.provider);
+      assert.strictEqual(upgraded.aiConfig.providers[0].model, legacy.model);
+      assert.deepStrictEqual(upgraded.aiConfig.defaultProviders, {
+        brief: providerId,
+        detail: providerId,
+        batch: providerId,
+      });
+      for (const key of ["provider", "apiKey", "baseUrl", "model"]) {
+        assert.strictEqual(Object.prototype.hasOwnProperty.call(upgraded.aiConfig, key), false, `${key} should be removed`);
+      }
+    }
+  });
+
+  it("Property 9: migrate() handles missing or empty aiConfig without throwing", () => {
+    const snapshots = [
+      { version: 2 },
+      { version: 2, aiConfig: null },
+      { version: 2, aiConfig: {} },
+      { version: 2, aiConfig: [] },
+    ];
+
+    for (const snapshot of snapshots) {
+      assert.doesNotThrow(() => prefs.migrate(snapshot));
+      assert.strictEqual(prefs.migrate(snapshot).version, 3);
+    }
   });
 });
 
@@ -256,7 +431,7 @@ describe("prefs.load", () => {
     );
     const { snapshot, locked } = prefs.load(p);
     assert.strictEqual(locked, false);
-    assert.strictEqual(snapshot.version, 2);
+    assert.strictEqual(snapshot.version, 3);
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.x, 100);
     assert.strictEqual(snapshot.y, 200);
@@ -299,7 +474,7 @@ describe("prefs.save", () => {
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.bubbleFollowPet, true);
     assert.strictEqual(snapshot.x, 42);
-    assert.strictEqual(snapshot.version, 2);
+    assert.strictEqual(snapshot.version, 3);
   });
 
   it("validates before writing — bad fields fall back to defaults on disk", () => {
@@ -332,14 +507,12 @@ describe("prefs.save", () => {
     const p = makeTempPath();
     const snap = prefs.getDefaults();
     snap.aiConfig = {
-      provider: "claude",
       defaultAnalysisProvider: "codex",
       customCliPaths: { codex: "/opt/bin/codex" },
     };
     prefs.save(p, snap);
     const { snapshot } = prefs.load(p);
     assert.deepStrictEqual(snapshot.aiConfig, {
-      provider: "claude",
       defaultAnalysisProvider: "codex",
       customCliPaths: { codex: "/opt/bin/codex" },
     });

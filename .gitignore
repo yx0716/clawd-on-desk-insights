@@ -63,3 +63,9 @@ scripts/*
 
 # Cursor local config (MCP, rules from omc setup)
 .cursor/
+
+# Kiro spec documents (dev-only, not for PR)
+.kiro/
+
+# Property-based test file (dev-only, uses fast-check, not in upstream test suite)
+test/registry-migration.test.js

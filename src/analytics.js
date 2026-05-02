@@ -85,12 +85,6 @@ module.exports = function initAnalytics(ctx) {
     return { today, week, computed };
   });
 
-  ipcMain.handle("analytics-get-insights", async () => {
-    const today = ctx.analyticsData.aggregateToday();
-    const week = ctx.analyticsData.aggregateWeek();
-    return ctx.analyticsAI.getInsights(today, week);
-  });
-
   ipcMain.handle("analytics-generate-report", async (_event, scope) => {
     const today = ctx.analyticsData.aggregateToday();
     const week = ctx.analyticsData.aggregateWeek();

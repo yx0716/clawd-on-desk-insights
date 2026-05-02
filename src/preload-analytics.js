@@ -4,7 +4,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("analyticsAPI", {
   getData: (filters) => ipcRenderer.invoke("analytics-get-data", filters),
-  getInsights: () => ipcRenderer.invoke("analytics-get-insights"),
   generateReport: (scope) => ipcRenderer.invoke("analytics-generate-report", scope),
   pickSessionAnalysesExportPath: () => ipcRenderer.invoke("analytics-pick-session-analyses-export-path"),
   exportSessionAnalyses: (payload) => ipcRenderer.invoke("analytics-export-session-analyses", payload),

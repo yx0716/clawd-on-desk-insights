@@ -548,7 +548,6 @@ describe("hydrate (system → prefs import, no effect)", () => {
     const p = makeTempPath();
     const ctrl = createSettingsController({ prefsPath: p });
     const aiConfig = {
-      provider: "claude",
       defaultAnalysisProvider: "codex",
       customCliPaths: { codex: "/opt/bin/codex" },
     };

@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -205,6 +205,19 @@ function migrate(raw) {
     }
     out.version = 2;
   }
+  // v2 → v3: remove legacy flat fields now that all paths use the registry.
+  // The v1→v2 migration already promoted them into providers[]. Safe to delete.
+  if (out.version < 3) {
+    if (out.aiConfig && typeof out.aiConfig === "object" && !Array.isArray(out.aiConfig)) {
+      const cleaned = { ...out.aiConfig };
+      delete cleaned.provider;
+      delete cleaned.apiKey;
+      delete cleaned.baseUrl;
+      delete cleaned.model;
+      out.aiConfig = cleaned;
+    }
+    out.version = 3;
+  }
   // Future migrations slot in here as `if (out.version < N) { ... out.version = N }`.
   return out;
 }
@@ -265,7 +278,7 @@ function normalizeThemeOverrides(value, defaultsValue) {
 function normalizeAIConfig(value, defaultsValue) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaultsValue;
   const out = {};
-  for (const key of ["provider", "apiKey", "baseUrl", "model", "defaultAnalysisProvider"]) {
+  for (const key of ["defaultAnalysisProvider"]) {
     if (typeof value[key] === "string" && value[key].trim()) {
       out[key] = value[key];
     }
