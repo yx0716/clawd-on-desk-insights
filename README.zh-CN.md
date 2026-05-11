@@ -1,7 +1,7 @@
 <div align="center">
 
 # clawd-insights
-## 本地 Agent 编程会话分析面板
+## 你和 AI 写过的每一行代码,自动留下一份复盘
 
 > "你好clawd，该你写周报了"
 
@@ -29,18 +29,18 @@
       <br /><sub><b>时间线视图</b> —— 每段会话的轨迹</sub>
     </td>
     <td width="50%" align="center" valign="top">
-      <img src="assets/screenshot-ai-analysis.png" alt="AI 会话分析" />
-      <br /><sub><b>AI 会话复盘</b> —— 你的尝试和收获</sub>
+      <img src="assets/screenshot-ai-analysis.png" alt="会话复盘" />
+      <br /><sub><b>会话复盘</b> —— 你的尝试和收获</sub>
     </td>
   </tr>
 </table>
 
 
-**这是Agent会话分析面板。** 它将自动扫描你和 Claude Code、Codex、Cursor 等 Agent 已经进行的对话,生成时间线和会话智能分析摘要。再也不用翻漫长的对话历史,clawd-insights 将帮你快速整理知识卡片。
+**这是你的 Agent 会话复盘面板。** 它自动扫描你和 Claude Code、Codex、Cursor 等 Agent 已经进行的对话,为每一段 session 生成一份复盘。再也不用翻漫长的对话历史 —— clawd-insights 帮你写。
 
 每一段对话都留下了**痕迹**,所有你尝试的想法、解决的 bug、和 Agent 讨论做出的决定,都将在 **Analytics Dashboard** 中一一呈现。
 
-数据全部留在本地。AI 分析通过你自己的本地 `claude` / `codex` CLI(或者你配置的 API / Ollama 后端)完成,你的对话不被第三方获取。
+数据全部留在本地。复盘生成通过你自己的本地 `claude` / `codex` CLI(或者你配置的 API / Ollama 后端)完成,你的对话不被第三方获取。
 
 > 现阶段主要支持 macOS。Windows/Linux 可能可以运行，但还不是主支持环境。需要 Node.js。
 
@@ -50,7 +50,7 @@
 git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && npm install && npm start
 ```
 
-启动后桌面上出现一只小螃蟹——在 macOS 上可右键它打开 **Analytics Dashboard**。详细的 Provider 配置和分析触发方式见下方[上手指南](#上手指南)。
+启动后桌面上出现一只小螃蟹——在 macOS 上可右键它打开 **Analytics Dashboard**。详细的 Provider 配置和复盘触发方式见下方[上手指南](#上手指南)。
 
 
 ## 功能特性
@@ -59,10 +59,10 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 |---|---|
 | **时间线视图** | 按日期 / 项目 / Agent / 时长可视化所有会话——一眼看清自己什么时候在忙什么、忙了多久 |
 | **本地历史扫描** | 直接读 `~/.claude/projects/`、`~/.codex/sessions/`、`~/.cursor/projects/`,不上传、无遥测 |
-| **AI 会话复盘** | 从**用户视角**总结每段对话:你想做什么、最后拿到了什么、关键话题、时间分配 |
-| **灵活分析后端** | 本地 `claude` CLI、本地 `codex` CLI,或回退到你配置的 API provider / Ollama——你的选择,你的 key |
-| **批量预分析** | 对最近会话批量预生成摘要,按 provider 隔离的缓存可复用 |
-| **成本追踪** | 显示每次 AI 分析的 token 用量与费用 |
+| **会话复盘** | 从**用户视角**复盘每段对话:你想做什么、最后拿到了什么、关键话题、时间分配 |
+| **灵活复盘后端** | 本地 `claude` CLI、本地 `codex` CLI,或回退到你配置的 API provider / Ollama——你的选择,你的 key |
+| **批量预复盘** | 对最近会话批量预生成复盘,按 provider 隔离的缓存可复用 |
+| **成本追踪** | 显示每次复盘的 token 用量与费用 |
 | **快捷入口** | 托盘菜单、右键桌面宠物或快捷键一键打开 |
 
 ### 使用示例
@@ -82,8 +82,8 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
       <br /><sub><b>③ 改设置</b><br/>齿轮 ⚙ → AI Provider</sub>
     </td>
     <td width="25%" align="center" valign="top">
-      <img src="assets/screenshot-ai-analysis.gif" alt="跑分析" />
-      <br /><sub><b>④ 跑分析</b><br/>批量或按需点单条</sub>
+      <img src="assets/screenshot-ai-analysis.gif" alt="跑复盘" />
+      <br /><sub><b>④ 跑复盘</b><br/>批量或按需点单条</sub>
     </td>
   </tr>
 </table>
@@ -112,14 +112,14 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 
 第一次打开就能立刻看到时间线视图——它直接读你硬盘上已有的会话日志,**不需要任何配置**。
 
-### 3.配置 AI Provider, 启用会话摘要
+### 3. 配置 AI Provider,启用会话复盘
 
-时间线本身是开箱即用的,但要让面板自动**生成每段会话的复盘摘要**,需要告诉它一个能调用大模型的入口， **AI Provider**(分析后端)。具体而言，有以下三种配置选择：
+时间线本身是开箱即用的,但要让面板自动**为每段会话生成一份复盘**,需要告诉它一个能调用大模型的入口 —— **AI Provider**(LLM 后端)。具体而言,有以下三种配置选择:
 
 | Provider 类型 | 是什么 | 怎么配置 | 适合谁 |
 |---|---|---|---|
 | **本地 CLI**(推荐) | 复用你已经装在电脑上的 `claude`(Claude Code)或 `codex` 命令行 | **不用配**,面板会自动检测 | 已经在用 Claude Code / Codex 订阅的人——使用订阅内的额度，无额外开销 |
-| **API Key** | Anthropic、OpenAI 等服务商的 API key,按 token 计费 | 在面板设置里粘贴 key | 没装本地 CLI、又愿意为分析付一点 token 费用 |
+| **API Key** | Anthropic、OpenAI 等服务商的 API key,按 token 计费 | 在面板设置里粘贴 key | 没装本地 CLI、又愿意为复盘付一点 token 费用 |
 | **Ollama** | 本地跑的开源模型服务(如 Ollama) | 在设置里填本地 endpoint | 想完全离线、不发送任何数据到云端 |
 
 > **💡 强烈推荐**:如果你电脑上已经装了 Claude Code 或 Codex CLI,**直接什么都不用配**——面板会自动找到它们,直接复用你已有的订阅额度。这是最省事也最便宜的方案。
@@ -143,7 +143,7 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 这个面板有两块内容:
 
 - **LOCAL CLI DETECTION**(本地 CLI 自动检测) — 显示面板有没有找到你本地的 `claude` 和 `codex`。绿点 = 找到了,显示版本号和路径;红点 = 没找到。**已显示绿点说明一切正常，可以直接进行下一步**。
-- **API PROVIDER (FALLBACK)**(API 备选) — 如果未安装本地 CLI，可以通过 API Key 进行 会话智能分析(Claude / OpenAI / Ollama 等)、粘贴 API key 即可。
+- **API PROVIDER (FALLBACK)**(API 备选) — 如果未安装本地 CLI,可以通过 API Key 进行会话复盘生成(Claude / OpenAI / Ollama 等),粘贴 API key 即可。
 
 > **小提示**:如果你的 `claude` / `codex` 是通过 NVM、fnm、Volta 这类版本管理工具装的,自动检测可能找不到。这时候在终端执行 `which claude` 或 `which codex`,把输出的路径粘贴到上面的 **Claude binary path** / **Codex binary path** 输入框里就行。
 
@@ -157,13 +157,13 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 - 打开设置,看 `Local CLI Detection`
 - 切到 `Week` 或 `Month` 看 timeline 里是否有 session
 
-### 5. 开始 Agent 会话分析
+### 5. 开始会话复盘
 
-#### 方法 A:批量预分析(开 Dashboard 时弹出)
+#### 方法 A:批量预复盘(开 Dashboard 时弹出)
 
-每次打开 Analytics Dashboard,如果检测到有未分析的会话,面板会**自动弹出一个对话框** —— `Pre-analyze Sessions`,让你一次性把一段时间内的会话全部分析掉。
+每次打开 Analytics Dashboard,如果检测到有未生成复盘的会话,面板会**自动弹出一个对话框** —— `Pre-analyze Sessions`,让你一次性为一段时间内的会话批量生成复盘。
 
-> **说明**: 面板自身发起的内部 AI 总结任务会自动从时间线和会话统计里排除。即使你是在别的目录执行 `npm start`,这些内部分析任务也不会被算进工作会话。
+> **说明**: 面板自身发起的内部复盘任务会自动从时间线和会话统计里排除。即使你是在别的目录执行 `npm start`,这些内部复盘任务也不会被算进工作会话。
 
 可选范围:
 
@@ -172,9 +172,9 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 - **Week** — 最近一周
 - **Custom** — 自定义最近 N 条
 
-选好之后点确认,面板会显示 `Analyzing 1/N`、`2/N`...的进度条,在后台一条条跑分析。**已经分析过的会话会自动跳过**(按 provider 隔离的缓存),所以重复点击不会浪费 token。
+选好之后点确认,面板会显示 `Analyzing 1/N`、`2/N`...的进度条,在后台一条条生成复盘。**已经有复盘的会话会自动跳过**(按 provider 隔离的缓存),所以重复点击不会浪费 token。
 <p align="center">
-  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="批量预分析与单条会话分析演示">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="批量预复盘与单条会话复盘演示">
 </p>
 
 > **适合谁**:第一次打开面板的新用户、想做一次性月度复盘、批量回顾过去一段时间的工作。
@@ -188,22 +188,22 @@ git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && n
 
 无论从哪里点,面板都会:
 
-1. 优先显示**已缓存的摘要**(如果之前批量预分析过,会标 `Analyzed`,直接秒开)
-2. 如果还没分析过,**点击会立即触发单条分析**,卡片显示 `Analyzing…` 标签,几秒到几十秒后出结果
+1. 优先显示**已缓存的复盘**(如果之前批量预生成过,会标 `Analyzed`,直接秒开)
+2. 如果还没有复盘,**点击会立即触发单条复盘生成**,卡片显示 `Analyzing…` 标签,几秒到几十秒后出结果
 
 <p align="center">
-  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="批量预分析与单条会话分析演示">
+  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="批量预复盘与单条会话复盘演示">
 </p>
 
 
 > **适合谁**:已经知道自己想看哪段会话的、临时想起来的查阅、平时按需"刷"历史。
 
-**总体而言**：
-- **第一次用** → 建议先跑一次 **方法 A 的 Week**, 选择特定数目/周期的对话进行分析(几分钟,消耗token较多，但之后可以随时秒开记录)
-- **日常用** → 跑完一次 多条绘画分析后，日常采用 **方法 B 选择特定对话进行分析** 
-- **token 敏感** → 用 **方法 B 按需触发**,只分析你真的想看的那几条,不浪费一分钱
+**总体而言**:
+- **第一次用** → 建议先跑一次 **方法 A 的 Week**,选择特定数目/周期的对话生成复盘(几分钟,消耗 token 较多,但之后可以随时秒开记录)
+- **日常用** → 跑完一次多条会话批量复盘后,日常采用 **方法 B 选择特定对话生成复盘**
+- **token 敏感** → 用 **方法 B 按需触发**,只为你真的想看的那几条生成复盘,不浪费一分钱
 
-> **关于成本**:本地 CLI(Claude Code / Codex 订阅)分析**走你已有的订阅额度**,通常几乎不需要额外付费。API key 模式下,面板会在每条分析完成后**显示 token 用量和费用**(顶部状态栏),让你心里有数。
+> **关于成本**:本地 CLI(Claude Code / Codex 订阅)复盘**走你已有的订阅额度**,通常几乎不需要额外付费。API key 模式下,面板会在每条复盘完成后**显示 token 用量和费用**(顶部状态栏),让你心里有数。
 
 ## 它是怎么工作的
 
@@ -231,7 +231,7 @@ Agent 工作时(调用工具、等待用户输入、报错、完成任务……)
 
 > **多 Agent 共存**:Claude Code、Codex、Copilot、Gemini、Cursor、Kiro、opencode 可以同时运行。Clawd 为每个 session 独立维护状态,取最高优先级作为桌面宠物当前显示。
 
-### 通路 ②:离线分析 → 洞察面板
+### 通路 ②:离线复盘 → 洞察面板
 
 你和 Agent 的每次对话都会以 JSONL 格式保存在本地:
 
@@ -241,14 +241,14 @@ Agent 工作时(调用工具、等待用户输入、报错、完成任务……)
 | Codex CLI | `~/.codex/sessions/` |
 | Cursor Agent | `~/.cursor/projects/` |
 
-洞察面板直接读这些文件,生成时间线和 AI 摘要。**不走 hooks,不依赖小clawd运行**——即使你从没启动过桌面宠物,只要本地有对话历史,面板就能工作。
+洞察面板直接读这些文件,生成时间线和会话复盘。**不走 hooks,不依赖小clawd运行**——即使你从没启动过桌面宠物,只要本地有对话历史,面板就能工作。
 
-> **注**:目前分析面板的扫描器只覆盖上面三个 Agent。Copilot CLI、Gemini CLI、Kiro CLI、opencode 仍能驱动桌面宠物动画,但它们的本地历史尚未接入面板扫描链路。
+> **注**:目前洞察面板的扫描器只覆盖上面三个 Agent。Copilot CLI、Gemini CLI、Kiro CLI、opencode 仍能驱动桌面宠物动画,但它们的本地历史尚未接入面板扫描链路。
 
 ## 常见问题
 
 **Q:面板需要联网吗?**
-扫描和时间线**完全离线**。AI 摘要要不要联网取决于你选的 provider:本地 CLI 用 Claude Code / Codex 时会走它们各自的网络栈;Ollama 完全离线;API key 模式才会走云端。
+扫描和时间线**完全离线**。会话复盘要不要联网取决于你选的 provider:本地 CLI 用 Claude Code / Codex 时会走它们各自的网络栈;Ollama 完全离线;API key 模式才会走云端。
 
 **Q:我的对话内容会被上传吗?**
 不会。Clawd Insights 不收集任何遥测数据。Provider 这一步是"你的 CLI / 你的 API key 直接调你选的模型",中间没有第三方服务器。
@@ -258,9 +258,9 @@ Agent 工作时(调用工具、等待用户输入、报错、完成任务……)
 
 ## 项目渊源 & 致谢
 
-Clawd Insights 是构建在 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) 之上的**洞察分析层**——上游是一只把 coding agent 状态变成像素画的可爱桌面宠物,所有让它讨喜的部分(动画、权限气泡、多 Agent 状态追踪、极简模式等等)都被原封不动地保留了下来。这个 fork 多问了一件事:**如果你和 Agent 的每一次对话,都能被搜索、被总结、汇集到同一块面板上,会怎样?**
+Clawd Insights 是构建在 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) 之上的**复盘层**——上游是一只把 coding agent 状态变成像素画的可爱桌面宠物,所有让它讨喜的部分(动画、权限气泡、多 Agent 状态追踪、极简模式等等)都被原封不动地保留了下来。这个 fork 多问了一件事:**如果你和 Agent 的每一次对话,都能被搜索、被复盘、汇集到同一块面板上,会怎样?**
 
-这块面板就是新增的核心。它扫描你的本地历史记录(目前覆盖 Claude Code、Codex CLI、Cursor Agent,更多 agent 接入中),画出时间线,再让你自选的 LLM 为每一次会话生成摘要——全程不向任何第三方发送一个字节。
+这块面板就是新增的核心。它扫描你的本地历史记录(目前覆盖 Claude Code、Codex CLI、Cursor Agent,更多 agent 接入中),画出时间线,再让你自选的 LLM 为每一次会话生成复盘——全程不向任何第三方发送一个字节。
 
 从上游继承的多 Agent 状态追踪:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。桌面宠物本身的完整功能(极简模式、点击反应、自定义主题、远程 SSH 等),请见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
 

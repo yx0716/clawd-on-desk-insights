@@ -1,7 +1,7 @@
 <div align="center">
 
 # clawd-insights
-## A local-first analytics dashboard for your AI coding sessions
+## Auto-retro for every Claude, Codex, and Cursor session you've had
 
 > "Hello Clawd, it's time for your weekly report"
 
@@ -29,18 +29,18 @@
       <br /><sub><b>Timeline view</b> — every session, traced</sub>
     </td>
     <td width="50%" align="center" valign="top">
-      <img src="assets/screenshot-ai-analysis.png" alt="AI Session Analysis" />
-      <br /><sub><b>AI session review</b> — what you tried, what you learned</sub>
+      <img src="assets/screenshot-ai-analysis.png" alt="Per-session retro" />
+      <br /><sub><b>Per-session retro</b> — what you tried, what you learned</sub>
     </td>
   </tr>
 </table>
 
 
-**Clawd Insights automatically scans the conversations you've already had with Claude Code, Codex CLI, Cursor and other agents, and turns them into a timeline plus AI-generated session summaries.** No more scrolling through endless chat history — it builds the knowledge cards for you.
+**Clawd Insights automatically scans the conversations you've already had with Claude Code, Codex CLI, Cursor and other agents, and turns them into a timeline plus a retro for every session.** No more scrolling through endless chat history — the recap is built for you.
 
 Every conversation leaves an **imprint**. No idea you tried, no bug you wrestled with, no decision you made together with the Agent is ever wasted — they all come back into view in the **Analytics Dashboard**.
 
-All data stays on your machine. AI analysis runs through your own local `claude` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
+All data stays on your machine. Retro generation runs through your own local `claude` / `codex` CLI (or an API / Ollama backend you configure). Your conversations never touch a third party.
 
 > Currently focused on macOS. Windows/Linux may work, but they are not the primary supported environments yet. Requires Node.js.
 
@@ -50,7 +50,7 @@ All data stays on your machine. AI analysis runs through your own local `claude`
 git clone https://github.com/yx0716/clawd-insights.git && cd clawd-insights && npm install && npm start
 ```
 
-A small crab appears on your desktop — on macOS, right-click it to open the **Analytics Dashboard**. For provider setup and analysis workflows, see [Getting Started](#getting-started) below.
+A small crab appears on your desktop — on macOS, right-click it to open the **Analytics Dashboard**. For provider setup and retro workflows, see [Getting Started](#getting-started) below.
 
 ## Features
 
@@ -58,10 +58,10 @@ A small crab appears on your desktop — on macOS, right-click it to open the **
 |---|---|
 | **Timeline view** | Visualize every session by date / project / agent / duration — at a glance, see when you worked, on what, and for how long |
 | **Local history scan** | Reads `~/.claude/projects/`, `~/.codex/sessions/`, `~/.cursor/projects/` directly. No upload, no telemetry |
-| **AI session review** | Per-session summary from the *user's* point of view: what you were trying to do, what you walked away with, key topics, time breakdown |
-| **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys. Add any number of **custom OpenAI-compatible endpoints** (Zhipu AI, DeepSeek, OpenRouter…) for cheap session analysis |
-| **Batch pre-analysis** | Pre-compute summaries for recent sessions and reuse provider-aware cached results |
-| **Cost tracking** | See token usage and cost per analysis run |
+| **Session retro** | Per-session retro from the *user's* point of view: what you were trying to do, what you walked away with, key topics, time breakdown |
+| **Flexible backends** | Local `claude` CLI, local `codex` CLI, or fall back to a configured API provider / Ollama — your choice, your keys. Add any number of **custom OpenAI-compatible endpoints** (Zhipu AI, DeepSeek, OpenRouter…) for cheap retro generation |
+| **Batch pre-retro** | Pre-compute retros for recent sessions and reuse provider-aware cached results |
+| **Cost tracking** | See token usage and cost per retro run |
 | **Quick access** | Open from the tray menu, the right-click menu on the desktop pet, or a global shortcut |
 
 ### Usage examples
@@ -81,8 +81,8 @@ A small crab appears on your desktop — on macOS, right-click it to open the **
       <br /><sub><b>③ Tweak settings</b><br/>gear ⚙ → AI Provider</sub>
     </td>
     <td width="25%" align="center" valign="top">
-      <img src="assets/screenshot-ai-analysis.gif" alt="Run analysis" />
-      <br /><sub><b>④ Run analysis</b><br/>batch or per-session</sub>
+      <img src="assets/screenshot-ai-analysis.gif" alt="Run retro" />
+      <br /><sub><b>④ Run retro</b><br/>batch or per-session</sub>
     </td>
   </tr>
 </table>
@@ -111,9 +111,9 @@ There are three ways to open it — pick whichever feels natural:
 
 The first time you open it, you'll see your timeline immediately — it just reads the session logs already on your disk. **No setup required for that part.**
 
-### 3. Configure an AI Provider for session summaries
+### 3. Configure an AI Provider for session retros
 
-The timeline works out of the box. But to make the dashboard automatically **generate a recap summary for each session**, you need to point it at something that can call a large language model — an **AI Provider** (the analysis backend). There are three options:
+The timeline works out of the box. But to make the dashboard automatically **write a retro for each session**, you need to point it at something that can call a large language model — an **AI Provider** (the LLM backend). There are three options:
 
 | Provider type | What it is | Setup | Best for |
 |---|---|---|---|
@@ -142,16 +142,16 @@ Open the Analytics Dashboard → click the **gear icon ⚙** in the top-right �
 The dialog has two sections:
 
 - **LOCAL CLI DETECTION** — shows whether the dashboard found `claude` and `codex` on your machine. Green dot = found (with version + path); red dot = missing. **If you see green dots, everything is working — proceed to the next step.**
-- **API PROVIDER (FALLBACK)** — if no local CLI is installed, you can use an API key for AI session analysis (Claude / OpenAI / Ollama / …) — just paste the key and you're set.
-- **CUSTOM ANALYSIS PROVIDERS** — add any number of OpenAI-compatible endpoints (Zhipu AI, DeepSeek, OpenRouter, university APIs, etc.) as dedicated analysis backends. See below.
+- **API PROVIDER (FALLBACK)** — if no local CLI is installed, you can use an API key for retro generation (Claude / OpenAI / Ollama / …) — just paste the key and you're set.
+- **CUSTOM ANALYSIS PROVIDERS** — add any number of OpenAI-compatible endpoints (Zhipu AI, DeepSeek, OpenRouter, university APIs, etc.) as dedicated retro backends. See below.
 
 > **Tip**: if your `claude` or `codex` was installed via **NVM, fnm, or Volta**, auto-detection may miss it. Run `which claude` or `which codex` in your terminal and paste the output into the **Claude binary path** / **Codex binary path** override field.
 
 ### Custom Analysis Providers
 
-You can add cheap, dedicated API endpoints specifically for session analysis — keeping your expensive coding models for actual work.
+You can add cheap, dedicated API endpoints specifically for retro generation — keeping your expensive coding models for actual work.
 
-**Why this matters**: your coding sessions use Claude Code or Codex (subscription or pay-per-token). Session *analysis* is a much simpler task — a `glm-4-flash` call costs ~$0.0001 vs ~$0.01 for a Sonnet call. Adding a cheap custom provider lets you analyze hundreds of sessions for pennies.
+**Why this matters**: your coding sessions use Claude Code or Codex (subscription or pay-per-token). Retro generation is a much simpler task — a `glm-4-flash` call costs ~$0.0001 vs ~$0.01 for a Sonnet call. Adding a cheap custom provider lets you generate retros for hundreds of sessions for pennies.
 
 #### Adding a custom provider
 
@@ -165,7 +165,7 @@ You can add cheap, dedicated API endpoints specifically for session analysis —
    - **Model** — the model identifier
 4. Click **Test Connection** to verify, then **Save**
 
-The provider immediately appears in the **provider pill** dropdown on every session card — click it to switch which backend analyzes that session.
+The provider immediately appears in the **provider pill** dropdown on every session card — click it to switch which backend writes the retro for that session.
 
 #### Popular cheap providers
 
@@ -187,13 +187,13 @@ The provider immediately appears in the **provider pill** dropdown on every sess
 - Open Settings and look at `Local CLI Detection`
 - Switch to `Week` or `Month` and check whether the timeline shows any sessions
 
-### 5. Start AI session analysis
+### 5. Run session retros
 
-#### Method A: Batch pre-analysis (auto-prompted on dashboard open)
+#### Method A: Batch pre-retro (auto-prompted on dashboard open)
 
-Every time you open the Analytics Dashboard, if there are unanalyzed sessions, the dashboard **automatically pops up a dialog** — `Pre-analyze Sessions` — letting you analyze a whole time range in one go.
+Every time you open the Analytics Dashboard, if there are sessions without a retro yet, the dashboard **automatically pops up a dialog** — `Pre-analyze Sessions` — letting you batch-generate retros for a whole time range in one go.
 
-> **Note**: the dashboard's own internal AI summary jobs are automatically excluded from the timeline and session stats. Even if you launch `npm start` from some other directory, those internal analysis runs will not be counted as work sessions.
+> **Note**: the dashboard's own internal retro jobs are automatically excluded from the timeline and session stats. Even if you launch `npm start` from some other directory, those internal retro runs will not be counted as work sessions.
 
 Available scopes:
 
@@ -202,10 +202,10 @@ Available scopes:
 - **Week** — the last 7 days
 - **Custom** — your last N sessions
 
-Pick a scope, hit confirm, and the dashboard runs through them in the background, showing an `Analyzing 1/N`, `2/N`, ... progress bar. **Already-analyzed sessions are auto-skipped** (per-provider cache), so re-clicking never wastes tokens.
+Pick a scope, hit confirm, and the dashboard runs through them in the background, showing an `Analyzing 1/N`, `2/N`, ... progress bar. **Sessions that already have a retro are auto-skipped** (per-provider cache), so re-clicking never wastes tokens.
 
 <p align="center">
-  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Batch pre-analysis and per-session analysis in action">
+  <img src="assets/screen-shot-select-AI-provider.gif" width="720" alt="Batch pre-retro and per-session retro in action">
 </p>
 
 > **Best for**: first-time users, monthly retrospectives, catching up on a backlog.
@@ -219,22 +219,22 @@ If you **only want to review one specific session**, no batch needed, just click
 
 Either way, the dashboard will:
 
-1. Show the **cached summary first** if it exists (sessions previously batch-analyzed are tagged `Analyzed` and open instantly)
-2. If not yet analyzed, the click **immediately kicks off a single-session analysis** — the card shows an `Analyzing…` tag, and the result appears in seconds to tens of seconds
+1. Show the **cached retro first** if it exists (sessions previously batch-processed are tagged `Analyzed` and open instantly)
+2. If no retro exists yet, the click **immediately kicks off retro generation for that session** — the card shows an `Analyzing…` tag, and the result appears in seconds to tens of seconds
 
 <p align="center">
-  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="Triggering single-session analysis from the timeline">
+  <img src="assets/screenshot-ai-analysis.gif" width="720" alt="Triggering single-session retro from the timeline">
 </p>
 
 > **Best for**: you already know which session you want to revisit, ad-hoc lookups, day-to-day "scrolling through" history.
 
-**In summary:**
+**In short:**
 
-- **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want analyzed. Takes a few minutes and costs more tokens upfront, but every record opens instantly afterwards.
+- **First time using it** → run **Method A on Week** once, or pick a custom range/count for the sessions you want retros for. Takes a few minutes and costs more tokens upfront, but every record opens instantly afterwards.
 - **Daily use** → after that initial batch, switch to **Method B — pick specific sessions** as needed. Only fresh ones require a manual trigger.
-- **Token-sensitive** → use **Method B on demand**. Only analyze the sessions you actually want to read — zero wasted tokens.
+- **Token-sensitive** → use **Method B on demand**. Only generate retros for the sessions you actually want to read — zero wasted tokens.
 
-> **About cost**: Local CLI (Claude Code / Codex subscription) analysis **uses your existing subscription quota** — typically no extra charges. In API key mode, the dashboard shows **token usage and cost** in the top status bar after each analysis completes, so you always know what you're spending.
+> **About cost**: Local CLI (Claude Code / Codex subscription) retro generation **uses your existing subscription quota** — typically no extra charges. In API key mode, the dashboard shows **token usage and cost** in the top status bar after each retro completes, so you always know what you're spending.
 
 ## How it works
 
@@ -262,7 +262,7 @@ All events map to the same state machine: `idle → thinking → working → hap
 
 > **Multi-agent coexistence**: Claude Code, Codex, Copilot, Gemini, Cursor, Kiro, and opencode can all run at the same time. Clawd tracks each session independently and displays the highest-priority state.
 
-### Path ②: Offline analysis → insights dashboard
+### Path ②: Offline retro → insights dashboard
 
 Every conversation you have with an agent is saved as JSONL on your disk:
 
@@ -272,14 +272,14 @@ Every conversation you have with an agent is saved as JSONL on your disk:
 | Codex CLI | `~/.codex/sessions/` |
 | Cursor Agent | `~/.cursor/projects/` |
 
-The insights dashboard reads these files directly to generate timelines and AI summaries. **It doesn't go through hooks and doesn't require the pet to be running** — as long as chat history exists on disk, the dashboard works.
+The insights dashboard reads these files directly to draw timelines and write retros. **It doesn't go through hooks and doesn't require the pet to be running** — as long as chat history exists on disk, the dashboard works.
 
 > **Note**: the analytics scanner currently covers only the three agents above. Copilot CLI, Gemini CLI, Kiro CLI, and opencode still drive pet animations, but their local histories are not yet wired into the dashboard scanner.
 
 ## FAQ
 
 **Q: Does the dashboard need internet?**
-Scanning and the timeline are **fully offline**. Whether AI summaries need internet depends on which provider you pick: Local CLI uses whatever network stack Claude Code / Codex normally use; Ollama is fully offline; API key mode talks to the cloud.
+Scanning and the timeline are **fully offline**. Whether retro generation needs internet depends on which provider you pick: Local CLI uses whatever network stack Claude Code / Codex normally use; Ollama is fully offline; API key mode talks to the cloud.
 
 **Q: Are my conversations uploaded anywhere?**
 No. Clawd Insights collects zero telemetry. The provider step is *your* CLI or *your* API key calling *the model you chose* directly — no third-party server in the middle.
@@ -291,7 +291,7 @@ Yes. You can use the timeline view alone (completely free, no LLM required), or 
 
 Clawd Insights is the **analytics layer** built on top of [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk), the lovely desktop pet that turns your coding agent's state into pixel art. Everything that makes the pet delightful — animations, permission bubbles, multi-agent state tracking, mini mode, the lot — is still here, untouched. What this fork adds is one extra question: **what if every conversation you've ever had with the agent was searchable, summarised, and waiting for you on a single dashboard?**
 
-That dashboard is the new piece. It scans your local history (Claude Code, Codex CLI, Cursor Agent today; more agents on the way), draws a timeline, and lets your own LLM write per-session summaries — all without sending a byte to a third party.
+That dashboard is the new piece. It scans your local history (Claude Code, Codex CLI, Cursor Agent today; more agents on the way), draws a timeline, and lets your own LLM write per-session retros — all without sending a byte to a third party.
 
 Multi-agent state tracking carried over from upstream: **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**. For the desktop pet's own feature list (mini mode, click reactions, themes, remote SSH, etc.), see the [upstream README](https://github.com/rullerzhou-afk/clawd-on-desk).
 
