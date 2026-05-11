@@ -762,6 +762,19 @@ module.exports = function initAnalyticsScan(ctx) {
   function applyDetailScope(detail, rawScope) {
     const scopes = normalizeDetailScopes(rawScope);
     if (!scopes) return detail;
+    // Cache-sharing fast path: when the scope union fully covers every event
+    // in the session, clipping is a no-op. Return the unscoped detail so the
+    // brief generated for "today's daily report" shares the same cache key
+    // as the single-session AI panel (and vice versa). Without this, identical
+    // analyses get cached under two different keys.
+    const ts = detail.timestamps || [];
+    if (ts.length > 0) {
+      let allInside = true;
+      for (const t of ts) {
+        if (!inAnyDetailScope(Number(t), scopes)) { allInside = false; break; }
+      }
+      if (allInside) return detail;
+    }
     // analysisId must be stable for the same set of scopes so the brief cache
     // can dedupe across calls. Sort and join after merge.
     const analysisIdSuffix = scopes.map(s => `${s.start}-${s.end}`).join("+");
