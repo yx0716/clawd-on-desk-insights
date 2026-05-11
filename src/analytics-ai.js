@@ -2515,7 +2515,160 @@ module.exports = function initAnalyticsAI(ctx) {
     });
   }
 
-  return { getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath, clearAnalysisCaches, loadPersistedAnalyses, analyzeKnowledgeCompound, getProviderRegistry, addProvider, updateProvider, deleteProvider, getProvider, testProvider, getDefaultProvider, setDefaultProvider, generateUUID, validateProvider };
+  // Build the aggregation prompt from per-session brief summaries. Each brief
+  // is the result of running analyzeSession(..., "brief") on a single session,
+  // so it's already concise (1-line summary + 2-3 topics + 1-2 outcomes).
+  // Feeding briefs (not raw conversations) to the AI keeps tokens low and lets
+  // the model focus on cross-session synthesis instead of re-reading walls of
+  // dialogue.
+  function buildMultiSessionPromptFromBriefs(items) {
+    let p = "你是用户的编程搭档。以下是用户在这段时间里跨多个 AI 编程会话的**已生成简报**（每个会话独立做过 AI 分析）。\n";
+    p += "请基于这些简报，提炼这段时间用户**整体在做什么**，归纳主题、识别重点、概括成果。\n\n";
+    for (let i = 0; i < items.length; i++) {
+      const { detail, brief } = items[i];
+      p += `### 会话 ${i + 1}`;
+      if (detail.title) p += ` · ${detail.title}`;
+      p += "\n";
+      if (detail.cwd) p += `项目：${detail.cwd}\n`;
+      if (detail.timestamps && detail.timestamps.length >= 2) {
+        const sorted = [...detail.timestamps].sort((a, b) => a - b);
+        const start = new Date(sorted[0]);
+        const end = new Date(sorted[sorted.length - 1]);
+        p += `时间：${start.toLocaleString("zh-CN")} - ${end.toLocaleString("zh-CN")}（约 ${Math.round((end - start) / 60000)} 分钟）\n`;
+      }
+      if (brief.summary) p += `一句话：${brief.summary}\n`;
+      if (Array.isArray(brief.keyTopics) && brief.keyTopics.length) {
+        p += `话题：${brief.keyTopics.join("、")}\n`;
+      }
+      if (Array.isArray(brief.outcomes) && brief.outcomes.length) {
+        p += "成果：\n";
+        for (const o of brief.outcomes) {
+          if (!o) continue;
+          const head = o.headline || "";
+          const det = o.detail || "";
+          p += `- ${head}${det ? "：" + det : ""}\n`;
+        }
+      }
+      p += "\n";
+    }
+    p += "请用 markdown 直接返回总结（不要 JSON，不要代码块），结构如下：\n\n";
+    p += "# 这段时间做了什么\n\n";
+    p += "**TL;DR：** 一句话概括整段时间的主线（≤ 40 字）\n\n";
+    p += "## 主要工作\n";
+    p += "按项目或主题归类，3-6 条要点。用「项目/主题名」开头，后跟「做了 X，达成 Y」。\n\n";
+    p += "## 关键成果\n";
+    p += "2-4 条具体成果（解决了什么问题、上线了什么、想清楚了什么）。\n\n";
+    p += "## 时间分布\n";
+    p += "粗略估算各项目/主题占的时间比例（百分比即可）。\n\n";
+    p += "要求：全程中文，口吻像队友复盘，不要套话；只用上面提供的简报内容，不要编造未提及的内容。";
+    return p;
+  }
+
+  // Compute the cache key the same way maybeCacheAnalysisResult does for a
+  // brief-mode analysis. Reuses the persistent disk cache so we don't redo
+  // expensive per-session AI work.
+  function briefCacheKeyFor(detail, preferredProvider) {
+    const id = detail.analysisId || detail.sessionId;
+    return analysisCacheKey(id, preferredProvider || "claude-code") + ":brief";
+  }
+
+  async function analyzeMultipleSessions(details, preferredProvider) {
+    if (!Array.isArray(details) || details.length === 0) return null;
+
+    // Stage 1: collect per-session brief summaries. Use the existing cache;
+    // generate-on-miss falls through to analyzeSession() which will populate
+    // the cache for future runs. We process sessions sequentially to avoid
+    // hammering the CLI with parallel spawns.
+    const items = [];
+    for (const detail of details) {
+      const provider = preferredProvider || "claude-code";
+      if (preferredProvider) detail._preferredProvider = preferredProvider;
+      const key = briefCacheKeyFor(detail, provider);
+      let brief = sessionAnalysisCache.get(key);
+      if (!brief || !brief.summary) {
+        try {
+          brief = await analyzeSession(detail, "brief");
+        } catch { brief = null; }
+      }
+      if (brief && (brief.summary || (brief.keyTopics && brief.keyTopics.length) || (brief.outcomes && brief.outcomes.length))) {
+        items.push({ detail, brief });
+      } else {
+        // Fall back to a stub so the aggregator sees at least the session
+        // metadata; AI summary failed for this one but we don't want to drop
+        // it entirely.
+        items.push({
+          detail,
+          brief: {
+            summary: detail.title || (detail.firstUserMsg ? `开了一段会话："${detail.firstUserMsg}"` : "（无可用简报）"),
+            keyTopics: [],
+            outcomes: [],
+          },
+        });
+      }
+    }
+
+    if (!items.length) return { text: null, error: "未能加载任一会话的简报。" };
+    const prompt = buildMultiSessionPromptFromBriefs(items);
+
+    // Try CLI first based on preference
+    const provider = preferredProvider || "claude-code";
+    if (provider === "codex") {
+      const codexPath = findCodexBinary();
+      if (codexPath) {
+        try {
+          const result = await callCodexCLI(codexPath, prompt, { outputSchema: null });
+          if (result && result.text) return { text: result.text, _provider: "codex" };
+        } catch (e) { /* fall through */ }
+      }
+    } else {
+      const claudePath = findClaudeBinary();
+      if (claudePath) {
+        try {
+          const sysPrompt = "你是一个对话分析助手。请按用户的要求直接返回 markdown 文本，不要返回 JSON，不要把回答包在 code block 里。";
+          const { text } = await callClaudeCLIWithSystem(claudePath, prompt, sysPrompt);
+          if (text) return { text, _provider: "claude-code" };
+        } catch (e) { /* fall through */ }
+      }
+    }
+
+    // Fallback to registry-default API provider for detail-mode
+    const registryProvider = getProvider(getDefaultProvider("detail")) || getProvider(getDefaultProvider("brief"));
+    if (registryProvider) {
+      try {
+        let text;
+        if (registryProvider.type === "claude") {
+          text = await callClaude(registryProvider.apiKey, registryProvider.model, prompt, 4000, registryProvider.baseUrl);
+        } else if (registryProvider.type === "ollama") {
+          text = await callOllama(registryProvider.model, prompt, registryProvider.baseUrl);
+        } else {
+          text = await callOpenAICompat(registryProvider.apiKey, registryProvider.model, prompt, registryProvider.baseUrl, 4000);
+        }
+        if (text) return { text, _provider: registryProvider.id || registryProvider.type };
+      } catch (e) { /* fall through */ }
+    }
+
+    // Legacy fallback
+    const cfg = getConfig();
+    const legacyProvider = (cfg && cfg.provider) || "claude";
+    const apiKey = cfg && cfg.apiKey;
+    if (!apiKey && PROVIDERS[legacyProvider] && PROVIDERS[legacyProvider].needsKey) {
+      return { text: null, error: "未配置 AI Provider，请到设置中添加。" };
+    }
+    try {
+      const model = (cfg && cfg.model) || PROVIDERS[legacyProvider].defaultModel;
+      const baseUrl = (cfg && cfg.baseUrl) || PROVIDERS[legacyProvider].baseUrl;
+      let text;
+      if (legacyProvider === "claude") text = await callClaude(apiKey, model, prompt, 4000, baseUrl);
+      else if (legacyProvider === "ollama") text = await callOllama(model, prompt, baseUrl);
+      else text = await callOpenAICompat(apiKey, model, prompt, baseUrl, 4000);
+      if (text) return { text, _provider: legacyProvider };
+    } catch (e) {
+      return { text: null, error: e && (e.message || String(e)) };
+    }
+    return { text: null, error: "AI 调用失败。" };
+  }
+
+  return { getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, analyzeMultipleSessions, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath, clearAnalysisCaches, loadPersistedAnalyses, analyzeKnowledgeCompound, getProviderRegistry, addProvider, updateProvider, deleteProvider, getProvider, testProvider, getDefaultProvider, setDefaultProvider, generateUUID, validateProvider };
 };
 
 module.exports.__test = {

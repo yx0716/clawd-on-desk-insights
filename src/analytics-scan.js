@@ -895,5 +895,92 @@ module.exports = function initAnalyticsScan(ctx) {
     cacheExpiry = 0;
   }
 
-  return { scanRange, scanToday, scan3Days, scan7Days, scanWeek, scanMonthOf, getAvailableMonths, getSessionDetail, invalidateCache };
+  // Day-level buckets for the daily-report picker. Returns the last `daysBack`
+  // calendar days (most recent first), each with the session count. Uses
+  // scanRange's existing cache so calling this repeatedly is cheap.
+  function getDailyBuckets(daysBack) {
+    const n = Math.max(1, Math.min(60, Number(daysBack) || 14));
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const windowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (n - 1)).getTime();
+    const windowEnd = today.getTime() + 86400000;
+    const data = scanRange(windowStart, windowEnd);
+    const sessions = (data && data.sessions) || [];
+    const buckets = [];
+    for (let i = 0; i < n; i++) {
+      const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+      const startTs = dayStart.getTime();
+      const endTs = startTs + 86400000;
+      const count = sessions.filter(s => {
+        const last = Number(s.lastTs) || 0;
+        const first = Number(s.firstTs) || 0;
+        return last >= startTs && first <= endTs;
+      }).length;
+      buckets.push({
+        start: startTs,
+        end: endTs,
+        date: `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, "0")}-${String(dayStart.getDate()).padStart(2, "0")}`,
+        weekday: dayStart.getDay(),
+        count,
+      });
+    }
+    return buckets;
+  }
+
+  // Week-level buckets for the weekly-report picker. Returns calendar weeks
+  // (Mon-Sun) ending at the current week, most recent first. The "current"
+  // week is always first so the picker can default to it.
+  function getWeeklyBuckets(weeksBack) {
+    const n = Math.max(1, Math.min(26, Number(weeksBack) || 8));
+    const now = new Date();
+    const daysBackToMonday = (now.getDay() + 6) % 7;
+    const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBackToMonday);
+    const windowStart = new Date(currentMonday.getFullYear(), currentMonday.getMonth(), currentMonday.getDate() - (n - 1) * 7).getTime();
+    const windowEnd = new Date(currentMonday.getFullYear(), currentMonday.getMonth(), currentMonday.getDate() + 7).getTime();
+    const data = scanRange(windowStart, windowEnd);
+    const sessions = (data && data.sessions) || [];
+    const buckets = [];
+    for (let i = 0; i < n; i++) {
+      const monday = new Date(currentMonday.getFullYear(), currentMonday.getMonth(), currentMonday.getDate() - i * 7);
+      const startTs = monday.getTime();
+      const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
+      const endTs = nextMonday.getTime();
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+      const count = sessions.filter(s => {
+        const last = Number(s.lastTs) || 0;
+        const first = Number(s.firstTs) || 0;
+        return last >= startTs && first <= endTs;
+      }).length;
+      const fmt = (d) => `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+      buckets.push({
+        start: startTs,
+        end: endTs,
+        label: `${fmt(monday)} - ${fmt(sunday)}`,
+        weekOffset: -i,
+        count,
+      });
+    }
+    return buckets;
+  }
+
+  // Multi-range analyze helper: for each range, scan sessions and return
+  // refs with per-session scope (clipped to that range). If the same session
+  // appears in multiple ranges, it gets one ref per range so each clipped
+  // slice contributes independently to the AI prompt.
+  function getSessionRefsForRanges(ranges) {
+    if (!Array.isArray(ranges) || !ranges.length) return [];
+    const refs = [];
+    for (const r of ranges) {
+      if (!r || typeof r !== "object") continue;
+      const start = Number(r.start), end = Number(r.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+      const data = scanRange(start, end);
+      for (const s of (data && data.sessions) || []) {
+        refs.push({ id: s.id, agent: s.agent, scope: { start, end } });
+      }
+    }
+    return refs;
+  }
+
+  return { scanRange, scanToday, scan3Days, scan7Days, scanWeek, scanMonthOf, getAvailableMonths, getDailyBuckets, getWeeklyBuckets, getSessionRefsForRanges, getSessionDetail, invalidateCache };
 };

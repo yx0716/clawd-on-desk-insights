@@ -68,6 +68,10 @@ module.exports = function initAnalyticsData(ctx) {
 
     // Apply filters
     if (filters) {
+      if (filters.sessionIds && filters.sessionIds.length) {
+        const idSet = new Set(filters.sessionIds);
+        events = events.filter(e => e.sid && idSet.has(e.sid));
+      }
       if (filters.agent) {
         events = events.filter(e => e.agent === filters.agent);
       }

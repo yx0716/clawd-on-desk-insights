@@ -85,9 +85,10 @@ module.exports = function initAnalytics(ctx) {
     return { today, week, computed };
   });
 
-  ipcMain.handle("analytics-generate-report", async (_event, scope) => {
-    const today = ctx.analyticsData.aggregateToday();
-    const week = ctx.analyticsData.aggregateWeek();
+  ipcMain.handle("analytics-generate-report", async (_event, scope, sessionIds) => {
+    const filters = (sessionIds && sessionIds.length) ? { sessionIds } : undefined;
+    const today = ctx.analyticsData.aggregateToday(filters);
+    const week = ctx.analyticsData.aggregateWeek(filters);
     if (scope === "week") {
       return {
         scope: "week",
@@ -304,6 +305,54 @@ module.exports = function initAnalytics(ctx) {
     if (!detail) return null;
     if (preferredProvider) detail._preferredProvider = preferredProvider;
     const result = await ctx.analyticsAI.analyzeSession(detail, mode);
+    try { return result ? JSON.parse(JSON.stringify(result)) : result; }
+    catch { return result; }
+  });
+
+  ipcMain.handle("analytics-get-daily-buckets", async (_event, daysBack) => {
+    if (!ctx.analyticsScan || !ctx.analyticsScan.getDailyBuckets) return [];
+    return ctx.analyticsScan.getDailyBuckets(daysBack);
+  });
+
+  ipcMain.handle("analytics-get-weekly-buckets", async (_event, weeksBack) => {
+    if (!ctx.analyticsScan || !ctx.analyticsScan.getWeeklyBuckets) return [];
+    return ctx.analyticsScan.getWeeklyBuckets(weeksBack);
+  });
+
+  ipcMain.handle("analytics-analyze-ranges", async (_event, ranges, preferredProvider) => {
+    if (!ctx.analyticsScan || !ctx.analyticsAI) return null;
+    if (!Array.isArray(ranges) || !ranges.length) return null;
+    const refs = ctx.analyticsScan.getSessionRefsForRanges(ranges);
+    if (!refs.length) return { text: null, error: "选中范围内没有可分析的会话。" };
+    const details = [];
+    for (const ref of refs) {
+      try {
+        const d = ctx.analyticsScan.getSessionDetail(ref.id, ref.agent, ref.scope);
+        if (d) details.push(d);
+      } catch { /* skip */ }
+    }
+    if (!details.length) return { text: null, error: "未能加载所选范围的会话详情。" };
+    const result = await ctx.analyticsAI.analyzeMultipleSessions(details, preferredProvider);
+    try { return result ? JSON.parse(JSON.stringify(result)) : result; }
+    catch { return result; }
+  });
+
+  ipcMain.handle("analytics-analyze-selected", async (_event, sessionRefs, preferredProvider, scope) => {
+    if (!ctx.analyticsScan || !ctx.analyticsAI) return null;
+    if (!Array.isArray(sessionRefs) || sessionRefs.length === 0) return null;
+    const details = [];
+    for (const ref of sessionRefs) {
+      try {
+        // Per-session scope overrides global scope (e.g. "today" clipped against
+        // each session's actual span). Falls back to the global scope if the
+        // frontend only passed a shared range.
+        const useScope = (ref && ref.scope) || scope || undefined;
+        const d = ctx.analyticsScan.getSessionDetail(ref.id, ref.agent, useScope);
+        if (d) details.push(d);
+      } catch { /* skip */ }
+    }
+    if (!details.length) return { text: null, error: "未能加载选中会话的详情。" };
+    const result = await ctx.analyticsAI.analyzeMultipleSessions(details, preferredProvider);
     try { return result ? JSON.parse(JSON.stringify(result)) : result; }
     catch { return result; }
   });

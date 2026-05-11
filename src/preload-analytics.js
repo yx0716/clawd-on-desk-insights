@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("analyticsAPI", {
   getData: (filters) => ipcRenderer.invoke("analytics-get-data", filters),
-  generateReport: (scope) => ipcRenderer.invoke("analytics-generate-report", scope),
+  generateReport: (scope, sessionIds) => ipcRenderer.invoke("analytics-generate-report", scope, sessionIds),
   pickSessionAnalysesExportPath: () => ipcRenderer.invoke("analytics-pick-session-analyses-export-path"),
   exportSessionAnalyses: (payload) => ipcRenderer.invoke("analytics-export-session-analyses", payload),
   getAIConfig: () => ipcRenderer.invoke("analytics-get-ai-config"),
@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld("analyticsAPI", {
   getTimeline: (range, year, month, weekOffset) => ipcRenderer.invoke("analytics-get-timeline", range, year, month, weekOffset),
   getAvailableMonths: () => ipcRenderer.invoke("analytics-get-available-months"),
   analyzeSession: (sessionId, agent, provider, mode, scope) => ipcRenderer.invoke("analytics-analyze-session", sessionId, agent, provider, mode, scope),
+  analyzeSelected: (sessionRefs, provider, scope) => ipcRenderer.invoke("analytics-analyze-selected", sessionRefs, provider, scope),
+  getDailyBuckets: (daysBack) => ipcRenderer.invoke("analytics-get-daily-buckets", daysBack),
+  getWeeklyBuckets: (weeksBack) => ipcRenderer.invoke("analytics-get-weekly-buckets", weeksBack),
+  analyzeRanges: (ranges, provider) => ipcRenderer.invoke("analytics-analyze-ranges", ranges, provider),
   getAnalysisProvider: () => ipcRenderer.invoke("analytics-get-analysis-provider"),
   getAnalysisOptions: () => ipcRenderer.invoke("analytics-get-analysis-options"),
   getOneLiners: (sessionIds) => ipcRenderer.invoke("analytics-get-oneliners", sessionIds),

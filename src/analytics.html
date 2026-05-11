@@ -126,6 +126,136 @@
       background: var(--accent-light);
     }
 
+    .report-scope-wrap { position: relative; display: inline-block; }
+    .report-scope-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 240px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow-md);
+      padding: 6px;
+      z-index: 1000;
+    }
+    .report-scope-menu.is-open { display: block; }
+    .report-scope-option {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      padding: 9px 12px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+    }
+    .report-scope-option:hover { background: var(--accent-light); }
+    .report-scope-option:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .report-scope-option:disabled:hover { background: transparent; }
+    .report-scope-option-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .report-scope-option-desc {
+      font-size: 10.5px;
+      color: var(--text-muted);
+    }
+    .report-scope-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 6px;
+    }
+    .report-scope-menu.is-picker { min-width: 300px; padding: 10px; }
+    .report-scope-section-title {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 700;
+      padding: 4px 8px 6px;
+    }
+    .report-bucket-list {
+      max-height: 280px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 4px 4px 8px;
+    }
+    .report-bucket-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .report-bucket-row:last-child { border-bottom: none; }
+    .report-bucket-row:hover { background: var(--accent-light); }
+    .report-bucket-row.is-empty { color: var(--text-muted); cursor: not-allowed; opacity: 0.55; }
+    .report-bucket-row.is-empty:hover { background: transparent; }
+    .report-bucket-row input[type="checkbox"] {
+      margin: 0;
+      cursor: pointer;
+    }
+    .report-bucket-row.is-empty input[type="checkbox"] { cursor: not-allowed; }
+    .report-bucket-label {
+      flex: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .report-bucket-date { font-weight: 600; }
+    .report-bucket-extra { font-size: 10.5px; color: var(--text-muted); }
+    .report-bucket-count {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      padding: 2px 7px;
+      background: var(--bg);
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .report-bucket-count.is-active { color: var(--accent); border-color: var(--accent); }
+    .report-picker-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 4px 0;
+    }
+    .report-picker-confirm {
+      flex: 1;
+      padding: 7px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .report-picker-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+    .report-picker-confirm.is-secondary {
+      flex: 0 0 auto;
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border);
+    }
+    .report-picker-summary {
+      padding: 6px 8px 2px;
+      font-size: 10.5px;
+      color: var(--text-muted);
+    }
+
     .lang-toggle {
       display: flex;
       gap: 2px;
@@ -1920,6 +2050,154 @@
       resize: vertical;
     }
 
+    .report-body { position: relative; }
+    .report-rendered {
+      width: 100%;
+      min-height: 360px;
+      max-height: 60vh;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      padding: 18px 22px;
+      font: 13px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    .report-rendered h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      color: var(--text);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .report-rendered h2 {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 18px 0 8px;
+      color: var(--text);
+    }
+    .report-rendered h3 {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 14px 0 6px;
+      color: var(--text-secondary);
+    }
+    .report-rendered p { margin: 0 0 10px; }
+    .report-rendered ul, .report-rendered ol {
+      margin: 0 0 12px;
+      padding-left: 22px;
+    }
+    .report-rendered li { margin: 3px 0; }
+    .report-rendered strong { color: var(--text); font-weight: 700; }
+    .report-rendered em { color: var(--text-secondary); font-style: italic; }
+    .report-rendered code {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--accent);
+    }
+    .report-rendered blockquote {
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      border-left: 3px solid var(--accent);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border-radius: 0 6px 6px 0;
+      font-size: 12px;
+    }
+    .report-rendered blockquote p:last-child { margin-bottom: 0; }
+    .report-rendered hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 14px 0;
+    }
+    .report-source-toggle {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      text-decoration: underline;
+    }
+    .report-source-toggle:hover { color: var(--text-secondary); }
+    .report-loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      min-height: 360px;
+      max-height: 60vh;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg) 100%);
+      padding: 40px 32px;
+      text-align: center;
+    }
+    .report-loading.is-active { display: flex; }
+    .report-loading-spinner {
+      width: 48px;
+      height: 48px;
+      position: relative;
+    }
+    .report-loading-spinner::before,
+    .report-loading-spinner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 3px solid transparent;
+    }
+    .report-loading-spinner::before {
+      border-color: var(--border);
+      opacity: 0.6;
+    }
+    .report-loading-spinner::after {
+      border-top-color: var(--accent);
+      border-right-color: var(--accent);
+      animation: report-spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes report-spin { to { transform: rotate(360deg); } }
+    .report-loading-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.2px;
+    }
+    .report-loading-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 380px;
+      line-height: 1.6;
+      margin: -4px 0 0;
+    }
+    .report-loading-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      opacity: 0.7;
+      margin-top: 6px;
+      font-style: italic;
+    }
+    .report-loading-dots::after {
+      content: '';
+      display: inline-block;
+      width: 1em;
+      text-align: left;
+      animation: report-dots 1.4s steps(4, end) infinite;
+    }
+    @keyframes report-dots {
+      0%, 20% { content: ''; }
+      40% { content: '.'; }
+      60% { content: '..'; }
+      80%, 100% { content: '...'; }
+    }
+    .report-actions.is-loading .report-copy,
+    .report-actions.is-loading .report-source-toggle { display: none; }
+
     .report-actions {
       display: flex;
       align-items: center;
@@ -2422,8 +2700,14 @@
         <h1 id="headerTitle"><span>Insights</span></h1>
       </div>
       <div class="header-actions">
-        <button class="header-report-btn" id="dailyReportBtn" type="button">日报</button>
-        <button class="header-report-btn" id="weeklyReportBtn" type="button">周报</button>
+        <div class="report-scope-wrap">
+          <button class="header-report-btn" id="dailyReportBtn" type="button">日报</button>
+          <div class="report-scope-menu" id="dailyScopeMenu" role="menu"></div>
+        </div>
+        <div class="report-scope-wrap">
+          <button class="header-report-btn" id="weeklyReportBtn" type="button">周报</button>
+          <div class="report-scope-menu" id="weeklyScopeMenu" role="menu"></div>
+        </div>
         <div class="lang-toggle" aria-label="Language switcher">
           <button class="lang-btn" id="langBtnZh" type="button" data-lang="zh">中</button>
           <button class="lang-btn" id="langBtnEn" type="button" data-lang="en">EN</button>
@@ -2597,9 +2881,19 @@
     <div class="report-dialog">
       <h2 id="reportTitle">日报</h2>
       <div class="report-sub" id="reportSub">基于当前 analytics 数据生成，可直接复制。</div>
-      <textarea class="report-textarea" id="reportTextarea" spellcheck="false"></textarea>
+      <div class="report-body">
+        <div class="report-rendered" id="reportRendered"></div>
+        <textarea class="report-textarea" id="reportTextarea" spellcheck="false" style="display:none"></textarea>
+        <div class="report-loading" id="reportLoading">
+          <div class="report-loading-spinner"></div>
+          <div class="report-loading-title" id="reportLoadingTitle">AI 正在分析<span class="report-loading-dots"></span></div>
+          <div class="report-loading-sub" id="reportLoadingSub">通常需要 30-60 秒，正在阅读会话内容并提炼要点。</div>
+          <div class="report-loading-hint" id="reportLoadingHint"></div>
+        </div>
+      </div>
       <div class="report-actions">
         <button class="report-copy" id="reportCopyBtn" type="button">复制</button>
+        <button class="report-source-toggle" id="reportSourceToggleBtn" type="button">查看源码</button>
         <button class="report-close" id="reportCloseBtn" type="button">关闭</button>
         <span class="report-status" id="reportStatus"></span>
       </div>
@@ -2808,6 +3102,44 @@
         exportToastTitle: "导出完成",
         exportToastBody: "{path} 已保存到本地",
         reportSub: "基于当前 analytics 数据生成，可直接复制。",
+        reportSubScoped: "基于选中的 {count} 个会话生成。",
+        reportSubVisible: "基于当前视图中的 {count} 个会话生成。",
+        reportSelected: "选中会话报告",
+        reportVisible: "当前范围报告",
+        reportOverview: "概览",
+        reportSessionList: "会话列表",
+        scopeSelected: "AI 分析勾选的 {count} 个会话",
+        scopeSelectedDesc: "深度分析你勾选的会话",
+        scopeVisible: "AI 分析当前 {range}（{count} 个会话）",
+        scopeVisibleDesc: "对当前时间线视图里所有会话做摘要",
+        scopeDayVisibleDesc: "只分析今天发生的部分（跨天会话仅取今日片段）",
+        scopeWeekVisibleDesc: "只分析过去 7 天发生的部分（超出窗口的片段会被舍弃）",
+        scopeStats: "查看统计摘要",
+        scopeStatsDayDesc: "从事件日志聚合今日数据",
+        scopeStatsWeekDesc: "从事件日志聚合本周数据",
+        scopePickDayTitle: "勾选要分析的日期（可多选）",
+        scopePickWeekTitle: "勾选要分析的周次（可多选）",
+        scopeConfirmAnalyze: "AI 分析所选范围",
+        scopeLoading: "加载中…",
+        scopeLoadFailed: "加载失败，请稍后再试。",
+        today: "今天",
+        thisWeek: "本周",
+        lastWeek: "上周",
+        reportPickedDay: "选定日期报告",
+        reportPickedWeek: "选定周次报告",
+        reportSubPickedDay: "基于选中的 {count} 天生成。",
+        reportSubPickedWeek: "基于选中的 {count} 周生成。",
+        reportLoadingSubPickedDay: "正在分析选中的 {count} 天会话，通常需要 30-60 秒。",
+        reportLoadingSubPickedWeek: "正在分析选中的 {count} 周会话，通常需要 30-90 秒。",
+        reportAnalyzing: "AI 正在分析这些会话，请稍候（可能需要 30-60 秒）...",
+        reportAnalysisFailed: "AI 分析失败，下面显示统计摘要作为备用：",
+        reportLoadingTitleAI: "AI 正在阅读会话",
+        reportLoadingSubAI: "正在分析选中的 {count} 个会话，通常需要 30-60 秒。",
+        reportLoadingTitleStats: "正在生成报告",
+        reportLoadingSubStats: "从最近的事件日志中聚合统计数据。",
+        reportShowSource: "查看源码",
+        reportShowRendered: "查看渲染",
+        reportLoadingHint: "可以最小化窗口继续做别的事，完成后回来查看。",
         copy: "复制",
         close: "关闭",
         localCliTitle: "本地 CLI 检测",
@@ -2969,6 +3301,44 @@
         exportToastTitle: "Export complete",
         exportToastBody: "{path} was saved locally",
         reportSub: "Generated from current analytics data and ready to copy.",
+        reportSubScoped: "Generated from {count} selected session(s).",
+        reportSubVisible: "Generated from {count} session(s) in the current view.",
+        reportSelected: "Selected Sessions Report",
+        reportVisible: "Current Range Report",
+        reportOverview: "Overview",
+        reportSessionList: "Sessions",
+        scopeSelected: "AI analyze {count} checked session(s)",
+        scopeSelectedDesc: "Deep analysis of the sessions you checked",
+        scopeVisible: "AI analyze current {range} ({count} sessions)",
+        scopeVisibleDesc: "Summarize all sessions in the current timeline view",
+        scopeDayVisibleDesc: "Only today's activity (cross-day sessions are clipped to today)",
+        scopeWeekVisibleDesc: "Only the past 7 days' activity (out-of-window portions are discarded)",
+        scopeStats: "View stats summary",
+        scopeStatsDayDesc: "Aggregate today's data from the event log",
+        scopeStatsWeekDesc: "Aggregate this week's data from the event log",
+        scopePickDayTitle: "Pick days to analyze (multi-select)",
+        scopePickWeekTitle: "Pick weeks to analyze (multi-select)",
+        scopeConfirmAnalyze: "AI analyze selected",
+        scopeLoading: "Loading…",
+        scopeLoadFailed: "Failed to load, please retry.",
+        today: "Today",
+        thisWeek: "This week",
+        lastWeek: "Last week",
+        reportPickedDay: "Picked Days Report",
+        reportPickedWeek: "Picked Weeks Report",
+        reportSubPickedDay: "Generated from {count} selected day(s).",
+        reportSubPickedWeek: "Generated from {count} selected week(s).",
+        reportLoadingSubPickedDay: "Analyzing sessions across {count} day(s), usually 30-60 seconds.",
+        reportLoadingSubPickedWeek: "Analyzing sessions across {count} week(s), usually 30-90 seconds.",
+        reportAnalyzing: "AI is analyzing these sessions, please wait (30-60 seconds)...",
+        reportAnalysisFailed: "AI analysis failed; falling back to stats summary:",
+        reportLoadingTitleAI: "AI is reading your sessions",
+        reportLoadingSubAI: "Analyzing {count} selected session(s), usually 30-60 seconds.",
+        reportLoadingTitleStats: "Generating report",
+        reportLoadingSubStats: "Aggregating stats from the event log.",
+        reportShowSource: "View source",
+        reportShowRendered: "View rendered",
+        reportLoadingHint: "Feel free to minimize this window — your report will be waiting.",
         copy: "Copy",
         close: "Close",
         localCliTitle: "Local CLI Detection",
@@ -5998,35 +6368,295 @@
       });
     }
 
-    async function openReportModal(scope) {
+    function buildSelectedSessionsReport(sessions) {
+      if (!sessions.length) return "";
+      const sorted = [...sessions].sort((a, b) => (a.firstTs || 0) - (b.firstTs || 0));
+      const first = sorted[0].firstTs, last = sorted[sorted.length - 1].lastTs;
+      const lines = [];
+      lines.push(`# ${t("reportSelected")} (${sessions.length})`);
+      lines.push(`${rangeScopeLabel(first, last)}`);
+      lines.push("");
+
+      let totalMsgs = 0, totalTools = 0, totalDur = 0;
+      const projMap = {}, agentMap = {}, toolMap = {};
+      for (const s of sessions) {
+        totalMsgs += s.messages || 0;
+        const blocks = sessionBlocks(s);
+        let dur = 0;
+        for (const b of blocks) dur += b.end - b.start;
+        totalDur += dur;
+        for (const [tool, cnt] of Object.entries(s.toolCalls || {})) {
+          toolMap[tool] = (toolMap[tool] || 0) + cnt;
+          totalTools += cnt;
+        }
+        const proj = s.project || "unknown";
+        projMap[proj] = (projMap[proj] || 0) + dur;
+        const agent = s.agent || "unknown";
+        agentMap[agent] = (agentMap[agent] || 0) + 1;
+      }
+
+      lines.push(`## ${t("reportOverview")}`);
+      lines.push(`- ${t("statsSessions")}：${sessions.length}`);
+      lines.push(`- ${t("statsMessages")}：${totalMsgs}`);
+      lines.push(`- ${t("statsTools")}：${totalTools}`);
+      lines.push(`- ${t("statsActiveSpan")}：${fmtDur(totalDur)}`);
+
+      const topProjects = Object.entries(projMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      if (topProjects.length) {
+        lines.push("");
+        lines.push(`## ${t("statsProjects")}`);
+        for (const [p, dur] of topProjects) lines.push(`- ${p}：${fmtDur(dur)}`);
+      }
+
+      const topAgents = Object.entries(agentMap).sort((a, b) => b[1] - a[1]);
+      if (topAgents.length > 1) {
+        lines.push("");
+        lines.push(`## ${t("statsAgents")}`);
+        for (const [a, cnt] of topAgents) lines.push(`- ${agentLabel(a)}：${cnt}`);
+      }
+
+      const topTools = Object.entries(toolMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      if (topTools.length) {
+        lines.push("");
+        lines.push(`## ${t("statsTools")}`);
+        for (const [tool, cnt] of topTools) lines.push(`- ${tool}：${cnt}`);
+      }
+
+      lines.push("");
+      lines.push(`## ${t("reportSessionList")}`);
+      for (const s of sorted) {
+        const title = resolveTitle(s).text || s.project || s.id;
+        const blocks = sessionBlocks(s);
+        let dur = 0;
+        for (const b of blocks) dur += b.end - b.start;
+        lines.push(`- [${agentLabel(s.agent)}] ${title}：${s.messages} msgs, ${fmtDur(dur)}`);
+      }
+      return lines.join("\n");
+    }
+
+    function renderSimpleMarkdown(md) {
+      if (!md) return "";
+      const lines = md.split(/\r?\n/);
+      let html = "";
+      let i = 0;
+      const inlineFmt = (s) => {
+        // Escape HTML first
+        s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        // Inline code
+        s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+        // Bold (** or __)
+        s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+        // Italic (* or _)
+        s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+        s = s.replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+        return s;
+      };
+      while (i < lines.length) {
+        const line = lines[i];
+        if (/^#{1,6}\s/.test(line)) {
+          const m = line.match(/^(#{1,6})\s+(.*)$/);
+          const level = Math.min(m[1].length, 3);
+          html += `<h${level}>${inlineFmt(m[2])}</h${level}>`;
+          i++;
+        } else if (/^---+$/.test(line.trim())) {
+          html += "<hr>";
+          i++;
+        } else if (/^\s*[-*]\s/.test(line)) {
+          html += "<ul>";
+          while (i < lines.length && /^\s*[-*]\s/.test(lines[i])) {
+            html += `<li>${inlineFmt(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`;
+            i++;
+          }
+          html += "</ul>";
+        } else if (/^\s*\d+\.\s/.test(line)) {
+          html += "<ol>";
+          while (i < lines.length && /^\s*\d+\.\s/.test(lines[i])) {
+            html += `<li>${inlineFmt(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>`;
+            i++;
+          }
+          html += "</ol>";
+        } else if (/^>\s?/.test(line)) {
+          let block = "";
+          while (i < lines.length && /^>\s?/.test(lines[i])) {
+            block += lines[i].replace(/^>\s?/, "") + "\n";
+            i++;
+          }
+          html += `<blockquote>${block.trim().split(/\n\n+/).map(p => `<p>${inlineFmt(p.replace(/\n/g, "<br>"))}</p>`).join("")}</blockquote>`;
+        } else if (line.trim() === "") {
+          i++;
+        } else {
+          let para = "";
+          while (i < lines.length && lines[i].trim() !== "" && !/^#{1,6}\s/.test(lines[i]) && !/^\s*[-*]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i]) && !/^>\s?/.test(lines[i])) {
+            if (para) para += "<br>";
+            para += inlineFmt(lines[i]);
+            i++;
+          }
+          html += `<p>${para}</p>`;
+        }
+      }
+      return html;
+    }
+
+    async function openReportModal(scope, opts) {
       const overlay = document.getElementById("reportOverlay");
       const titleEl = document.getElementById("reportTitle");
       const subEl = document.getElementById("reportSub");
       const textEl = document.getElementById("reportTextarea");
+      const renderedEl = document.getElementById("reportRendered");
       const statusEl = document.getElementById("reportStatus");
       const copyBtn = document.getElementById("reportCopyBtn");
+      const srcBtn = document.getElementById("reportSourceToggleBtn");
+      const loadingEl = document.getElementById("reportLoading");
+      const loadingTitleEl = document.getElementById("reportLoadingTitle");
+      const loadingSubEl = document.getElementById("reportLoadingSub");
 
       overlay.style.display = "flex";
+      const checkedIds = [...selectedExportSessionIds];
+      // Mode: "selected" (checkbox-checked sessions), "ranges" (picker output:
+      // analyze sessions in arbitrary date/week ranges via backend),
+      // "stats" (legacy event-log aggregation), or undefined (auto-detect)
+      let mode = opts && opts.mode;
+      if (!mode) mode = checkedIds.length > 0 ? "selected" : "stats";
+      const pickedRanges = (opts && Array.isArray(opts.ranges)) ? opts.ranges : null;
+      const pickedRangeCount = opts && Number.isFinite(opts.count) ? opts.count : (pickedRanges ? pickedRanges.length : 0);
+      let activeIds = [];
+      let activeSessions = [];
+      // Daily/weekly reports clip session activity to the reporting window.
+      // Day → today (00:00 next day exclusive). Week → rolling past 7 days
+      // (matches scan7Days: today - 6 days .. end of today). Cross-window
+      // portions are dropped so the AI sees only the in-window activity.
+      let perSessionScope = null;
+      const now = new Date();
+      if (scope === "day") {
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        perSessionScope = { start: todayStart, end: todayStart + 86400000 };
+      } else if (scope === "week") {
+        const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+        const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() + 86400000;
+        perSessionScope = { start: weekStart, end: weekEnd };
+      }
+      function sessionOverlapsScope(s, sc) {
+        if (!sc) return true;
+        const last = Number(s.lastTs) || 0, first = Number(s.firstTs) || 0;
+        return last >= sc.start && first <= sc.end;
+      }
+      if (mode === "selected") {
+        activeIds = checkedIds;
+        const idSet = new Set(checkedIds);
+        activeSessions = ((currentData && currentData.sessions) || [])
+          .filter(s => idSet.has(s.id))
+          .filter(s => sessionOverlapsScope(s, perSessionScope));
+      } else if (mode === "visible") {
+        activeSessions = ((currentData && currentData.sessions) || [])
+          .filter(s => sessionOverlapsScope(s, perSessionScope));
+        activeIds = activeSessions.map(s => s.id);
+      }
+      // "ranges" mode: backend will scan + clip per range; frontend has no
+      // direct session list yet (currentData only holds the active view).
+      const useAI =
+        ((mode === "selected" || mode === "visible") && activeSessions.length > 0) ||
+        (mode === "ranges" && pickedRanges && pickedRanges.length > 0);
       titleEl.textContent = scope === "week" ? t("reportWeek") : t("reportDay");
-      subEl.textContent = t("reportSub");
-      textEl.value = t("reportGenerating");
+      if (mode === "ranges") {
+        subEl.textContent = scope === "day"
+          ? t("reportSubPickedDay", { count: pickedRangeCount })
+          : t("reportSubPickedWeek", { count: pickedRangeCount });
+      } else {
+        subEl.textContent = useAI
+          ? (mode === "visible" ? t("reportSubVisible", { count: activeIds.length }) : t("reportSubScoped", { count: activeIds.length }))
+          : t("reportSub");
+      }
+
+      // Show loading card; hide textarea, rendered view, and result-only action buttons
+      const actionsEl = document.querySelector(".report-actions");
+      const hintEl = document.getElementById("reportLoadingHint");
+      textEl.value = "";
+      textEl.style.display = "none";
+      renderedEl.innerHTML = "";
+      renderedEl.style.display = "none";
       textEl.readOnly = true;
       statusEl.textContent = "";
       copyBtn.disabled = true;
+      copyBtn.style.opacity = "0.5";
+      if (srcBtn) { srcBtn.style.display = "none"; srcBtn.textContent = t("reportShowSource"); }
+      actionsEl.classList.add("is-loading");
+      reportShowingSource = false;
+      loadingEl.classList.add("is-active");
+      loadingTitleEl.innerHTML = useAI
+        ? `${escapeHtml(t("reportLoadingTitleAI"))}<span class="report-loading-dots"></span>`
+        : `${escapeHtml(t("reportLoadingTitleStats"))}<span class="report-loading-dots"></span>`;
+      const loadingCount = mode === "ranges" ? pickedRangeCount : activeIds.length;
+      loadingSubEl.textContent = useAI
+        ? (mode === "ranges"
+            ? (scope === "day" ? t("reportLoadingSubPickedDay", { count: loadingCount }) : t("reportLoadingSubPickedWeek", { count: loadingCount }))
+            : t("reportLoadingSubAI", { count: loadingCount }))
+        : t("reportLoadingSubStats");
+      if (hintEl) hintEl.textContent = useAI ? t("reportLoadingHint") : "";
+
+      function finish(text, isError) {
+        loadingEl.classList.remove("is-active");
+        actionsEl.classList.remove("is-loading");
+        const final = text || t("reportNoData");
+        textEl.value = final;
+        renderedEl.innerHTML = renderSimpleMarkdown(final);
+        renderedEl.style.display = "block";
+        textEl.style.display = "none";
+        if (srcBtn) srcBtn.style.display = "inline-block";
+        const usable = !!text && text !== t("reportNoData") && !isError;
+        copyBtn.disabled = !usable;
+        copyBtn.style.opacity = usable ? "1" : "0.5";
+      }
 
       try {
-        const result = await window.analyticsAPI.generateReport(scope);
-        titleEl.textContent = scope === "week" ? t("reportWeek") : t("reportDay");
-        textEl.value = result && result.text ? result.text : t("reportNoData");
-        copyBtn.disabled = !textEl.value || textEl.value === t("reportNoData");
+        if (mode === "ranges") {
+          const result = await window.analyticsAPI.analyzeRanges(pickedRanges, selectedAnalysisAgent || "claude-code");
+          titleEl.textContent = scope === "day" ? t("reportPickedDay") : t("reportPickedWeek");
+          if (result && result.text) {
+            finish(result.text, false);
+          } else {
+            const errMsg = (result && result.error) || t("reportAnalysisFailed");
+            finish(`> ${errMsg}`, true);
+          }
+        } else if (useAI) {
+          const refs = activeSessions.map(s => ({ id: s.id, agent: s.agent }));
+          const result = await window.analyticsAPI.analyzeSelected(refs, selectedAnalysisAgent || "claude-code", perSessionScope || undefined);
+          titleEl.textContent = mode === "visible" ? t("reportVisible") : t("reportSelected");
+          if (result && result.text) {
+            finish(result.text, false);
+          } else {
+            const errMsg = (result && result.error) || t("reportAnalysisFailed");
+            finish(`> ${errMsg}\n\n` + buildSelectedSessionsReport(activeSessions), false);
+          }
+        } else {
+          const result = await window.analyticsAPI.generateReport(scope);
+          titleEl.textContent = scope === "week" ? t("reportWeek") : t("reportDay");
+          finish(result && result.text, false);
+        }
       } catch (err) {
-        textEl.value = t("reportFailed", { message: err && (err.message || String(err)) });
-        copyBtn.disabled = true;
+        finish(t("reportFailed", { message: err && (err.message || String(err)) }), true);
       }
     }
 
     function closeReportModal() {
       document.getElementById("reportOverlay").style.display = "none";
+    }
+
+    let reportShowingSource = false;
+    function toggleReportSource() {
+      const textEl = document.getElementById("reportTextarea");
+      const renderedEl = document.getElementById("reportRendered");
+      const srcBtn = document.getElementById("reportSourceToggleBtn");
+      reportShowingSource = !reportShowingSource;
+      if (reportShowingSource) {
+        renderedEl.style.display = "none";
+        textEl.style.display = "block";
+        srcBtn.textContent = t("reportShowRendered");
+      } else {
+        textEl.style.display = "none";
+        renderedEl.style.display = "block";
+        srcBtn.textContent = t("reportShowSource");
+      }
     }
 
     function copyReportText() {
@@ -6158,8 +6788,14 @@
       });
     });
 
-    document.getElementById("dailyReportBtn").addEventListener("click", () => openReportModal("day"));
-    document.getElementById("weeklyReportBtn").addEventListener("click", () => openReportModal("week"));
+    document.getElementById("dailyReportBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleScopeMenu("dailyScopeMenu", "day");
+    });
+    document.getElementById("weeklyReportBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleScopeMenu("weeklyScopeMenu", "week");
+    });
     document.getElementById("evtSelectAllBtn").addEventListener("click", selectAllVisibleSessions);
     // Clicking the "已选 N" pill clears the selection — replaces the old 清空
     // button. The pill is visible only when there's a non-zero selection,
@@ -6210,6 +6846,176 @@
     });
     document.getElementById("reportCloseBtn").addEventListener("click", closeReportModal);
     document.getElementById("reportCopyBtn").addEventListener("click", copyReportText);
+    document.getElementById("reportSourceToggleBtn").addEventListener("click", toggleReportSource);
+
+    // ── Report scope menu — date/week picker with multi-select ──
+    // Caches the bucket lists so reopening the menu is instant. The buckets
+    // come from a single scanRange covering the picker's full window, which
+    // is also cached upstream, so stale-ness isn't a concern within a session.
+    const _pickerCache = { daily: null, weekly: null };
+
+    async function buildScopeMenu(menuEl, kind) {
+      menuEl.classList.add("is-picker");
+      menuEl.innerHTML = `<div class="report-picker-summary">${escapeHtml(t("scopeLoading"))}</div>`;
+      let buckets;
+      try {
+        if (kind === "day") {
+          if (!_pickerCache.daily) _pickerCache.daily = await window.analyticsAPI.getDailyBuckets(14);
+          buckets = _pickerCache.daily;
+        } else {
+          if (!_pickerCache.weekly) _pickerCache.weekly = await window.analyticsAPI.getWeeklyBuckets(8);
+          buckets = _pickerCache.weekly;
+        }
+      } catch (err) {
+        menuEl.innerHTML = `<div class="report-picker-summary">${escapeHtml(t("scopeLoadFailed"))}</div>`;
+        return;
+      }
+      renderPicker(menuEl, kind, buckets || []);
+    }
+
+    function renderPicker(menuEl, kind, buckets) {
+      const selectedKeys = new Set();
+      // Default-select the most recent bucket that has sessions.
+      const firstNonEmpty = buckets.find(b => b.count > 0);
+      if (firstNonEmpty) {
+        selectedKeys.add(bucketKey(firstNonEmpty));
+      }
+      const checkedSessionIds = [...selectedExportSessionIds];
+
+      function rebuild() {
+        menuEl.innerHTML = "";
+        // Top: shortcut options (checked sessions / current view)
+        const shortcuts = [];
+        if (checkedSessionIds.length > 0) {
+          shortcuts.push({
+            title: t("scopeSelected", { count: checkedSessionIds.length }),
+            desc: t("scopeSelectedDesc"),
+            run: () => openReportModal(kind, { mode: "selected" }),
+          });
+        }
+        for (const sc of shortcuts) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "report-scope-option";
+          b.innerHTML = `<span class="report-scope-option-title">${escapeHtml(sc.title)}</span><span class="report-scope-option-desc">${escapeHtml(sc.desc)}</span>`;
+          b.addEventListener("click", () => { closeAllScopeMenus(); sc.run(); });
+          menuEl.appendChild(b);
+        }
+        if (shortcuts.length) {
+          const sep = document.createElement("div");
+          sep.className = "report-scope-divider";
+          menuEl.appendChild(sep);
+        }
+
+        // Picker section title
+        const title = document.createElement("div");
+        title.className = "report-scope-section-title";
+        title.textContent = kind === "day" ? t("scopePickDayTitle") : t("scopePickWeekTitle");
+        menuEl.appendChild(title);
+
+        // Bucket list
+        const list = document.createElement("div");
+        list.className = "report-bucket-list";
+        for (const b of buckets) {
+          const row = document.createElement("label");
+          row.className = "report-bucket-row" + (b.count === 0 ? " is-empty" : "");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.disabled = b.count === 0;
+          const key = bucketKey(b);
+          cb.checked = selectedKeys.has(key);
+          cb.addEventListener("change", () => {
+            if (cb.checked) selectedKeys.add(key);
+            else selectedKeys.delete(key);
+            updateConfirmState();
+          });
+          row.appendChild(cb);
+
+          const labelWrap = document.createElement("span");
+          labelWrap.className = "report-bucket-label";
+          if (kind === "day") {
+            const wd = ["周日","周一","周二","周三","周四","周五","周六"][b.weekday] || "";
+            const today = isSameDay(new Date(b.start), new Date()) ? ` · ${t("today")}` : "";
+            labelWrap.innerHTML = `<span class="report-bucket-date">${escapeHtml(b.date)}</span><span class="report-bucket-extra">${escapeHtml(wd + today)}</span>`;
+          } else {
+            const tagThisWeek = b.weekOffset === 0 ? ` · ${t("thisWeek")}` : (b.weekOffset === -1 ? ` · ${t("lastWeek")}` : "");
+            labelWrap.innerHTML = `<span class="report-bucket-date">${escapeHtml(b.label)}</span><span class="report-bucket-extra">${escapeHtml(tagThisWeek)}</span>`;
+          }
+          row.appendChild(labelWrap);
+
+          const cnt = document.createElement("span");
+          cnt.className = "report-bucket-count" + (b.count > 0 ? " is-active" : "");
+          cnt.textContent = `${b.count}`;
+          row.appendChild(cnt);
+
+          list.appendChild(row);
+        }
+        menuEl.appendChild(list);
+
+        // Confirm row
+        const actions = document.createElement("div");
+        actions.className = "report-picker-actions";
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "report-picker-confirm";
+        confirm.textContent = t("scopeConfirmAnalyze");
+        confirm.addEventListener("click", () => {
+          const ranges = buckets
+            .filter(b => selectedKeys.has(bucketKey(b)) && b.count > 0)
+            .map(b => ({ start: b.start, end: b.end }));
+          if (!ranges.length) return;
+          closeAllScopeMenus();
+          openReportModal(kind, { mode: "ranges", ranges, count: ranges.length });
+        });
+        const stats = document.createElement("button");
+        stats.type = "button";
+        stats.className = "report-picker-confirm is-secondary";
+        stats.textContent = t("scopeStats");
+        stats.addEventListener("click", () => {
+          closeAllScopeMenus();
+          openReportModal(kind, { mode: "stats" });
+        });
+        actions.appendChild(confirm);
+        actions.appendChild(stats);
+        menuEl.appendChild(actions);
+
+        function updateConfirmState() {
+          const has = [...selectedKeys].some(k => {
+            const b = buckets.find(bb => bucketKey(bb) === k);
+            return b && b.count > 0;
+          });
+          confirm.disabled = !has;
+        }
+        updateConfirmState();
+      }
+
+      rebuild();
+    }
+
+    function bucketKey(b) { return `${b.start}-${b.end}`; }
+    function isSameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function closeAllScopeMenus() {
+      document.querySelectorAll(".report-scope-menu.is-open").forEach(m => m.classList.remove("is-open"));
+    }
+
+    function toggleScopeMenu(menuId, kind) {
+      const menuEl = document.getElementById(menuId);
+      const wasOpen = menuEl.classList.contains("is-open");
+      closeAllScopeMenus();
+      if (!wasOpen) {
+        menuEl.classList.add("is-open");
+        // buildScopeMenu is async (fetches buckets); open the menu first so
+        // the user sees the loading state instead of a long click delay.
+        buildScopeMenu(menuEl, kind);
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".report-scope-wrap")) closeAllScopeMenus();
+    });
     document.getElementById("reportOverlay").addEventListener("click", (e) => {
       if (e.target.id === "reportOverlay") closeReportModal();
     });
