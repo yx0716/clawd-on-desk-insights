@@ -1128,6 +1128,101 @@ module.exports = function initAnalyticsAI(ctx) {
   // Attempt to fix unescaped double quotes inside JSON string values.
   // Common model mistake: {"detail":"确定以飞书"Home"主文档"} → parser breaks at inner "
   // Strategy: replace inner unescaped " with 「」 between JSON structural quotes.
+  // Strip ```json ... ``` (or any ``` ... ```) wrapper. Claude/Codex CLI
+  // sometimes ignore the "no code block" instruction and wrap JSON in fences.
+  function stripJsonFence(s) {
+    if (!s || typeof s !== "string") return s;
+    // Match a leading fence (with optional language tag) and trailing fence.
+    // Use a non-greedy capture so a fence pair at the start gets picked even
+    // when there's surrounding prose.
+    const fence = s.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+    if (fence && fence[1]) return fence[1].trim();
+    return s;
+  }
+
+  // Remove `,` before `}` or `]` — a common LLM mistake that vanilla JSON.parse
+  // rejects even though the structure is otherwise valid.
+  function fixTrailingCommas(s) {
+    if (!s || typeof s !== "string") return s;
+    return s.replace(/,(\s*[}\]])/g, "$1");
+  }
+
+  // Escape raw newlines, carriage returns, and tabs that appear INSIDE string
+  // values. JSON forbids literal control chars in strings but LLMs frequently
+  // leak them when paraphrasing user messages or quoting code.
+  function escapeNewlinesInStrings(s) {
+    if (!s || typeof s !== "string") return s;
+    let out = "";
+    let inStr = false, escaped = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === "\\") { out += ch; escaped = true; continue; }
+      if (ch === '"') { out += ch; inStr = !inStr; continue; }
+      if (inStr) {
+        if (ch === "\n") { out += "\\n"; continue; }
+        if (ch === "\r") { out += "\\r"; continue; }
+        if (ch === "\t") { out += "\\t"; continue; }
+      }
+      out += ch;
+    }
+    return out;
+  }
+
+  // Best-effort recovery for truncated output (e.g. CLI killed before the
+  // response finished). Closes any open string, then balances braces/brackets.
+  function repairTruncation(s) {
+    if (!s || typeof s !== "string") return s;
+    let opens = 0, bracketOpens = 0, inStr = false, escaped = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (escaped) { escaped = false; continue; }
+      if (inStr) {
+        if (ch === "\\") escaped = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === "{") opens++;
+      else if (ch === "}") opens--;
+      else if (ch === "[") bracketOpens++;
+      else if (ch === "]") bracketOpens--;
+    }
+    let repaired = s;
+    if (inStr) repaired += '"';
+    while (bracketOpens-- > 0) repaired += "]";
+    while (opens-- > 0) repaired += "}";
+    return repaired;
+  }
+
+  // Try a sequence of progressively-more-lenient transforms. Returns the first
+  // candidate that parses to a non-null object, or null. Order matters: cheap
+  // / safe transforms first, structural surgery last.
+  function tryParseLenientJson(text) {
+    if (!text || typeof text !== "string") return null;
+    const attempts = [];
+    attempts.push(text);
+    const dequoted = sanitizeJsonQuotes(text);
+    if (dequoted !== text) attempts.push(dequoted);
+    const fenced = stripJsonFence(text);
+    if (fenced !== text) attempts.push(fenced);
+    const trailing = fixTrailingCommas(fenced || text);
+    if (trailing !== (fenced || text)) attempts.push(trailing);
+    const escaped = escapeNewlinesInStrings(trailing || fenced || text);
+    if (escaped !== (trailing || fenced || text)) attempts.push(escaped);
+    const combined = fixTrailingCommas(escapeNewlinesInStrings(sanitizeJsonQuotes(stripJsonFence(text))));
+    attempts.push(combined);
+    const repaired = repairTruncation(combined);
+    if (repaired !== combined) attempts.push(repaired);
+    for (const cand of attempts) {
+      try {
+        const obj = JSON.parse(cand);
+        if (obj && typeof obj === "object") return obj;
+      } catch { /* try next */ }
+    }
+    return null;
+  }
+
   function sanitizeJsonQuotes(raw) {
     // Replace smart/curly quotes with Chinese quotes (they're unambiguous)
     let s = raw.replace(/[\u201C\u201D]/g, "\u300C").replace(/[\u2018\u2019]/g, "\u300E");
@@ -1167,9 +1262,14 @@ module.exports = function initAnalyticsAI(ctx) {
 
   function extractFirstJsonObject(text) {
     const s = String(text || "");
+    // Fast path: strip a markdown fence and try the whole text directly. LLMs
+    // overwhelmingly emit either a clean JSON or a fenced JSON; whole-text
+    // lenient parse covers both without scanning brace-by-brace.
+    const fastPath = tryParseLenientJson(stripJsonFence(s));
+    if (fastPath) return fastPath;
+
     let i = 0;
     while (i < s.length) {
-      // Skip until next opening brace at depth 0
       while (i < s.length && s[i] !== "{") i++;
       if (i >= s.length) return null;
       const start = i;
@@ -1190,19 +1290,17 @@ module.exports = function initAnalyticsAI(ctx) {
           depth--;
           if (depth === 0) {
             const candidate = s.slice(start, i + 1);
-            try { return JSON.parse(candidate); }
-            catch { /* malformed candidate — keep scanning */ }
+            const parsed = tryParseLenientJson(candidate);
+            if (parsed) return parsed;
             i++; // step past this `}` and look for the next `{`
             break;
           }
         }
       }
       if (depth !== 0) {
-        // First pass failed — try sanitizing rogue quotes and re-parse
-        if (s !== sanitizeJsonQuotes(s)) {
-          const sanitized = extractFirstJsonObject(sanitizeJsonQuotes(s));
-          if (sanitized) return sanitized;
-        }
+        // Unbalanced (likely truncated). Try repair on the slice from start.
+        const repaired = tryParseLenientJson(s.slice(start));
+        if (repaired) return repaired;
         return null;
       }
     }
@@ -2079,23 +2177,45 @@ module.exports = function initAnalyticsAI(ctx) {
           return obj;
         };
         if (text) {
-          // Try to extract a usable JSON object. extractFirstJsonObject() walks
-          // balanced braces and tries JSON.parse on each candidate, returning
-          // null if nothing parses. Critically, it does NOT throw — that means
-          // a malformed-JSON response no longer gets misattributed as
-          // "claude-cli failed" by the outer catch block.
+          // Try to extract a usable JSON object. extractFirstJsonObject() is
+          // now lenient — fence-strip, trailing-comma fix, newline escape,
+          // truncation repair, smart-quote sanitization. Each candidate goes
+          // through the whole chain before we give up.
           const parsed = extractFirstJsonObject(text);
           if (parsed) {
             const result = attachMeta(parsed);
             return maybeCacheAnalysisResult(cacheKey, result);
           }
-          // Parse failed (or model returned no JSON at all). Log a clear,
-          // non-misleading warning and fall back to a text-summary so the user
-          // still sees *something* in the dashboard.
-          console.warn(`Clawd analytics: ${cliName} returned unparseable JSON (${text.length} chars), falling back to text summary`);
-          const trimmed = text.trim().slice(0, 300);
-          const summary = trimmed || `${cliName} 返回了非结构化内容，无法解析为分析结果。请重试或切换到 API provider。`;
+          // Salvage attempt failed. Classify the failure so we don't pollute
+          // the cache with garbage and so the user gets actionable feedback.
+          const trimmed = text.trim();
+          const preview = trimmed.slice(0, 120).replace(/\s+/g, " ");
+          const isShort = trimmed.length < 30;
+          const hasBrace = trimmed.includes("{");
+          let summary;
+          let transient = true;
+          if (isShort) {
+            // Common cause: CLI bailed early ("Sorry, I cannot..." / blank).
+            console.warn(`Clawd analytics: ${cliName} returned ${trimmed.length} chars (likely failure). preview: ${JSON.stringify(preview)}`);
+            summary = `分析失败: ${cliName} 只返回了 ${trimmed.length} 个字符，请重试。`;
+          } else if (!hasBrace) {
+            // Model emitted plain prose instead of JSON. Surface it but mark
+            // as transient so a retry can get a structured response.
+            console.warn(`Clawd analytics: ${cliName} returned plain text (${trimmed.length} chars), no JSON detected. preview: ${JSON.stringify(preview)}`);
+            summary = `分析失败: ${cliName} 返回了纯文本而非 JSON，请重试。原文：${trimmed.slice(0, 200)}`;
+          } else {
+            // Looked JSON-shaped but couldn't be salvaged. Cache OK to spare
+            // re-spawn cost — likely a stable model quirk for this conversation.
+            console.warn(`Clawd analytics: ${cliName} returned unparseable JSON (${trimmed.length} chars). preview: ${JSON.stringify(preview)}`);
+            summary = trimmed.slice(0, 300);
+            transient = false;
+          }
           const fallback = attachMeta({ summary, keyTopics: [], outcomes: [], timeBreakdown: [], suggestions: [] });
+          if (transient) {
+            // Force-skip cache so the next click retries.
+            fallback._cacheable = false;
+            return fallback;
+          }
           return maybeCacheAnalysisResult(cacheKey, fallback);
         }
       } catch (err) {
@@ -2590,7 +2710,12 @@ module.exports = function initAnalyticsAI(ctx) {
     const provider0 = preferredProvider || "claude-code";
 
     function brieffromAny(b) {
-      return b && (b.summary || (b.keyTopics && b.keyTopics.length) || (b.outcomes && b.outcomes.length))
+      if (!b) return null;
+      // Treat transient single-session failures (short response / non-JSON
+      // text / generic AI failures) as a miss so the aggregator falls back
+      // to the stub instead of injecting "分析失败:" prose into the prompt.
+      if (b._cacheable === false || isTransientAnalysisFailure(b)) return null;
+      return (b.summary || (b.keyTopics && b.keyTopics.length) || (b.outcomes && b.outcomes.length))
         ? b : null;
     }
     function stubBrief(detail) {
