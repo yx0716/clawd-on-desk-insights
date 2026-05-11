@@ -724,23 +724,55 @@ module.exports = function initAnalyticsScan(ctx) {
     return { start, end };
   }
 
+  // Accepts either a single scope or an array of scopes. Merges overlapping
+  // ranges so the resulting list is the disjoint union (e.g. user picks
+  // Mon + Tue + Fri → 2 ranges: [Mon-Tue, Fri-Fri]).
+  function normalizeDetailScopes(raw) {
+    if (raw == null) return null;
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const normalized = arr.map(normalizeDetailScope).filter(Boolean);
+    if (!normalized.length) return null;
+    normalized.sort((a, b) => a.start - b.start);
+    const merged = [normalized[0]];
+    for (let i = 1; i < normalized.length; i++) {
+      const cur = normalized[i];
+      const last = merged[merged.length - 1];
+      if (cur.start <= last.end) {
+        last.end = Math.max(last.end, cur.end);
+      } else {
+        merged.push({ ...cur });
+      }
+    }
+    return merged;
+  }
+
   function inDetailScope(ts, scope) {
     if (!scope) return true;
     if (!Number.isFinite(ts)) return false;
     return ts >= scope.start && ts <= scope.end;
   }
 
+  function inAnyDetailScope(ts, scopes) {
+    if (!scopes || !scopes.length) return true;
+    if (!Number.isFinite(ts)) return false;
+    for (const s of scopes) if (ts >= s.start && ts <= s.end) return true;
+    return false;
+  }
+
   function applyDetailScope(detail, rawScope) {
-    const scope = normalizeDetailScope(rawScope);
-    if (!scope) return detail;
+    const scopes = normalizeDetailScopes(rawScope);
+    if (!scopes) return detail;
+    // analysisId must be stable for the same set of scopes so the brief cache
+    // can dedupe across calls. Sort and join after merge.
+    const analysisIdSuffix = scopes.map(s => `${s.start}-${s.end}`).join("+");
     const scoped = {
       ...detail,
-      analysisId: `${detail.sessionId}@${scope.start}-${scope.end}`,
-      scope,
-      conversation: (detail.conversation || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
-      userMessages: (detail.userMessages || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
-      toolCalls: (detail.toolCalls || []).filter(entry => inDetailScope(Number(entry && entry.ts), scope)),
-      timestamps: (detail.timestamps || []).filter(ts => inDetailScope(Number(ts), scope)),
+      analysisId: `${detail.sessionId}@${analysisIdSuffix}`,
+      scope: scopes.length === 1 ? scopes[0] : scopes,
+      conversation: (detail.conversation || []).filter(entry => inAnyDetailScope(Number(entry && entry.ts), scopes)),
+      userMessages: (detail.userMessages || []).filter(entry => inAnyDetailScope(Number(entry && entry.ts), scopes)),
+      toolCalls: (detail.toolCalls || []).filter(entry => inAnyDetailScope(Number(entry && entry.ts), scopes)),
+      timestamps: (detail.timestamps || []).filter(ts => inAnyDetailScope(Number(ts), scopes)),
     };
     return scoped;
   }
@@ -963,23 +995,29 @@ module.exports = function initAnalyticsScan(ctx) {
     return buckets;
   }
 
-  // Multi-range analyze helper: for each range, scan sessions and return
-  // refs with per-session scope (clipped to that range). If the same session
-  // appears in multiple ranges, it gets one ref per range so each clipped
-  // slice contributes independently to the AI prompt.
+  // Multi-range analyze helper: for each range, scan sessions, then merge
+  // refs by session id so each session is analyzed only once. The session's
+  // scope becomes an array of all the picked ranges it overlaps — clipping
+  // and analysisId dedup happen downstream in applyDetailScope.
   function getSessionRefsForRanges(ranges) {
     if (!Array.isArray(ranges) || !ranges.length) return [];
-    const refs = [];
+    const bySession = new Map(); // `${id}:${agent}` → { id, agent, scopes: [{start,end},...] }
     for (const r of ranges) {
       if (!r || typeof r !== "object") continue;
       const start = Number(r.start), end = Number(r.end);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
       const data = scanRange(start, end);
       for (const s of (data && data.sessions) || []) {
-        refs.push({ id: s.id, agent: s.agent, scope: { start, end } });
+        const key = `${s.id}:${s.agent}`;
+        if (!bySession.has(key)) bySession.set(key, { id: s.id, agent: s.agent, scopes: [] });
+        bySession.get(key).scopes.push({ start, end });
       }
     }
-    return refs;
+    return [...bySession.values()].map(({ id, agent, scopes }) => ({
+      id,
+      agent,
+      scope: scopes.length === 1 ? scopes[0] : scopes,
+    }));
   }
 
   return { scanRange, scanToday, scan3Days, scan7Days, scanWeek, scanMonthOf, getAvailableMonths, getDailyBuckets, getWeeklyBuckets, getSessionRefsForRanges, getSessionDetail, invalidateCache };

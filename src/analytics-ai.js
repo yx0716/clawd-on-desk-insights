@@ -2580,38 +2580,65 @@ module.exports = function initAnalyticsAI(ctx) {
     let cacheMisses = 0;
     let stubs = 0;
 
-    // Stage 1: collect per-session brief summaries. Use the existing cache;
-    // generate-on-miss falls through to analyzeSession() which will populate
-    // the cache for future runs. We process sessions sequentially to avoid
-    // hammering the CLI with parallel spawns.
+    // Stage 1: collect per-session brief summaries. Cache hits return instantly;
+    // misses spawn a CLI per session. We split the work into a fast path (all
+    // cached) and a slow path (parallel CLI), so a fully-warm run skips spawn
+    // entirely. Concurrency capped at MULTI_BRIEF_CONCURRENCY to avoid memory
+    // pressure + rate-limit blowups when running many CLI processes at once.
+    const MULTI_BRIEF_CONCURRENCY = 4;
     const tStage1Start = Date.now();
-    const items = [];
-    for (const detail of details) {
-      const provider = preferredProvider || "claude-code";
+    const provider0 = preferredProvider || "claude-code";
+
+    function brieffromAny(b) {
+      return b && (b.summary || (b.keyTopics && b.keyTopics.length) || (b.outcomes && b.outcomes.length))
+        ? b : null;
+    }
+    function stubBrief(detail) {
+      return {
+        summary: detail.title || (detail.firstUserMsg ? `开了一段会话："${detail.firstUserMsg}"` : "（无可用简报）"),
+        keyTopics: [],
+        outcomes: [],
+      };
+    }
+
+    // Pre-pass: classify each detail as cached / miss; the cached ones land
+    // in the items array immediately so cache-only runs incur zero await.
+    const items = new Array(details.length);
+    const missQueue = [];
+    for (let i = 0; i < details.length; i++) {
+      const detail = details[i];
       if (preferredProvider) detail._preferredProvider = preferredProvider;
-      const key = briefCacheKeyFor(detail, provider);
-      let brief = sessionAnalysisCache.get(key);
-      const wasCached = !!(brief && brief.summary);
-      if (!wasCached) {
-        try {
-          brief = await analyzeSession(detail, "brief");
-        } catch { brief = null; }
-      }
-      if (brief && (brief.summary || (brief.keyTopics && brief.keyTopics.length) || (brief.outcomes && brief.outcomes.length))) {
-        items.push({ detail, brief });
-        if (wasCached) cacheHits++;
-        else cacheMisses++;
+      const key = briefCacheKeyFor(detail, provider0);
+      const cached = brieffromAny(sessionAnalysisCache.get(key));
+      if (cached) {
+        items[i] = { detail, brief: cached };
+        cacheHits++;
       } else {
-        items.push({
-          detail,
-          brief: {
-            summary: detail.title || (detail.firstUserMsg ? `开了一段会话："${detail.firstUserMsg}"` : "（无可用简报）"),
-            keyTopics: [],
-            outcomes: [],
-          },
-        });
-        stubs++;
+        missQueue.push({ index: i, detail });
       }
+    }
+
+    // Slow path: parallel CLI for misses.
+    let queueIdx = 0;
+    async function worker() {
+      while (queueIdx < missQueue.length) {
+        const myIdx = queueIdx++;
+        const { index, detail } = missQueue[myIdx];
+        let brief = null;
+        try { brief = await analyzeSession(detail, "brief"); } catch { brief = null; }
+        const good = brieffromAny(brief);
+        if (good) {
+          items[index] = { detail, brief: good };
+          cacheMisses++;
+        } else {
+          items[index] = { detail, brief: stubBrief(detail) };
+          stubs++;
+        }
+      }
+    }
+    const workerCount = Math.min(MULTI_BRIEF_CONCURRENCY, missQueue.length);
+    if (workerCount > 0) {
+      await Promise.all(Array.from({ length: workerCount }, worker));
     }
     const stage1Ms = Date.now() - tStage1Start;
 
