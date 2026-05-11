@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20(primary)-111827)](#上手指南)
 [![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#上手指南)
-[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#关于-fork-仓的说明)
+[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#项目渊源--致谢)
 
 <p>
   <a href="#快速安装">安装</a> ·
@@ -256,13 +256,15 @@ Agent 工作时(调用工具、等待用户输入、报错、完成任务……)
 **Q:我没有 Claude Code 也没有 Codex,能用吗?**
 可以。你可以只用时间线视图(完全免费、不需要任何 LLM),或者在 AI Provider Settings 里填一个 Anthropic / OpenAI API key 走云端模式。
 
-## 关于 Fork 仓的说明
+## 项目渊源 & 致谢
 
-本仓库 fork 自 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk)——一个会实时感知你的 coding agent 状态的桌面宠物。桌面宠物还在(动画、权限气泡、多 Agent 状态追踪),但**这个 fork 的重心是上层的洞察分析**。
+Clawd Insights 是构建在 [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) 之上的**洞察分析层**——上游是一只把 coding agent 状态变成像素画的可爱桌面宠物,所有让它讨喜的部分(动画、权限气泡、多 Agent 状态追踪、极简模式等等)都被原封不动地保留了下来。这个 fork 多问了一件事:**如果你和 Agent 的每一次对话,都能被搜索、被总结、汇集到同一块面板上,会怎样?**
 
-从上游继承的多 Agent 支持:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。需要注意的是,目前分析面板的扫描器只覆盖 Claude Code、Codex CLI 和 Cursor Agent——其他 agent 仍能驱动桌面宠物动画,但本地历史尚未接入分析面板。
+这块面板就是新增的核心。它扫描你的本地历史记录(目前覆盖 Claude Code、Codex CLI、Cursor Agent,更多 agent 接入中),画出时间线,再让你自选的 LLM 为每一次会话生成摘要——全程不向任何第三方发送一个字节。
 
-桌面宠物本体的完整功能(动画、权限气泡、极简模式、点击反应、自定义主题、远程 SSH 等)详见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
+从上游继承的多 Agent 状态追踪:**Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Cursor Agent**、**Kiro CLI** 与 **opencode**。桌面宠物本身的完整功能(极简模式、点击反应、自定义主题、远程 SSH 等),请见[上游 README](https://github.com/rullerzhou-afk/clawd-on-desk)。
+
+特别感谢 [@rullerzhou-afk](https://github.com/rullerzhou-afk) 和所有共同塑造原版 Clawd 的贡献者——没有这份基础,就没有这个项目。
 
 ## 许可证
 

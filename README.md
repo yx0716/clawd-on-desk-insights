@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-3178c6)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20(primary)-111827)](#getting-started)
 [![Powered by Claude · Codex](https://img.shields.io/badge/Powered_by-Claude%20%C2%B7%20Codex-d97757)](#getting-started)
-[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#about-the-fork)
+[![Built on Electron](https://img.shields.io/badge/Built_on-Electron-47848f)](#lineage--credits)
 
 <p>
   <a href="#quick-install">Install</a> ·
@@ -287,13 +287,15 @@ No. Clawd Insights collects zero telemetry. The provider step is *your* CLI or *
 **Q: I don't have Claude Code or Codex. Can I still use it?**
 Yes. You can use the timeline view alone (completely free, no LLM required), or paste an Anthropic / OpenAI API key into AI Provider Settings to enable the cloud path.
 
-## About the Fork
+## Lineage & Credits
 
-This is a fork of [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk) — a desktop pet that reacts to your coding agent in real time. The pet is still here (animations, permission bubbles, multi-agent state tracking), but the focus of *this* fork is the insights layer on top.
+Clawd Insights is the **analytics layer** built on top of [`rullerzhou-afk/clawd-on-desk`](https://github.com/rullerzhou-afk/clawd-on-desk), the lovely desktop pet that turns your coding agent's state into pixel art. Everything that makes the pet delightful — animations, permission bubbles, multi-agent state tracking, mini mode, the lot — is still here, untouched. What this fork adds is one extra question: **what if every conversation you've ever had with the agent was searchable, summarised, and waiting for you on a single dashboard?**
 
-Multi-agent support carried over from upstream: **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**. Note that the analytics scanner currently covers Claude Code, Codex CLI, and Cursor Agent only — the other agents still drive pet animations, but their histories aren't yet wired into the dashboard.
+That dashboard is the new piece. It scans your local history (Claude Code, Codex CLI, Cursor Agent today; more agents on the way), draws a timeline, and lets your own LLM write per-session summaries — all without sending a byte to a third party.
 
-For the full feature list of the desktop pet (animations, permission bubbles, mini mode, click reactions, themes, remote SSH, etc.), see the [upstream README](https://github.com/rullerzhou-afk/clawd-on-desk).
+Multi-agent state tracking carried over from upstream: **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**. For the desktop pet's own feature list (mini mode, click reactions, themes, remote SSH, etc.), see the [upstream README](https://github.com/rullerzhou-afk/clawd-on-desk).
+
+Huge thanks to [@rullerzhou-afk](https://github.com/rullerzhou-afk) and every contributor who shaped the original Clawd — this project wouldn't exist without that foundation.
 
 ## License
 
