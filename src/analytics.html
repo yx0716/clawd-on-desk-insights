@@ -3131,6 +3131,10 @@
         reportSubPickedWeek: "基于选中的 {count} 周生成。",
         reportLoadingSubPickedDay: "正在分析选中的 {count} 天会话，通常需要 30-60 秒。",
         reportLoadingSubPickedWeek: "正在分析选中的 {count} 周会话，通常需要 30-90 秒。",
+        timingTotal: "总耗时 {dur}",
+        timingSessions: "{count} 个会话",
+        timingBreakdown: "简报 {stage1} + 聚合 {stage2}",
+        timingCache: "缓存命中 {hits} / 新生成 {misses}",
         reportAnalyzing: "AI 正在分析这些会话，请稍候（可能需要 30-60 秒）...",
         reportAnalysisFailed: "AI 分析失败，下面显示统计摘要作为备用：",
         reportLoadingTitleAI: "AI 正在阅读会话",
@@ -3330,6 +3334,10 @@
         reportSubPickedWeek: "Generated from {count} selected week(s).",
         reportLoadingSubPickedDay: "Analyzing sessions across {count} day(s), usually 30-60 seconds.",
         reportLoadingSubPickedWeek: "Analyzing sessions across {count} week(s), usually 30-90 seconds.",
+        timingTotal: "Total {dur}",
+        timingSessions: "{count} sessions",
+        timingBreakdown: "briefs {stage1} + aggregate {stage2}",
+        timingCache: "cached {hits} / new {misses}",
         reportAnalyzing: "AI is analyzing these sessions, please wait (30-60 seconds)...",
         reportAnalysisFailed: "AI analysis failed; falling back to stats summary:",
         reportLoadingTitleAI: "AI is reading your sessions",
@@ -6594,7 +6602,28 @@
         : t("reportLoadingSubStats");
       if (hintEl) hintEl.textContent = useAI ? t("reportLoadingHint") : "";
 
-      function finish(text, isError) {
+      function fmtMs(ms) {
+        if (!Number.isFinite(ms)) return "?";
+        if (ms < 1000) return `${ms}ms`;
+        return `${(ms / 1000).toFixed(1)}s`;
+      }
+      function setTimingStatus(timing, wallMs) {
+        if (!timing && !Number.isFinite(wallMs)) { statusEl.textContent = ""; return; }
+        const parts = [];
+        if (Number.isFinite(wallMs)) parts.push(t("timingTotal", { dur: fmtMs(wallMs) }));
+        if (timing && Number.isFinite(timing.sessions)) {
+          parts.push(t("timingSessions", { count: timing.sessions }));
+        }
+        if (timing && Number.isFinite(timing.stage1Ms) && Number.isFinite(timing.stage2Ms)) {
+          parts.push(t("timingBreakdown", { stage1: fmtMs(timing.stage1Ms), stage2: fmtMs(timing.stage2Ms) }));
+        }
+        if (timing && (timing.cacheHits || timing.cacheMisses || timing.stubs)) {
+          parts.push(t("timingCache", { hits: timing.cacheHits || 0, misses: timing.cacheMisses || 0 }));
+        }
+        statusEl.textContent = parts.join(" · ");
+      }
+
+      function finish(text, isError, timing, wallMs) {
         loadingEl.classList.remove("is-active");
         actionsEl.classList.remove("is-loading");
         const final = text || t("reportNoData");
@@ -6606,35 +6635,41 @@
         const usable = !!text && text !== t("reportNoData") && !isError;
         copyBtn.disabled = !usable;
         copyBtn.style.opacity = usable ? "1" : "0.5";
+        setTimingStatus(timing, wallMs);
       }
 
+      const tStart = Date.now();
       try {
         if (mode === "ranges") {
           const result = await window.analyticsAPI.analyzeRanges(pickedRanges, selectedAnalysisAgent || "claude-code");
+          const wall = Date.now() - tStart;
           titleEl.textContent = scope === "day" ? t("reportPickedDay") : t("reportPickedWeek");
           if (result && result.text) {
-            finish(result.text, false);
+            finish(result.text, false, result._timing, wall);
           } else {
             const errMsg = (result && result.error) || t("reportAnalysisFailed");
-            finish(`> ${errMsg}`, true);
+            finish(`> ${errMsg}`, true, result && result._timing, wall);
           }
         } else if (useAI) {
           const refs = activeSessions.map(s => ({ id: s.id, agent: s.agent }));
           const result = await window.analyticsAPI.analyzeSelected(refs, selectedAnalysisAgent || "claude-code", perSessionScope || undefined);
+          const wall = Date.now() - tStart;
           titleEl.textContent = mode === "visible" ? t("reportVisible") : t("reportSelected");
           if (result && result.text) {
-            finish(result.text, false);
+            finish(result.text, false, result._timing, wall);
           } else {
             const errMsg = (result && result.error) || t("reportAnalysisFailed");
-            finish(`> ${errMsg}\n\n` + buildSelectedSessionsReport(activeSessions), false);
+            finish(`> ${errMsg}\n\n` + buildSelectedSessionsReport(activeSessions), false, result && result._timing, wall);
           }
         } else {
           const result = await window.analyticsAPI.generateReport(scope);
+          const wall = Date.now() - tStart;
           titleEl.textContent = scope === "week" ? t("reportWeek") : t("reportDay");
-          finish(result && result.text, false);
+          finish(result && result.text, false, null, wall);
         }
       } catch (err) {
-        finish(t("reportFailed", { message: err && (err.message || String(err)) }), true);
+        const wall = Date.now() - tStart;
+        finish(t("reportFailed", { message: err && (err.message || String(err)) }), true, null, wall);
       }
     }
 

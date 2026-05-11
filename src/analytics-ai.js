@@ -2575,27 +2575,33 @@ module.exports = function initAnalyticsAI(ctx) {
   async function analyzeMultipleSessions(details, preferredProvider) {
     if (!Array.isArray(details) || details.length === 0) return null;
 
+    const tTotalStart = Date.now();
+    let cacheHits = 0;
+    let cacheMisses = 0;
+    let stubs = 0;
+
     // Stage 1: collect per-session brief summaries. Use the existing cache;
     // generate-on-miss falls through to analyzeSession() which will populate
     // the cache for future runs. We process sessions sequentially to avoid
     // hammering the CLI with parallel spawns.
+    const tStage1Start = Date.now();
     const items = [];
     for (const detail of details) {
       const provider = preferredProvider || "claude-code";
       if (preferredProvider) detail._preferredProvider = preferredProvider;
       const key = briefCacheKeyFor(detail, provider);
       let brief = sessionAnalysisCache.get(key);
-      if (!brief || !brief.summary) {
+      const wasCached = !!(brief && brief.summary);
+      if (!wasCached) {
         try {
           brief = await analyzeSession(detail, "brief");
         } catch { brief = null; }
       }
       if (brief && (brief.summary || (brief.keyTopics && brief.keyTopics.length) || (brief.outcomes && brief.outcomes.length))) {
         items.push({ detail, brief });
+        if (wasCached) cacheHits++;
+        else cacheMisses++;
       } else {
-        // Fall back to a stub so the aggregator sees at least the session
-        // metadata; AI summary failed for this one but we don't want to drop
-        // it entirely.
         items.push({
           detail,
           brief: {
@@ -2604,20 +2610,47 @@ module.exports = function initAnalyticsAI(ctx) {
             outcomes: [],
           },
         });
+        stubs++;
       }
     }
+    const stage1Ms = Date.now() - tStage1Start;
 
-    if (!items.length) return { text: null, error: "未能加载任一会话的简报。" };
+    if (!items.length) return { text: null, error: "未能加载任一会话的简报。", _timing: { stage1Ms, stage2Ms: 0, totalMs: Date.now() - tTotalStart, sessions: 0, cacheHits, cacheMisses, stubs } };
+
     const prompt = buildMultiSessionPromptFromBriefs(items);
 
-    // Try CLI first based on preference
+    // Stage 2: cross-session aggregation. Time the AI call separately so we
+    // can tell whether the long wall-clock comes from cache misses or the
+    // aggregator itself.
+    const tStage2Start = Date.now();
     const provider = preferredProvider || "claude-code";
+
+    function makeTimingMeta() {
+      return {
+        stage1Ms,
+        stage2Ms: Date.now() - tStage2Start,
+        totalMs: Date.now() - tTotalStart,
+        sessions: items.length,
+        cacheHits,
+        cacheMisses,
+        stubs,
+      };
+    }
+    function logTiming(tag, extra) {
+      const m = makeTimingMeta();
+      console.log(`[clawd-insights] report timing (${tag}): ${m.totalMs}ms total, stage1=${m.stage1Ms}ms (briefs: ${m.cacheHits} cached, ${m.cacheMisses} generated, ${m.stubs} stubs), stage2=${m.stage2Ms}ms${extra ? " · " + extra : ""}`);
+      return m;
+    }
+
     if (provider === "codex") {
       const codexPath = findCodexBinary();
       if (codexPath) {
         try {
           const result = await callCodexCLI(codexPath, prompt, { outputSchema: null });
-          if (result && result.text) return { text: result.text, _provider: "codex" };
+          if (result && result.text) {
+            const _timing = logTiming("codex-cli", `${items.length} sessions`);
+            return { text: result.text, _provider: "codex", _timing };
+          }
         } catch (e) { /* fall through */ }
       }
     } else {
@@ -2626,12 +2659,14 @@ module.exports = function initAnalyticsAI(ctx) {
         try {
           const sysPrompt = "你是一个对话分析助手。请按用户的要求直接返回 markdown 文本，不要返回 JSON，不要把回答包在 code block 里。";
           const { text } = await callClaudeCLIWithSystem(claudePath, prompt, sysPrompt);
-          if (text) return { text, _provider: "claude-code" };
+          if (text) {
+            const _timing = logTiming("claude-cli", `${items.length} sessions`);
+            return { text, _provider: "claude-code", _timing };
+          }
         } catch (e) { /* fall through */ }
       }
     }
 
-    // Fallback to registry-default API provider for detail-mode
     const registryProvider = getProvider(getDefaultProvider("detail")) || getProvider(getDefaultProvider("brief"));
     if (registryProvider) {
       try {
@@ -2643,16 +2678,18 @@ module.exports = function initAnalyticsAI(ctx) {
         } else {
           text = await callOpenAICompat(registryProvider.apiKey, registryProvider.model, prompt, registryProvider.baseUrl, 4000);
         }
-        if (text) return { text, _provider: registryProvider.id || registryProvider.type };
+        if (text) {
+          const _timing = logTiming(`registry:${registryProvider.type}`, `${items.length} sessions`);
+          return { text, _provider: registryProvider.id || registryProvider.type, _timing };
+        }
       } catch (e) { /* fall through */ }
     }
 
-    // Legacy fallback
     const cfg = getConfig();
     const legacyProvider = (cfg && cfg.provider) || "claude";
     const apiKey = cfg && cfg.apiKey;
     if (!apiKey && PROVIDERS[legacyProvider] && PROVIDERS[legacyProvider].needsKey) {
-      return { text: null, error: "未配置 AI Provider，请到设置中添加。" };
+      return { text: null, error: "未配置 AI Provider，请到设置中添加。", _timing: makeTimingMeta() };
     }
     try {
       const model = (cfg && cfg.model) || PROVIDERS[legacyProvider].defaultModel;
@@ -2661,11 +2698,14 @@ module.exports = function initAnalyticsAI(ctx) {
       if (legacyProvider === "claude") text = await callClaude(apiKey, model, prompt, 4000, baseUrl);
       else if (legacyProvider === "ollama") text = await callOllama(model, prompt, baseUrl);
       else text = await callOpenAICompat(apiKey, model, prompt, baseUrl, 4000);
-      if (text) return { text, _provider: legacyProvider };
+      if (text) {
+        const _timing = logTiming(`legacy:${legacyProvider}`, `${items.length} sessions`);
+        return { text, _provider: legacyProvider, _timing };
+      }
     } catch (e) {
-      return { text: null, error: e && (e.message || String(e)) };
+      return { text: null, error: e && (e.message || String(e)), _timing: makeTimingMeta() };
     }
-    return { text: null, error: "AI 调用失败。" };
+    return { text: null, error: "AI 调用失败。", _timing: makeTimingMeta() };
   }
 
   return { getApiKey, setApiKey, getConfig, setConfig, PROVIDERS, analyzeSession, analyzeMultipleSessions, getAnalysisProvider, getAvailableAnalysisProviders, findClaudeBinary, getSessionOneLiner, getCliDiagnostics, testCliPath, clearAnalysisCaches, loadPersistedAnalyses, analyzeKnowledgeCompound, getProviderRegistry, addProvider, updateProvider, deleteProvider, getProvider, testProvider, getDefaultProvider, setDefaultProvider, generateUUID, validateProvider };
