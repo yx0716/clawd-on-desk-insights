@@ -604,6 +604,7 @@ module.exports = function initAnalyticsScan(ctx) {
       agentTotals, agentMessages,
       projectTotals, projectMessages, projectFullPaths,
       toolTotals, dailySessions,
+      startTs, endTs,
     };
 
     cache = { key: cacheKey, data };
@@ -621,6 +622,13 @@ module.exports = function initAnalyticsScan(ctx) {
   function scan3Days() {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2).getTime();
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() + 86400000;
+    return scanRange(start, endOfDay);
+  }
+
+  function scan7Days() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() + 86400000;
     return scanRange(start, endOfDay);
   }
@@ -887,5 +895,5 @@ module.exports = function initAnalyticsScan(ctx) {
     cacheExpiry = 0;
   }
 
-  return { scanRange, scanToday, scan3Days, scanWeek, scanMonthOf, getAvailableMonths, getSessionDetail, invalidateCache };
+  return { scanRange, scanToday, scan3Days, scan7Days, scanWeek, scanMonthOf, getAvailableMonths, getSessionDetail, invalidateCache };
 };

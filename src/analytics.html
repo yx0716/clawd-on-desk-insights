@@ -4274,7 +4274,7 @@
       };
     }
 
-    function autoDetectRange(sessions) {
+    function autoDetectRange(sessions, clipStart, clipEnd) {
       if (userOverrideRange) return;
       // Distribute each block's duration into per-hour buckets (hour-of-day),
       // then find the smallest contiguous window that covers 95% of total
@@ -4282,9 +4282,13 @@
       // expand the axis to 24:00 and squash the daytime window.
       const minPerHour = new Array(24).fill(0);
       let total = 0;
+      const clipDayLow = clipStart ? dayStart(clipStart) : null;
       for (const s of sessions) {
         const blocks = (s.blocks && s.blocks.length) ? s.blocks : [{ start: s.firstTs, end: s.lastTs || s.firstTs }];
         for (const b of blocks) {
+          const dk = dayStart(b.start);
+          if (clipDayLow && dk < clipDayLow) continue;
+          if (clipEnd && dk >= clipEnd) continue;
           let cursor = b.start;
           while (cursor < b.end) {
             const c = new Date(cursor);
@@ -4461,15 +4465,19 @@
       if (!ss.length) { c.innerHTML = `<div class="empty-state">${escapeHtml(t("noSessions"))}</div>`; return; }
 
       // Auto-range (unless user overrode)
-      autoDetectRange(ss);
+      const rangeStartTs = data.startTs, rangeEndTs = data.endTs;
+      autoDetectRange(ss, rangeStartTs, rangeEndTs);
       initRangeSelectors();
       renderTimeAxis();
-
       const dayMap = new Map(); let maxBlockDur = 0;
+      const clipDayStart = rangeStartTs ? dayStart(rangeStartTs) : null;
       for (const s of ss) {
         const blocks = sessionBlocks(s);
         for (const b of blocks) {
-          const dk = dayStart(b.start); if (!dayMap.has(dk)) dayMap.set(dk, []);
+          const dk = dayStart(b.start);
+          if (clipDayStart && dk < clipDayStart) continue;
+          if (rangeEndTs && dk >= rangeEndTs) continue;
+          if (!dayMap.has(dk)) dayMap.set(dk, []);
           dayMap.get(dk).push({ ...s, _block: b });
           const bd = b.end - b.start; if (bd > maxBlockDur) maxBlockDur = bd;
         }
@@ -4532,13 +4540,16 @@
         sortedDays.push(new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + i).getTime());
       }
 
-      if (ss.length) autoDetectRange(ss);
+      const calRangeStart = data.startTs, calRangeEnd = data.endTs;
+      if (ss.length) autoDetectRange(ss, calRangeStart, calRangeEnd);
       initRangeSelectors();
-
+      const calClipDayStart = calRangeStart ? dayStart(calRangeStart) : null;
       const dayMap = new Map();
       for (const s of ss) {
         for (const b of mergeCalendarBlocks(sessionBlocks(s))) {
           const dk = dayStart(b.start);
+          if (calClipDayStart && dk < calClipDayStart) continue;
+          if (calRangeEnd && dk >= calRangeEnd) continue;
           if (!dayMap.has(dk)) dayMap.set(dk, []);
           dayMap.get(dk).push({ session: s, block: b });
         }

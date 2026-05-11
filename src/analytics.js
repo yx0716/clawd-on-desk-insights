@@ -225,7 +225,7 @@ module.exports = function initAnalytics(ctx) {
 
   ipcMain.handle("analytics-get-conversations", async (_event, range) => {
     if (!ctx.analyticsScan) return null;
-    if (range === "week") return ctx.analyticsScan.scanWeek();
+    if (range === "week") return ctx.analyticsScan.scan7Days();
     return ctx.analyticsScan.scanToday();
   });
 
@@ -255,9 +255,11 @@ module.exports = function initAnalytics(ctx) {
     let data;
     if (range === "month" && year && month && ctx.analyticsScan.scanMonthOf) {
       data = ctx.analyticsScan.scanMonthOf(year, month);
-    } else if (range === "week") {
+    } else if (range === "week" && weekOffset !== undefined) {
       const offset = Number.isFinite(Number(weekOffset)) ? Math.trunc(Number(weekOffset)) : 0;
       data = ctx.analyticsScan.scanWeek(offset);
+    } else if (range === "week") {
+      data = ctx.analyticsScan.scan7Days();
     } else if (range === "3days") {
       data = ctx.analyticsScan.scan3Days();
     } else {
